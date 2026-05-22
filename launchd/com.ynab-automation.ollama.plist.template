@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.ynab-automation.ollama</string>
+
+    <!-- Run through a login shell so $PATH picks up Homebrew (ollama lives in /opt/homebrew/bin
+         on Apple Silicon, /usr/local/bin on Intel). Hard-coding either path would break the
+         other architecture. -->
+    <key>ProgramArguments</key>
+    <array>
+        <string>/bin/zsh</string>
+        <string>-lc</string>
+        <string>exec ollama serve</string>
+    </array>
+
+    <key>RunAtLoad</key>
+    <true/>
+
+    <key>KeepAlive</key>
+    <true/>
+
+    <key>StandardOutPath</key>
+    <string>{{PROJECT_DIR}}/ollama.out.log</string>
+    <key>StandardErrorPath</key>
+    <string>{{PROJECT_DIR}}/ollama.err.log</string>
+</dict>
+</plist>
