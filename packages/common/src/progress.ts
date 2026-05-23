@@ -29,7 +29,13 @@ export function createProgress({ enabled, text }: { enabled: boolean; text: stri
 }
 
 const noopProgress: Progress = {
-  update: () => {},
-  succeed: () => {},
-  fail: () => {},
+  update: () => {
+    /* no-op */
+  },
+  succeed: () => {
+    /* no-op */
+  },
+  fail: () => {
+    /* no-op */
+  },
 }

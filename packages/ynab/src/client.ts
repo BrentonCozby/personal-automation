@@ -19,7 +19,7 @@ export type YnabClient = {
 }
 
 export function createYnabClient({ token, budgetId }: YnabClientInit): YnabClient {
-  async function request<T>({
+  function request<T>({
     path,
     init = {},
     schema,

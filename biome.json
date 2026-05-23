@@ -1,13 +1,12 @@
 {
   "$schema": "https://biomejs.dev/schemas/2.4.15/schema.json",
   "vcs": {
-    "enabled": false,
+    "enabled": true,
     "clientKind": "git",
     "useIgnoreFile": true
   },
   "files": {
-    "ignoreUnknown": true,
-    "includes": ["**", "!**/dist", "!**/node_modules", "!**/audit", "!**/coverage"]
+    "ignoreUnknown": true
   },
   "formatter": {
     "enabled": true,
@@ -20,22 +19,76 @@
     "enabled": true,
     "rules": {
       "recommended": true,
+      "complexity": {
+        "noForEach": "error",
+        "useDateNow": "error"
+      },
+      "correctness": {
+        "noUnusedImports": "error",
+        "useImportExtensions": {
+          "level": "error",
+          "options": { "forceJsExtensions": true }
+        }
+      },
+      "performance": {
+        "noAccumulatingSpread": "error",
+        "noBarrelFile": "error",
+        "noDelete": "error",
+        "noReExportAll": "error"
+      },
       "style": {
+        "noDefaultExport": "error",
+        "noEnum": "error",
+        "noNamespace": "error",
         "noNonNullAssertion": "error",
-        "useImportType": "error",
+        "noParameterAssign": "error",
+        "useAsConstAssertion": "error",
+        "useConsistentArrayType": {
+          "level": "error",
+          "options": { "syntax": "shorthand" }
+        },
+        "useDefaultSwitchClause": "error",
+        "useExplicitLengthCheck": "error",
         "useExportType": "error",
-        "useNodejsImportProtocol": "error"
+        "useImportType": "error",
+        "useNodejsImportProtocol": "error",
+        "useNumberNamespace": "error",
+        "useNumericSeparators": "error",
+        "useShorthandAssign": "error",
+        "useThrowNewError": "error",
+        "useThrowOnlyError": "error"
       },
       "suspicious": {
-        "noExplicitAny": "error"
+        "noDuplicateTestHooks": "error",
+        "noEmptyBlockStatements": "error",
+        "noEvolvingTypes": "error",
+        "noExplicitAny": "error",
+        "noExportsInTest": "error",
+        "noFocusedTests": "error",
+        "noImplicitAnyLet": "error",
+        "noMisplacedAssertion": "error",
+        "noSkippedTests": "error",
+        "useAwait": "error",
+        "useErrorMessage": "error",
+        "useNumberToFixedDigitsArgument": "error"
       },
       "nursery": {
+        "noFloatingPromises": "error",
+        "noMisusedPromises": "error",
         "useExplicitReturnType": {
           "level": "error",
           "options": {
             "allowExpressions": true
           }
         }
+      }
+    }
+  },
+  "assist": {
+    "enabled": true,
+    "actions": {
+      "source": {
+        "organizeImports": "on"
       }
     }
   },
@@ -52,5 +105,27 @@
       "indentWidth": 2,
       "trailingCommas": "none"
     }
-  }
+  },
+  "overrides": [
+    {
+      "includes": ["**/vitest.config.ts", "**/commitlint.config.js", "**/*.config.{js,ts,mjs,cjs}"],
+      "linter": {
+        "rules": {
+          "style": {
+            "noDefaultExport": "off"
+          }
+        }
+      }
+    },
+    {
+      "includes": ["**/*.test.ts", "**/*.e2e.test.ts"],
+      "linter": {
+        "rules": {
+          "suspicious": {
+            "useAwait": "off"
+          }
+        }
+      }
+    }
+  ]
 }

@@ -105,7 +105,7 @@ function makeTxn(overrides: Record<string, unknown> = {}): Record<string, unknow
     date: '2026-05-20',
     payee_name: 'Amazon',
     memo: 'organic eggs',
-    amount: -15000,
+    amount: -15_000,
     transfer_account_id: null,
     transfer_transaction_id: null,
     flag_name: null,
