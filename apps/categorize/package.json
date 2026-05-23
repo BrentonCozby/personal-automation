@@ -10,6 +10,7 @@
     "test:categorize": "tsx src/index.ts --dry-run --verbose"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.98.0",
     "@ynab-automation/common": "workspace:*",
     "@ynab-automation/ynab": "workspace:*",
     "dotenv": "^17.4.2",

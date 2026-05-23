@@ -9,7 +9,6 @@
     "./retry": "./src/retry.ts",
     "./lock": "./src/lock.ts",
     "./progress": "./src/progress.ts",
-    "./json": "./src/json.ts",
     "./chunks": "./src/chunks.ts",
     "./date": "./src/date.ts"
   },

@@ -36,30 +36,6 @@ export class YnabApiError extends AppError {
   }
 }
 
-export class OllamaError extends AppError {
-  override readonly name = 'OllamaError'
-  readonly status: number | undefined
-  readonly body: string | undefined
-
-  constructor({
-    message,
-    status,
-    body,
-    retryable = false,
-    cause,
-  }: {
-    message: string
-    status?: number
-    body?: string
-    retryable?: boolean
-    cause?: unknown
-  }) {
-    super({ message, retryable, cause })
-    this.status = status
-    this.body = body
-  }
-}
-
 function isRetryableHttpStatus(status: number): boolean {
   // 408 timeout, 425 too-early, 429 rate-limited, and any 5xx are transient.
   if (status === 408 || status === 425 || status === 429) return true

@@ -23,8 +23,8 @@ const schema = z.object({
   ALLOWED_ACCOUNT_IDS: jsonValue.pipe(z.record(z.string(), z.uuid())),
   // coerce to number because process.env values are always strings
   LOOKBACK_DAYS: z.coerce.number().pipe(z.int().positive()),
-  OLLAMA_URL: z.url(),
-  OLLAMA_MODEL: z.string().min(1),
+  ANTHROPIC_API_KEY: z.string().min(1),
+  ANTHROPIC_MODEL: z.string().min(1),
   AUDIT_DIR: z.string().min(1),
   EXCLUDED_CATEGORY_GROUPS: jsonValue.pipe(z.array(z.string())),
   CATEGORY_ROUTING_HINTS: jsonValue.pipe(z.array(z.string())),
@@ -36,8 +36,8 @@ export type Config = {
   /** categorize only PATCHes transactions whose `account_id` is in this set. */
   allowedAccountIds: Set<string>
   lookbackDays: number
-  ollamaUrl: string
-  ollamaModel: string
+  anthropicApiKey: string
+  anthropicModel: string
   /** Created on first run if missing. Relative paths resolve from CWD. */
   auditDir: string
   /** Matched against `category_group_name` (case-sensitive). Groups in this set are dropped from the LLM prompt entirely, so the model never picks from them. */
@@ -54,8 +54,8 @@ export function loadConfig(): Config {
     budgetId: parsed.YNAB_BUDGET_ID,
     allowedAccountIds: new Set(Object.values(parsed.ALLOWED_ACCOUNT_IDS)),
     lookbackDays: parsed.LOOKBACK_DAYS,
-    ollamaUrl: parsed.OLLAMA_URL.replace(/\/$/, ''),
-    ollamaModel: parsed.OLLAMA_MODEL,
+    anthropicApiKey: parsed.ANTHROPIC_API_KEY,
+    anthropicModel: parsed.ANTHROPIC_MODEL,
     auditDir: parsed.AUDIT_DIR,
     excludedCategoryGroups: new Set(parsed.EXCLUDED_CATEGORY_GROUPS),
     categoryRoutingHints: parsed.CATEGORY_ROUTING_HINTS,

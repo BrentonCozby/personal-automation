@@ -13,5 +13,3 @@
 
 {{PROJECT_DIR}}/launchd.out.log  {{USERNAME}}:staff  644  4  1024  $W0  Z
 {{PROJECT_DIR}}/launchd.err.log  {{USERNAME}}:staff  644  4  1024  $W0  Z
-{{PROJECT_DIR}}/ollama.out.log   {{USERNAME}}:staff  644  4  1024  $W0  Z
-{{PROJECT_DIR}}/ollama.err.log   {{USERNAME}}:staff  644  4  1024  $W0  Z

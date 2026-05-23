@@ -1,6 +1,5 @@
 import { chunks } from '@ynab-automation/common/chunks'
 import { isoDateNDaysAgo } from '@ynab-automation/common/date'
-import { tryParseJson } from '@ynab-automation/common/json'
 import { type AuditEntry, createLogger, type Logger } from '@ynab-automation/common/logger'
 import { createProgress } from '@ynab-automation/common/progress'
 import { createYnabClient, type YnabClient } from '@ynab-automation/ynab/client'
@@ -12,16 +11,20 @@ import type {
   TransactionPatch,
 } from '@ynab-automation/ynab/types'
 import pLimit from 'p-limit'
+import {
+  type AnthropicCategorizeClient,
+  type CategorizationResult,
+  createAnthropicClient,
+} from './anthropic/client.js'
+import { buildCategorizationPrompt, type PromptCategory } from './anthropic/prompts.js'
 import type { Config } from './config.js'
 import { FLAG_COLOR, FLAG_NAME, PATCH_BATCH_SIZE, PAYEE_FILTER } from './constants.js'
-import { type ChatResult, createOllamaClient, type OllamaClient } from './ollama/client.js'
-import { buildCategorizationPrompt, type PromptCategory } from './ollama/prompts.js'
-import { llmCategorizationSchema } from './ollama/schemas.js'
 
 const INTERNAL_MASTER_GROUP = 'Internal Master Category'
 const UNCATEGORIZED_NAME = 'Uncategorized'
-// Ollama serializes inference, so parallel requests just sit in its queue and burn timeouts.
-const CATEGORIZE_CONCURRENCY = 1
+// Anthropic accepts concurrent requests; modest parallelism is plenty for the daily volume
+// and keeps rate-limit pressure low.
+const CATEGORIZE_CONCURRENCY = 4
 const PROGRESS_LOG_EVERY = 10
 
 export type RunOptions = {
@@ -36,7 +39,7 @@ export type RunResult = {
   skipped: number
 }
 
-type Services = { ollama: OllamaClient; logger: Logger }
+type Services = { llm: AnthropicCategorizeClient; logger: Logger }
 
 type CategoriesContext = {
   promptCategories: PromptCategory[]
@@ -61,8 +64,11 @@ export async function runCategorize({
     auditDir: config.auditDir,
   })
   const ynab = createYnabClient({ token: config.ynabToken, budgetId: config.budgetId })
-  const ollama = createOllamaClient({ baseUrl: config.ollamaUrl, model: config.ollamaModel })
-  const services: Services = { ollama, logger }
+  const llm = createAnthropicClient({
+    apiKey: config.anthropicApiKey,
+    model: config.anthropicModel,
+  })
+  const services: Services = { llm, logger }
 
   // Spinners only show when stdout is a TTY. In non-TTY runs (launchd), periodic pino
   // progress logs take over so a long run isn't silent.
@@ -295,7 +301,7 @@ async function categorizeOne({
   services: Services
   categories: CategoriesContext
 }): Promise<CategorizationOutcome> {
-  const { ollama, logger } = services
+  const { llm, logger } = services
   const { promptCategories, uncategorizedId, validCategoryIds, categoryNamesById, routingHints } =
     categories
 
@@ -307,7 +313,7 @@ async function categorizeOne({
     routingHints,
   })
 
-  const result = await ollama.chatJson([{ role: 'user', content: prompt }])
+  const result = await llm.categorize({ prompt })
   const { id: chosenId, status } = resolveCategoryId({
     result,
     txnId: txn.id,
@@ -335,7 +341,7 @@ async function categorizeOne({
     extra: {
       status,
       latency_ms: result.latencyMs,
-      ...(result.promptTokens !== undefined && { prompt_tokens: result.promptTokens }),
+      ...(result.inputTokens !== undefined && { prompt_tokens: result.inputTokens }),
     },
   })
 
@@ -405,7 +411,7 @@ function resolveCategoryId({
   uncategorizedId,
   logger,
 }: {
-  result: ChatResult
+  result: CategorizationResult
   txnId: string
   validCategoryIds: Set<string>
   uncategorizedId: string
@@ -413,37 +419,23 @@ function resolveCategoryId({
 }): { id: string; status: AuditEntry['status'] } {
   const fallback = { id: uncategorizedId, status: 'fallback' } as const
 
-  const parsed = tryParseJson(result.content)
-  if (!parsed.ok) {
+  if (!result.categoryId) {
     logger.warn({
-      msg: `LLM returned unparseable JSON for ${txnId} — falling back to Uncategorized`,
-      extra: { content: result.content, parse_error: parsed.error.message },
+      msg: `LLM returned no category_id for ${txnId} — falling back to Uncategorized`,
     })
 
     return fallback
   }
 
-  const shape = llmCategorizationSchema.safeParse(parsed.value)
-  if (!shape.success) {
+  if (!validCategoryIds.has(result.categoryId)) {
     logger.warn({
-      msg: `LLM returned invalid shape for ${txnId} — falling back to Uncategorized`,
-      extra: { content: result.content, issues: shape.error.issues },
+      msg: `LLM chose unknown category ${result.categoryId} for ${txnId} — falling back to Uncategorized`,
     })
 
     return fallback
   }
 
-  const rawId = shape.data.category_id
-  if (!rawId) return fallback
-  if (!validCategoryIds.has(rawId)) {
-    logger.warn({
-      msg: `LLM chose unknown category ${rawId} for ${txnId} — falling back to Uncategorized`,
-    })
-
-    return fallback
-  }
-
-  return { id: rawId, status: 'ok' }
+  return { id: result.categoryId, status: 'ok' }
 }
 
 export function buildAuditEntry({

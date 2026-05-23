@@ -11,7 +11,7 @@ import type { Config } from './config.js'
 
 const BUDGET_ID = '11111111-1111-1111-1111-111111111111'
 const ACCOUNT_ID = 'acct-A'
-const OLLAMA_URL = 'http://localhost:11434'
+const ANTHROPIC_MESSAGES_URL = 'https://api.anthropic.com/v1/messages'
 
 const server = setupServer()
 
@@ -35,12 +35,27 @@ function makeConfig(overrides: Partial<Config> = {}): Config {
     budgetId: BUDGET_ID,
     allowedAccountIds: new Set([ACCOUNT_ID]),
     lookbackDays: 5,
-    ollamaUrl: OLLAMA_URL,
-    ollamaModel: 'qwen2.5:14b',
+    anthropicApiKey: 'test-anthropic-key',
+    anthropicModel: 'claude-haiku-4-5',
     auditDir,
     excludedCategoryGroups: new Set(),
     categoryRoutingHints: [],
     ...overrides,
+  }
+}
+
+// Anthropic Messages API response shape — the SDK parses `content[0].text` against the
+// Zod schema passed to `output_config.format` and surfaces it as `parsed_output`.
+function anthropicResponse(content: string): Record<string, unknown> {
+  return {
+    id: 'msg_test',
+    type: 'message',
+    role: 'assistant',
+    content: [{ type: 'text', text: content }],
+    model: 'claude-haiku-4-5',
+    stop_reason: 'end_turn',
+    stop_sequence: null,
+    usage: { input_tokens: 100, output_tokens: 20 },
   }
 }
 
@@ -125,11 +140,8 @@ describe('runCategorize (e2e)', (): void => {
         `${YNAB_API_BASE_URL}/budgets/${BUDGET_ID}/accounts/${ACCOUNT_ID}/transactions`,
         () => HttpResponse.json({ data: { transactions: [makeTxn()] } }),
       ),
-      http.post(`${OLLAMA_URL}/api/chat`, () =>
-        HttpResponse.json({
-          message: { role: 'assistant', content: '{"category_id":"cGroceries"}' },
-          prompt_eval_count: 100,
-        }),
+      http.post(ANTHROPIC_MESSAGES_URL, () =>
+        HttpResponse.json(anthropicResponse('{"category_id":"cGroceries"}')),
       ),
       http.patch(`${YNAB_API_BASE_URL}/budgets/${BUDGET_ID}/transactions`, async ({ request }) => {
         patchedBody = (await request.json()) as PatchBody
@@ -163,10 +175,8 @@ describe('runCategorize (e2e)', (): void => {
         `${YNAB_API_BASE_URL}/budgets/${BUDGET_ID}/accounts/${ACCOUNT_ID}/transactions`,
         () => HttpResponse.json({ data: { transactions: [makeTxn()] } }),
       ),
-      http.post(`${OLLAMA_URL}/api/chat`, () =>
-        HttpResponse.json({
-          message: { role: 'assistant', content: '{"category_id":"made-up-id"}' },
-        }),
+      http.post(ANTHROPIC_MESSAGES_URL, () =>
+        HttpResponse.json(anthropicResponse('{"category_id":"made-up-id"}')),
       ),
       http.patch(
         `${YNAB_API_BASE_URL}/budgets/${BUDGET_ID}/transactions`,
@@ -195,10 +205,8 @@ describe('runCategorize (e2e)', (): void => {
         `${YNAB_API_BASE_URL}/budgets/${BUDGET_ID}/accounts/${ACCOUNT_ID}/transactions`,
         () => HttpResponse.json({ data: { transactions: [makeTxn()] } }),
       ),
-      http.post(`${OLLAMA_URL}/api/chat`, () =>
-        HttpResponse.json({
-          message: { role: 'assistant', content: '{"category_id":"cGroceries"}' },
-        }),
+      http.post(ANTHROPIC_MESSAGES_URL, () =>
+        HttpResponse.json(anthropicResponse('{"category_id":"cGroceries"}')),
       ),
       http.patch(`${YNAB_API_BASE_URL}/budgets/${BUDGET_ID}/transactions`, () => {
         patchCalled = true
@@ -226,10 +234,8 @@ describe('runCategorize (e2e)', (): void => {
         `${YNAB_API_BASE_URL}/budgets/${BUDGET_ID}/accounts/${ACCOUNT_ID}/transactions`,
         () => HttpResponse.json({ data: { transactions: [makeTxn()] } }),
       ),
-      http.post(`${OLLAMA_URL}/api/chat`, () =>
-        HttpResponse.json({
-          message: { role: 'assistant', content: '{"category_id":"cGroceries"}' },
-        }),
+      http.post(ANTHROPIC_MESSAGES_URL, () =>
+        HttpResponse.json(anthropicResponse('{"category_id":"cGroceries"}')),
       ),
       http.patch(`${YNAB_API_BASE_URL}/budgets/${BUDGET_ID}/transactions`, () =>
         HttpResponse.text('budget locked', { status: 400 }),
@@ -250,7 +256,7 @@ describe('runCategorize (e2e)', (): void => {
   })
 
   it('skips already-flagged transactions', async (): Promise<void> => {
-    let chatCalled = false
+    let llmCalled = false
     server.use(
       http.get(`${YNAB_API_BASE_URL}/budgets/${BUDGET_ID}/categories`, () =>
         HttpResponse.json(categoriesResponse),
@@ -264,10 +270,10 @@ describe('runCategorize (e2e)', (): void => {
             },
           }),
       ),
-      http.post(`${OLLAMA_URL}/api/chat`, () => {
-        chatCalled = true
+      http.post(ANTHROPIC_MESSAGES_URL, () => {
+        llmCalled = true
 
-        return HttpResponse.json({ message: { role: 'assistant', content: '{}' } })
+        return HttpResponse.json(anthropicResponse('{}'))
       }),
     )
 
@@ -276,7 +282,7 @@ describe('runCategorize (e2e)', (): void => {
       opts: { dryRun: false, verbose: false },
     })
 
-    expect(chatCalled).toBe(false)
+    expect(llmCalled).toBe(false)
     expect(result).toEqual({ succeeded: 0, failed: 0, skipped: 0 })
     expect(readAuditLines()).toHaveLength(0)
   })

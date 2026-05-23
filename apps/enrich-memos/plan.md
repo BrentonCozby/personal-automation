@@ -38,20 +38,21 @@ useful in practice.
 
 1. Load transactions for each allowed account, `since ENRICH_LOOKBACK_DAYS` ago.
 2. Apply the eligibility filter.
-3. For each eligible transaction (concurrency >1 here — Gmail + Ollama are
-   independent calls so this fans out cleanly, unlike `categorize`):
+3. For each eligible transaction (concurrency >1 — Gmail + Anthropic are
+   independent calls so this fans out cleanly):
    1. Query Gmail for messages from Amazon within ± `GMAIL_RECEIPT_WINDOW_DAYS`
       of the transaction date, optionally narrowed by amount.
    2. **No messages** → leave memo unchanged, audit row with status
       `no_emails`. We do **not** write a "no info found" marker. The n8n
       workflow does, to prevent re-runs; we rely on the date-window expiring
       instead so receipts that arrive late still get picked up.
-   3. **Messages found** → send messages + transaction info to Ollama (same
-      `OLLAMA_URL` / `OLLAMA_MODEL` as `categorize`). System prompt asks for a
-      single line of `Item1 ($X), Item2 ($Y) — Total $TOTAL`, or the sentinel
-      `__NO_RECEIPT__` if no valid receipt could be identified.
-   4. **Ollama returns the sentinel or unparseable output** → leave memo
-      unchanged, audit row with status `no_receipt`.
+   3. **Messages found** → send messages + transaction info to the Anthropic
+      API (same `ANTHROPIC_API_KEY` / `ANTHROPIC_MODEL` as `categorize`).
+      Prompt asks for a single line of `Item1 ($X), Item2 ($Y) — Total $TOTAL`,
+      or the sentinel `__NO_RECEIPT__` if no valid receipt could be identified.
+      Use `messages.parse()` with a Zod schema covering both shapes.
+   4. **Model returns the sentinel or fails to parse** → leave memo unchanged,
+      audit row with status `no_receipt`.
    5. **Otherwise** → sanitize (strip newlines/quotes/control chars), prepend
       `auto-gen:` plus a space, clamp to 499 chars, queue for PATCH.
 4. Bulk PATCH in batches of 10 (same as `categorize`).
@@ -69,14 +70,14 @@ apps/enrich-memos/
       client.ts       # factory wrapping googleapis Gmail API
       schemas.ts      # zod schemas for the Gmail fields we care about
       auth.ts         # OAuth2 client built from refresh token in env
-    ollama/
-      prompts.ts      # system + user prompt builder + sanitizer + tests
-      schemas.ts      # zod for the LLM response shape (if structured), or sentinel parsing
+    anthropic/
+      prompts.ts      # user-message builder + sanitizer + tests
+      schemas.ts      # zod for the LLM response (item line or __NO_RECEIPT__ sentinel)
 ```
 
-The Ollama client at `apps/categorize/src/ollama/client.ts` needs to move into
-a shared package so both apps can use the same factory — see open question 2
-below for the location decision.
+The Anthropic client at `apps/categorize/src/anthropic/client.ts` needs to
+move into a shared package so both apps can use the same factory — see open
+question 2 below for the location decision.
 
 ## Configuration additions
 
@@ -92,9 +93,9 @@ GMAIL_OAUTH_CLIENT_SECRET=
 GMAIL_OAUTH_REFRESH_TOKEN=
 ```
 
-Reusing `YNAB_TOKEN`, `YNAB_BUDGET_ID`, `ALLOWED_ACCOUNT_IDS`, `OLLAMA_URL`,
-`OLLAMA_MODEL`, and `AUDIT_DIR` from `categorize`. Each app's `loadConfig`
-parses its own subset.
+Reusing `YNAB_TOKEN`, `YNAB_BUDGET_ID`, `ALLOWED_ACCOUNT_IDS`,
+`ANTHROPIC_API_KEY`, `ANTHROPIC_MODEL`, and `AUDIT_DIR` from `categorize`.
+Each app's `loadConfig` parses its own subset.
 
 ## Shared-package contracts this app relies on
 
@@ -111,9 +112,9 @@ parses its own subset.
    prompt pick the right one (this is what the n8n workflow does). If
    accuracy is poor in practice, pre-filter by Amazon order id or by
    tightest-date-match before LLM call.
-2. **Where to put the shared Ollama client.** Options: standalone
-   `packages/ollama/` (mirrors `packages/ynab/`) or
-   `packages/common/src/ollama/`. Leaning standalone since it has its own
+2. **Where to put the shared Anthropic client.** Options: standalone
+   `packages/anthropic/` (mirrors `packages/ynab/`) or
+   `packages/common/src/anthropic/`. Leaning standalone since it has its own
    schemas and an external dependency, but happy to nest under `common/` if
    that's the prevailing pattern.
 3. **`launchd/run.sh` audit log cleanup.** Currently `find … -name
