@@ -13,7 +13,6 @@
     "@anthropic-ai/sdk": "^0.98.0",
     "@ynab-automation/common": "workspace:*",
     "@ynab-automation/ynab": "workspace:*",
-    "dotenv": "^17.4.2",
     "p-limit": "^7.3.0",
     "zod": "^4.4.3"
   }
