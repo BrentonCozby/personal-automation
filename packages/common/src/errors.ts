@@ -1,3 +1,20 @@
+import { z } from 'zod'
+
+// Renders any thrown value for user-facing fatal output. ZodError gets a
+// one-line-per-issue layout — much more readable than the default JSON dump
+// of `error.issues`, especially for env-var or API-response validation
+// failures where the user just needs to know which field is wrong.
+export function formatError(err: unknown): string {
+  if (err instanceof z.ZodError) {
+    const lines = err.issues.map(i => `  - ${i.path.join('.') || '<root>'}: ${i.message}`)
+
+    return `Validation failed:\n${lines.join('\n')}`
+  }
+  if (err instanceof Error) return err.stack ?? err.message
+
+  return String(err)
+}
+
 export class AppError extends Error {
   override readonly name: string = 'AppError'
   readonly retryable: boolean

@@ -1,5 +1,6 @@
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { formatError } from '@ynab-automation/common/errors'
 import { acquireLock, type LockHandle, LockHeldError } from '@ynab-automation/common/lock'
 import { runCategorize } from './categorize.js'
 import { loadConfig } from './config.js'
@@ -78,6 +79,6 @@ async function main(): Promise<void> {
 }
 
 main().catch(err => {
-  console.error('[FATAL]', err instanceof Error ? (err.stack ?? err.message) : err)
+  console.error('[FATAL]', formatError(err))
   process.exit(1)
 })
