@@ -67,8 +67,9 @@ export async function runCategorize({
     model: config.anthropicModel,
   })
 
-  // Spinners only show when stdout is a TTY. In non-TTY runs (launchd), periodic pino
-  // progress logs take over so a long run isn't silent.
+  // Spinners only show when stdout is a TTY. Non-TTY runs (launchd) get periodic pino
+  // progress logs instead. In verbose mode the bar coexists with logs via the progress
+  // coordinator — logs scroll above and the bar redraws below.
   const spinnersEnabled = process.stdout.isTTY === true
 
   const lookback = opts.lookbackDays || config.lookbackDays
@@ -86,7 +87,7 @@ export async function runCategorize({
 
   const loadProgress = createProgress({
     enabled: spinnersEnabled,
-    text: 'Loading categories and transactions…',
+    label: 'Loading categories and transactions…',
   })
   const [groups, transactions] = await Promise.all([
     ynab.getCategoryGroups(),
@@ -138,7 +139,8 @@ export async function runCategorize({
 
   const categorizeProgress = createProgress({
     enabled: spinnersEnabled,
-    text: `Categorizing 0/${eligible.length}…`,
+    label: 'Categorizing',
+    total: eligible.length,
   })
   let done = 0
   let lastLogged = 0
@@ -150,7 +152,7 @@ export async function runCategorize({
     logger,
     onProgress: () => {
       done++
-      categorizeProgress.update(`Categorizing ${done}/${eligible.length}…`)
+      categorizeProgress.tick()
       if (
         !spinnersEnabled &&
         (done - lastLogged >= PROGRESS_LOG_EVERY || done === eligible.length)

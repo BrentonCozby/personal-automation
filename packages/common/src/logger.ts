@@ -1,6 +1,9 @@
 import { appendFileSync, mkdirSync } from 'node:fs'
 import { dirname, join } from 'node:path'
+import { Writable } from 'node:stream'
 import pino, { type Logger as PinoLogger } from 'pino'
+import pinoPretty from 'pino-pretty'
+import { writeWithProgress } from './progress.js'
 
 export type AuditEntry = {
   timestamp: string
@@ -37,16 +40,24 @@ export function createLogger({
   const auditPath = join(auditDir, `${name}-${todayLocalIso()}.jsonl`)
   mkdirSync(dirname(auditPath), { recursive: true })
 
-  const pinoLogger: PinoLogger = pino({
-    level: verbose ? 'debug' : 'info',
-    // Use pretty output when attached to a TTY; raw JSON otherwise (better for log aggregation).
-    ...(process.stdout.isTTY && {
-      transport: {
-        target: 'pino-pretty',
-        options: { colorize: true, translateTime: 'HH:MM:ss.l', ignore: 'pid,hostname' },
-      },
-    }),
-  })
+  // Pretty output for TTY (routed through the progress coordinator so logs interleave
+  // cleanly with any active progress bar), raw JSON otherwise.
+  const prettyStream = process.stdout.isTTY
+    ? pinoPretty({
+        colorize: true,
+        translateTime: 'HH:MM:ss.l',
+        ignore: 'pid,hostname',
+        destination: new Writable({
+          write(chunk, _encoding, callback) {
+            writeWithProgress(chunk.toString())
+            callback()
+          },
+        }),
+      })
+    : undefined
+  const pinoLogger: PinoLogger = prettyStream
+    ? pino({ level: verbose ? 'debug' : 'info' }, prettyStream)
+    : pino({ level: verbose ? 'debug' : 'info' })
 
   function info({ msg, extra }: LogParams): void {
     if (extra) pinoLogger.info(extra, msg)
