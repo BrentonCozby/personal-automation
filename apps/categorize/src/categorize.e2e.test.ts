@@ -146,7 +146,7 @@ describe('runCategorize (e2e)', (): void => {
       http.patch(`${YNAB_API_BASE_URL}/budgets/${BUDGET_ID}/transactions`, async ({ request }) => {
         patchedBody = (await request.json()) as PatchBody
 
-        return new HttpResponse(null, { status: 204 })
+        return HttpResponse.json({ data: { transaction_ids: ['txn-1'] } }, { status: 209 })
       }),
     )
 
@@ -178,9 +178,8 @@ describe('runCategorize (e2e)', (): void => {
       http.post(ANTHROPIC_MESSAGES_URL, () =>
         HttpResponse.json(anthropicResponse('{"category_id":"made-up-id"}')),
       ),
-      http.patch(
-        `${YNAB_API_BASE_URL}/budgets/${BUDGET_ID}/transactions`,
-        () => new HttpResponse(null, { status: 204 }),
+      http.patch(`${YNAB_API_BASE_URL}/budgets/${BUDGET_ID}/transactions`, () =>
+        HttpResponse.json({ data: { transaction_ids: ['txn-1'] } }, { status: 209 }),
       ),
     )
 
@@ -211,7 +210,7 @@ describe('runCategorize (e2e)', (): void => {
       http.patch(`${YNAB_API_BASE_URL}/budgets/${BUDGET_ID}/transactions`, () => {
         patchCalled = true
 
-        return new HttpResponse(null, { status: 204 })
+        return HttpResponse.json({ data: { transaction_ids: [] } }, { status: 209 })
       }),
     )
 
@@ -253,6 +252,45 @@ describe('runCategorize (e2e)', (): void => {
     const audit = readAuditLines()
     expect(audit[0]?.status).toBe('patch_error')
     expect(audit[0]?.error).toContain('400')
+  })
+
+  it('partial PATCH success: marks confirmed ids ok and missing ids patch_error', async (): Promise<void> => {
+    server.use(
+      http.get(`${YNAB_API_BASE_URL}/budgets/${BUDGET_ID}/categories`, () =>
+        HttpResponse.json(categoriesResponse),
+      ),
+      http.get(
+        `${YNAB_API_BASE_URL}/budgets/${BUDGET_ID}/accounts/${ACCOUNT_ID}/transactions`,
+        () =>
+          HttpResponse.json({
+            data: {
+              transactions: [
+                makeTxn({ id: 'txn-1' }),
+                makeTxn({ id: 'txn-2', memo: 'paper towels' }),
+              ],
+            },
+          }),
+      ),
+      http.post(ANTHROPIC_MESSAGES_URL, () =>
+        HttpResponse.json(anthropicResponse('{"category_id":"cGroceries"}')),
+      ),
+      http.patch(`${YNAB_API_BASE_URL}/budgets/${BUDGET_ID}/transactions`, () =>
+        HttpResponse.json({ data: { transaction_ids: ['txn-1'] } }, { status: 209 }),
+      ),
+    )
+
+    const result = await runCategorize({
+      config: makeConfig(),
+      opts: { dryRun: false, verbose: false },
+    })
+
+    expect(result).toEqual({ succeeded: 1, failed: 1, skipped: 0 })
+
+    const audit = readAuditLines()
+    const byId = new Map(audit.map(e => [e.transaction_id, e]))
+    expect(byId.get('txn-1')?.status).toBe('ok')
+    expect(byId.get('txn-2')?.status).toBe('patch_error')
+    expect(byId.get('txn-2')?.error).toContain('transaction_ids')
   })
 
   it('skips already-flagged transactions', async (): Promise<void> => {

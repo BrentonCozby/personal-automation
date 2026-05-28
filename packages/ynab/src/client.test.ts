@@ -120,25 +120,43 @@ describe('createYnabClient.getTransactionsForAccounts', (): void => {
 })
 
 describe('createYnabClient.patchTransactions', (): void => {
-  it('PATCHes with body and accepts 204', async (): Promise<void> => {
+  it('PATCHes with body and returns updatedIds from response', async (): Promise<void> => {
     let receivedBody: unknown = null
     server.use(
       http.patch(`${YNAB_API_BASE_URL}/budgets/${VALID_UUID}/transactions`, async ({ request }) => {
         receivedBody = await request.json()
 
-        return new HttpResponse(null, { status: 204 })
+        return HttpResponse.json({ data: { transaction_ids: ['t1', 't2'] } }, { status: 209 })
       }),
     )
 
-    await makeClient().patchTransactions([
+    const result = await makeClient().patchTransactions([
       { id: 't1', category_id: 'c1', flag_color: 'yellow', flag_name: 'auto-categorized' },
+      { id: 't2', category_id: 'c2', flag_color: 'yellow', flag_name: 'auto-categorized' },
     ])
 
     expect(receivedBody).toEqual({
       transactions: [
         { id: 't1', category_id: 'c1', flag_color: 'yellow', flag_name: 'auto-categorized' },
+        { id: 't2', category_id: 'c2', flag_color: 'yellow', flag_name: 'auto-categorized' },
       ],
     })
+    expect(result).toEqual({ updatedIds: ['t1', 't2'] })
+  })
+
+  it('returns only the ids YNAB confirms (partial success)', async (): Promise<void> => {
+    server.use(
+      http.patch(`${YNAB_API_BASE_URL}/budgets/${VALID_UUID}/transactions`, () =>
+        HttpResponse.json({ data: { transaction_ids: ['t1'] } }, { status: 209 }),
+      ),
+    )
+
+    const result = await makeClient().patchTransactions([
+      { id: 't1', category_id: 'c1', flag_color: 'yellow', flag_name: 'auto-categorized' },
+      { id: 't2', category_id: 'c2', flag_color: 'yellow', flag_name: 'auto-categorized' },
+    ])
+
+    expect(result).toEqual({ updatedIds: ['t1'] })
   })
 
   it('propagates YnabApiError on 4xx and does not retry (client error)', async (): Promise<void> => {

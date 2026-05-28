@@ -273,9 +273,29 @@ async function patchInBatches({
     const patches = batch.map(o => o.patch)
     logger.info({ msg: 'PATCH batch', extra: { size: batch.length } })
     try {
-      await ynab.patchTransactions(patches)
-      succeeded += batch.length
-      for (const o of batch) logger.audit(o.auditEntry)
+      const { updatedIds } = await ynab.patchTransactions(patches)
+      const updated = new Set(updatedIds)
+      let missing = 0
+      for (const o of batch) {
+        if (updated.has(o.patch.id)) {
+          succeeded += 1
+          logger.audit(o.auditEntry)
+        } else {
+          failed += 1
+          missing += 1
+          logger.audit({
+            ...o.auditEntry,
+            status: 'patch_error',
+            error: 'not in YNAB response transaction_ids',
+          })
+        }
+      }
+      if (missing > 0) {
+        logger.warn({
+          msg: 'PATCH batch had ids missing from response',
+          extra: { size: batch.length, missing },
+        })
+      }
     } catch (err) {
       failed += batch.length
       const message = err instanceof Error ? err.message : String(err)

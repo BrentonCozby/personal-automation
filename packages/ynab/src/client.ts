@@ -1,10 +1,16 @@
 import { YnabApiError } from '@ynab-automation/common/errors'
 import { withRetry } from '@ynab-automation/common/retry'
 import { YNAB_API_BASE_URL } from './constants.js'
-import { categoryGroupsResponseSchema, transactionsResponseSchema } from './schemas.js'
+import {
+  categoryGroupsResponseSchema,
+  patchTransactionsResponseSchema,
+  transactionsResponseSchema,
+} from './schemas.js'
 import type { CategoryGroup, Transaction, TransactionPatch } from './types.js'
 
 type YnabClientInit = { token: string; budgetId: string }
+
+export type PatchTransactionsResult = { updatedIds: string[] }
 
 export type YnabClient = {
   getCategoryGroups: () => Promise<CategoryGroup[]>
@@ -15,7 +21,7 @@ export type YnabClient = {
     accountIds: Iterable<string>
     sinceDate: string
   }) => Promise<Transaction[]>
-  patchTransactions: (patches: TransactionPatch[]) => Promise<void>
+  patchTransactions: (patches: TransactionPatch[]) => Promise<PatchTransactionsResult>
 }
 
 export function createYnabClient({ token, budgetId }: YnabClientInit): YnabClient {
@@ -82,14 +88,17 @@ export function createYnabClient({ token, budgetId }: YnabClientInit): YnabClien
     return perAccount.flat()
   }
 
-  async function patchTransactions(patches: TransactionPatch[]): Promise<void> {
-    await request({
+  async function patchTransactions(patches: TransactionPatch[]): Promise<PatchTransactionsResult> {
+    const res = await request({
       path: `/budgets/${budgetId}/transactions`,
       init: {
         method: 'PATCH',
         body: JSON.stringify({ transactions: patches }),
       },
+      schema: patchTransactionsResponseSchema,
     })
+
+    return { updatedIds: res.data.transaction_ids }
   }
 
   return { getCategoryGroups, getTransactionsForAccounts, patchTransactions }

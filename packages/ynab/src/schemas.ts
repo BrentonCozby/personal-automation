@@ -42,3 +42,9 @@ export const transactionsResponseSchema = z.object({
     transactions: z.array(transactionSchema),
   }),
 })
+
+export const patchTransactionsResponseSchema = z.object({
+  data: z.object({
+    transaction_ids: z.array(z.string()),
+  }),
+})
