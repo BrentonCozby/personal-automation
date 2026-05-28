@@ -39,8 +39,6 @@ export type RunResult = {
   skipped: number
 }
 
-type Services = { llm: AnthropicCategorizeClient; logger: Logger }
-
 type CategoriesContext = {
   promptCategories: PromptCategory[]
   uncategorizedId: string
@@ -68,7 +66,6 @@ export async function runCategorize({
     apiKey: config.anthropicApiKey,
     model: config.anthropicModel,
   })
-  const services: Services = { llm, logger }
 
   // Spinners only show when stdout is a TTY. In non-TTY runs (launchd), periodic pino
   // progress logs take over so a long run isn't silent.
@@ -148,8 +145,9 @@ export async function runCategorize({
 
   const outcomes = await categorizeAll({
     eligible,
-    services,
     categories,
+    llm,
+    logger,
     onProgress: () => {
       done++
       categorizeProgress.update(`Categorizing ${done}/${eligible.length}…`)
@@ -206,13 +204,15 @@ export async function runCategorize({
 
 async function categorizeAll({
   eligible,
-  services,
   categories,
+  llm,
+  logger,
   onProgress,
 }: {
   eligible: Transaction[]
-  services: Services
   categories: CategoriesContext
+  llm: AnthropicCategorizeClient
+  logger: Logger
   onProgress?: () => void
 }): Promise<{ successes: CategorizationOutcome[]; categorizeFailed: number }> {
   const limit = pLimit(CATEGORIZE_CONCURRENCY)
@@ -220,7 +220,7 @@ async function categorizeAll({
     eligible.map(txn =>
       limit(async () => {
         try {
-          return await categorizeOne({ txn, services, categories })
+          return await categorizeOne({ txn, categories, llm, logger })
         } finally {
           onProgress?.()
         }
@@ -239,11 +239,11 @@ async function categorizeAll({
     } else {
       categorizeFailed += 1
       const message = result.reason instanceof Error ? result.reason.message : String(result.reason)
-      services.logger.error({
+      logger.error({
         msg: `Categorize failed for ${txn.id}`,
         extra: { error: message },
       })
-      services.logger.audit(
+      logger.audit(
         buildAuditEntry({
           txn,
           categoryId: null,
@@ -294,14 +294,15 @@ async function patchInBatches({
 
 async function categorizeOne({
   txn,
-  services,
   categories,
+  llm,
+  logger,
 }: {
   txn: Transaction
-  services: Services
   categories: CategoriesContext
+  llm: AnthropicCategorizeClient
+  logger: Logger
 }): Promise<CategorizationOutcome> {
-  const { llm, logger } = services
   const { promptCategories, uncategorizedId, validCategoryIds, categoryNamesById, routingHints } =
     categories
 
