@@ -1,8 +1,13 @@
 import { chunks } from '@ynab-automation/common/chunks'
 import { isoDateNDaysAgo } from '@ynab-automation/common/date'
+import { YnabApiError } from '@ynab-automation/common/errors'
 import { baseAuditFields, createLogger, type Logger } from '@ynab-automation/common/logger'
 import { createProgress } from '@ynab-automation/common/progress'
-import { createYnabClient, type YnabClient } from '@ynab-automation/ynab/client'
+import {
+  createYnabClient,
+  type PatchTransactionsResult,
+  type YnabClient,
+} from '@ynab-automation/ynab/client'
 import { formatDollars, milliunitsToDollars } from '@ynab-automation/ynab/milliunits'
 import type {
   Category,
@@ -14,6 +19,7 @@ import pLimit from 'p-limit'
 import { z } from 'zod'
 import {
   type AnthropicCategorizeClient,
+  AnthropicError,
   type CategorizationResult,
   createAnthropicClient,
 } from './anthropic/client.js'
@@ -220,7 +226,7 @@ export async function runCategorize({
   }
 }
 
-async function categorizeAll({
+export async function categorizeAll({
   eligible,
   categories,
   llm,
@@ -254,23 +260,25 @@ async function categorizeAll({
     if (!result || !txn) continue
     if (result.status === 'fulfilled') {
       successes.push(result.value)
-    } else {
-      categorizeFailed += 1
-      const message = result.reason instanceof Error ? result.reason.message : String(result.reason)
-      logger.error({
-        msg: `Categorize failed for ${txn.id}`,
-        extra: { error: message },
-      })
-      logger.audit({
-        ...buildAuditEntry({
-          txn,
-          categoryId: null,
-          categoryName: null,
-          extra: { status: 'error', error: message },
-        }),
-        patch_status: 'skipped_for_upstream_error',
-      })
+      continue
     }
+    // Anthropic SDK wraps all transport/protocol failures in AnthropicError. Anything
+    // else is a programmer bug or genuinely unexpected — let it crash the run.
+    if (!(result.reason instanceof AnthropicError)) throw result.reason
+    categorizeFailed += 1
+    logger.error({
+      msg: `Categorize failed for ${txn.id}`,
+      extra: { error: result.reason.message },
+    })
+    logger.audit({
+      ...buildAuditEntry({
+        txn,
+        categoryId: null,
+        categoryName: null,
+        extra: { status: 'error', error: result.reason.message },
+      }),
+      patch_status: 'skipped_for_upstream_error',
+    })
   }
 
   return { successes, categorizeFailed }
@@ -291,40 +299,44 @@ async function patchInBatches({
   for (const batch of chunks({ arr: outcomes, size: PATCH_BATCH_SIZE })) {
     const patches = batch.map(o => o.patch)
     logger.info({ msg: 'PATCH batch', extra: { size: batch.length } })
+
+    let updatedIds: PatchTransactionsResult['updatedIds']
     try {
-      const { updatedIds } = await ynab.patchTransactions(patches)
-      const updated = new Set(updatedIds)
-      let missing = 0
-      for (const o of batch) {
-        if (updated.has(o.patch.id)) {
-          succeeded += 1
-          logger.audit({ ...o.auditEntry, patch_status: 'success' })
-        } else {
-          failed += 1
-          missing += 1
-          logger.audit({
-            ...o.auditEntry,
-            patch_status: 'error',
-            error: 'not in YNAB response transaction_ids',
-          })
-        }
-      }
-      if (missing > 0) {
-        logger.warn({
-          msg: 'PATCH batch had ids missing from response',
-          extra: { size: batch.length, missing },
-        })
-      }
+      ;({ updatedIds } = await ynab.patchTransactions(patches))
     } catch (err) {
+      if (!(err instanceof YnabApiError)) throw err
       failed += batch.length
-      const message = err instanceof Error ? err.message : String(err)
       logger.error({
         msg: 'PATCH batch failed',
-        extra: { size: batch.length, error: message },
+        extra: { size: batch.length, error: err.message },
       })
       for (const o of batch) {
-        logger.audit({ ...o.auditEntry, patch_status: 'error', error: message })
+        logger.audit({ ...o.auditEntry, patch_status: 'error', error: err.message })
       }
+      continue
+    }
+
+    const updated = new Set(updatedIds)
+    let missing = 0
+    for (const o of batch) {
+      if (updated.has(o.patch.id)) {
+        succeeded += 1
+        logger.audit({ ...o.auditEntry, patch_status: 'success' })
+      } else {
+        failed += 1
+        missing += 1
+        logger.audit({
+          ...o.auditEntry,
+          patch_status: 'error',
+          error: 'not in YNAB response transaction_ids',
+        })
+      }
+    }
+    if (missing > 0) {
+      logger.warn({
+        msg: 'PATCH batch had ids missing from response',
+        extra: { size: batch.length, missing },
+      })
     }
   }
 

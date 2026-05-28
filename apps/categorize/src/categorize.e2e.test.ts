@@ -259,6 +259,29 @@ describe('runCategorize (e2e)', (): void => {
     expect(audit[0]?.error).toContain('400')
   })
 
+  it('PATCH response with unexpected shape rejects the run instead of being logged', async (): Promise<void> => {
+    server.use(
+      http.get(`${YNAB_API_BASE_URL}/budgets/${BUDGET_ID}/categories`, () =>
+        HttpResponse.json(categoriesResponse),
+      ),
+      http.get(
+        `${YNAB_API_BASE_URL}/budgets/${BUDGET_ID}/accounts/${ACCOUNT_ID}/transactions`,
+        () => HttpResponse.json({ data: { transactions: [makeTxn()] } }),
+      ),
+      http.post(ANTHROPIC_MESSAGES_URL, () =>
+        HttpResponse.json(anthropicResponse('{"category_id":"cGroceries"}')),
+      ),
+      // 200 with a body that fails patchTransactionsResponseSchema.
+      http.patch(`${YNAB_API_BASE_URL}/budgets/${BUDGET_ID}/transactions`, () =>
+        HttpResponse.json({ data: { wrong_field: [] } }),
+      ),
+    )
+
+    await expect(
+      runCategorize({ config: makeConfig(), opts: { dryRun: false, verbose: false } }),
+    ).rejects.toThrow()
+  })
+
   it('categorize failure marks audit status error + patch_status skipped_for_upstream_error', async (): Promise<void> => {
     server.use(
       http.get(`${YNAB_API_BASE_URL}/budgets/${BUDGET_ID}/categories`, () =>

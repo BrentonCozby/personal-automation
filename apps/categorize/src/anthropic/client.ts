@@ -1,6 +1,8 @@
-import Anthropic from '@anthropic-ai/sdk'
+import Anthropic, { AnthropicError } from '@anthropic-ai/sdk'
 import { zodOutputFormat } from '@anthropic-ai/sdk/helpers/zod'
 import { z } from 'zod'
+
+export { AnthropicError }
 
 // Tight cap: Claude returns a few-token JSON object via structured outputs. 256 leaves
 // generous headroom without inviting verbose preambles.

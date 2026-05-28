@@ -1,7 +1,11 @@
+import type { Logger } from '@ynab-automation/common/logger'
 import type { Category, CategoryGroup, Transaction } from '@ynab-automation/ynab/types'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
+import type { AnthropicCategorizeClient } from './anthropic/client.js'
 import {
   buildAuditEntry,
+  type CategorizeAudit,
+  categorizeAll,
   filterCategoriesForPrompt,
   findUncategorizedId,
   flattenCategories,
@@ -231,5 +235,42 @@ describe('buildAuditEntry', (): void => {
       extra: {},
     })
     expect(entry.timestamp).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/)
+  })
+})
+
+describe('categorizeAll', (): void => {
+  const silentLogger: Logger<CategorizeAudit> = {
+    info: vi.fn(),
+    warn: vi.fn(),
+    error: vi.fn(),
+    debug: vi.fn(),
+    audit: vi.fn(),
+  }
+  const categories = {
+    promptCategories: [{ id: 'cat-1', name: 'Groceries' }],
+    uncategorizedId: 'unc',
+    validCategoryIds: new Set(['cat-1', 'unc']),
+    categoryNamesById: new Map([
+      ['cat-1', 'Groceries'],
+      ['unc', 'Uncategorized'],
+    ]),
+    routingHints: [],
+  }
+
+  it('rethrows when llm.categorize throws a non-AnthropicError', async (): Promise<void> => {
+    const llm: AnthropicCategorizeClient = {
+      categorize: async () => {
+        throw new Error('programming bug')
+      },
+    }
+
+    await expect(
+      categorizeAll({
+        eligible: [makeTxn()],
+        categories,
+        llm,
+        logger: silentLogger,
+      }),
+    ).rejects.toThrow('programming bug')
   })
 })
