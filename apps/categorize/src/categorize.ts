@@ -1,6 +1,6 @@
 import { chunks } from '@ynab-automation/common/chunks'
 import { isoDateNDaysAgo } from '@ynab-automation/common/date'
-import { type AuditEntry, createLogger, type Logger } from '@ynab-automation/common/logger'
+import { baseAuditFields, createLogger, type Logger } from '@ynab-automation/common/logger'
 import { createProgress } from '@ynab-automation/common/progress'
 import { createYnabClient, type YnabClient } from '@ynab-automation/ynab/client'
 import { formatDollars, milliunitsToDollars } from '@ynab-automation/ynab/milliunits'
@@ -11,6 +11,7 @@ import type {
   TransactionPatch,
 } from '@ynab-automation/ynab/types'
 import pLimit from 'p-limit'
+import { z } from 'zod'
 import {
   type AnthropicCategorizeClient,
   type CategorizationResult,
@@ -19,6 +20,15 @@ import {
 import { buildCategorizationPrompt, type PromptCategory } from './anthropic/prompts.js'
 import type { Config } from './config.js'
 import { FLAG_COLOR, FLAG_NAME, PATCH_BATCH_SIZE, PAYEE_FILTER } from './constants.js'
+
+export const categorizeAuditSchema = z.object({
+  ...baseAuditFields,
+  app: z.literal('categorize'),
+  status: z.enum(['ok', 'fallback', 'error']),
+  chosen_category_id: z.string().nullable(),
+  chosen_category_name: z.string().nullable(),
+})
+export type CategorizeAudit = z.infer<typeof categorizeAuditSchema>
 
 const INTERNAL_MASTER_GROUP = 'Internal Master Category'
 const UNCATEGORIZED_NAME = 'Uncategorized'
@@ -49,7 +59,7 @@ type CategoriesContext = {
 
 // Categorize fills in everything but `patch_status` — the persistence stage (or dry-run
 // loop) decides that and overrides on emit.
-type AuditCore = Omit<AuditEntry, 'patch_status'>
+type AuditCore = Omit<CategorizeAudit, 'patch_status'>
 type CategorizationOutcome = { patch: TransactionPatch; auditEntry: AuditCore }
 
 export async function runCategorize({
@@ -62,6 +72,7 @@ export async function runCategorize({
   const logger = createLogger({
     verbose: opts.verbose,
     name: 'categorize',
+    auditSchema: categorizeAuditSchema,
     auditDir: config.auditDir,
   })
   const ynab = createYnabClient({ token: config.ynabToken, budgetId: config.budgetId })
@@ -219,7 +230,7 @@ async function categorizeAll({
   eligible: Transaction[]
   categories: CategoriesContext
   llm: AnthropicCategorizeClient
-  logger: Logger
+  logger: Logger<CategorizeAudit>
   onProgress?: () => void
 }): Promise<{ successes: CategorizationOutcome[]; categorizeFailed: number }> {
   const limit = pLimit(CATEGORIZE_CONCURRENCY)
@@ -272,7 +283,7 @@ async function patchInBatches({
 }: {
   outcomes: CategorizationOutcome[]
   ynab: YnabClient
-  logger: Logger
+  logger: Logger<CategorizeAudit>
 }): Promise<{ succeeded: number; failed: number }> {
   let succeeded = 0
   let failed = 0
@@ -329,7 +340,7 @@ async function categorizeOne({
   txn: Transaction
   categories: CategoriesContext
   llm: AnthropicCategorizeClient
-  logger: Logger
+  logger: Logger<CategorizeAudit>
 }): Promise<CategorizationOutcome> {
   const { promptCategories, uncategorizedId, validCategoryIds, categoryNamesById, routingHints } =
     categories
@@ -444,8 +455,8 @@ function resolveCategoryId({
   txnId: string
   validCategoryIds: Set<string>
   uncategorizedId: string
-  logger: Logger
-}): { id: string; status: AuditEntry['status'] } {
+  logger: Logger<CategorizeAudit>
+}): { id: string; status: CategorizeAudit['status'] } {
   const fallback = { id: uncategorizedId, status: 'fallback' } as const
 
   if (!result.categoryId) {
@@ -479,6 +490,7 @@ export function buildAuditEntry({
   extra: Partial<AuditCore>
 }): AuditCore {
   return {
+    app: 'categorize',
     timestamp: new Date().toISOString(),
     transaction_id: txn.id,
     payee_name: txn.payee_name,

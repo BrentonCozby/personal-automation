@@ -6,47 +6,49 @@ import pinoPretty from 'pino-pretty'
 import { z } from 'zod'
 import { writeWithProgress } from './progress.js'
 
-// `status` describes the categorization (or upstream) decision; `patch_status` describes
-// what happened when (or whether) the row was PATCHed. Splitting them gives a single-
-// field answer for "did this hit YNAB?" without overloading one column.
+// Fields every app's audit entry must include. Each app spreads `baseAuditFields` into its
+// own Zod schema and adds app-specific fields (status, etc.). Common doesn't enumerate
+// apps — the per-app schema is the source of truth, passed to `createLogger` for write-time
+// validation.
 //
 // `patch_status: 'skipped_for_upstream_error'` covers any pre-PATCH failure (categorize
-// error, enrich-memos receipt-not-found, etc.) — read `status` for the cause.
-export const auditEntrySchema = z.object({
+// error, enrich-memos receipt-not-found, etc.) — read your app's `status` for the cause.
+export const baseAuditFields = {
   timestamp: z.string(),
   transaction_id: z.string(),
   payee_name: z.string().nullable(),
   memo: z.string().nullable(),
   amount_dollars: z.number(),
-  chosen_category_id: z.string().nullable(),
-  chosen_category_name: z.string().nullable(),
+  patch_status: z.enum(['success', 'error', 'skipped_for_dry_run', 'skipped_for_upstream_error']),
   prompt_tokens: z.number().optional(),
   latency_ms: z.number().optional(),
-  status: z.enum(['ok', 'fallback', 'error']),
-  patch_status: z.enum(['success', 'error', 'skipped_for_dry_run', 'skipped_for_upstream_error']),
   error: z.string().optional(),
-})
+}
 
-export type AuditEntry = z.infer<typeof auditEntrySchema>
+export const baseAuditSchema = z.object(baseAuditFields)
+export type BaseAudit = z.infer<typeof baseAuditSchema>
 
 type LogParams = { msg: string; extra?: Record<string, unknown> }
-type LoggerInit = { verbose: boolean; name: string; auditDir?: string }
 
-export type Logger = {
+export type Logger<TAudit extends BaseAudit> = {
   info: (params: LogParams) => void
   warn: (params: LogParams) => void
   error: (params: LogParams) => void
   debug: (params: LogParams) => void
-  audit: (entry: AuditEntry) => void
+  audit: (entry: TAudit) => void
 }
 
-// `name` is the audit-log filename prefix — `${name}-YYYY-MM-DD.jsonl`. Each app passes
-// its own name so the categorize and enrich-memos audit streams don't share a file.
-export function createLogger({
+export function createLogger<TAudit extends BaseAudit>({
   verbose,
   name,
+  auditSchema,
   auditDir = join(process.cwd(), 'audit'),
-}: LoggerInit): Logger {
+}: {
+  verbose: boolean
+  name: string
+  auditSchema: z.ZodType<TAudit>
+  auditDir?: string
+}): Logger<TAudit> {
   const auditPath = join(auditDir, `${name}-${todayLocalIso()}.jsonl`)
   mkdirSync(dirname(auditPath), { recursive: true })
 
@@ -89,8 +91,8 @@ export function createLogger({
     else pinoLogger.debug(msg)
   }
 
-  function audit(entry: AuditEntry): void {
-    const parsed = auditEntrySchema.safeParse(entry)
+  function audit(entry: TAudit): void {
+    const parsed = auditSchema.safeParse(entry)
     if (!parsed.success) {
       pinoLogger.warn(
         { issues: parsed.error.issues, transaction_id: entry.transaction_id },

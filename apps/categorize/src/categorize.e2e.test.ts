@@ -1,12 +1,11 @@
 import { mkdtempSync, readdirSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import type { AuditEntry } from '@ynab-automation/common/logger'
 import { YNAB_API_BASE_URL } from '@ynab-automation/ynab/constants'
 import { HttpResponse, http } from 'msw'
 import { setupServer } from 'msw/node'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest'
-import { runCategorize } from './categorize.js'
+import { type CategorizeAudit, runCategorize } from './categorize.js'
 import type { Config } from './config.js'
 
 const BUDGET_ID = '11111111-1111-1111-1111-111111111111'
@@ -115,13 +114,13 @@ function makeTxn(overrides: Record<string, unknown> = {}): Record<string, unknow
   }
 }
 
-function readAuditLines(): AuditEntry[] {
+function readAuditLines(): CategorizeAudit[] {
   const files = readdirSync(auditDir)
-  const lines: AuditEntry[] = []
+  const lines: CategorizeAudit[] = []
   for (const f of files) {
     const content = readFileSync(join(auditDir, f), 'utf8')
     for (const line of content.split('\n')) {
-      if (line.trim()) lines.push(JSON.parse(line) as AuditEntry)
+      if (line.trim()) lines.push(JSON.parse(line) as CategorizeAudit)
     }
   }
 
@@ -162,6 +161,7 @@ describe('runCategorize (e2e)', (): void => {
 
     const audit = readAuditLines()
     expect(audit).toHaveLength(1)
+    expect(audit[0]?.app).toBe('categorize')
     expect(audit[0]?.status).toBe('ok')
     expect(audit[0]?.patch_status).toBe('success')
     expect(audit[0]?.chosen_category_id).toBe('cGroceries')
