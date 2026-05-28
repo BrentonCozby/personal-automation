@@ -163,6 +163,7 @@ describe('runCategorize (e2e)', (): void => {
     const audit = readAuditLines()
     expect(audit).toHaveLength(1)
     expect(audit[0]?.status).toBe('ok')
+    expect(audit[0]?.patch_status).toBe('success')
     expect(audit[0]?.chosen_category_id).toBe('cGroceries')
   })
 
@@ -221,10 +222,13 @@ describe('runCategorize (e2e)', (): void => {
 
     expect(patchCalled).toBe(false)
     expect(result.skipped).toBe(1)
-    expect(readAuditLines()).toHaveLength(1)
+    const audit = readAuditLines()
+    expect(audit).toHaveLength(1)
+    expect(audit[0]?.status).toBe('ok')
+    expect(audit[0]?.patch_status).toBe('skipped_for_dry_run')
   })
 
-  it('PATCH failure marks audit as patch_error', async (): Promise<void> => {
+  it('PATCH failure marks audit patch_status error', async (): Promise<void> => {
     server.use(
       http.get(`${YNAB_API_BASE_URL}/budgets/${BUDGET_ID}/categories`, () =>
         HttpResponse.json(categoriesResponse),
@@ -250,11 +254,38 @@ describe('runCategorize (e2e)', (): void => {
     expect(result.failed).toBe(1)
 
     const audit = readAuditLines()
-    expect(audit[0]?.status).toBe('patch_error')
+    expect(audit[0]?.status).toBe('ok')
+    expect(audit[0]?.patch_status).toBe('error')
     expect(audit[0]?.error).toContain('400')
   })
 
-  it('partial PATCH success: marks confirmed ids ok and missing ids patch_error', async (): Promise<void> => {
+  it('categorize failure marks audit status error + patch_status skipped_for_upstream_error', async (): Promise<void> => {
+    server.use(
+      http.get(`${YNAB_API_BASE_URL}/budgets/${BUDGET_ID}/categories`, () =>
+        HttpResponse.json(categoriesResponse),
+      ),
+      http.get(
+        `${YNAB_API_BASE_URL}/budgets/${BUDGET_ID}/accounts/${ACCOUNT_ID}/transactions`,
+        () => HttpResponse.json({ data: { transactions: [makeTxn()] } }),
+      ),
+      // 400 is non-retryable, so the categorize step fails fast and doesn't hammer msw.
+      http.post(ANTHROPIC_MESSAGES_URL, () => HttpResponse.text('bad request', { status: 400 })),
+    )
+
+    const result = await runCategorize({
+      config: makeConfig(),
+      opts: { dryRun: false, verbose: false },
+    })
+
+    expect(result.failed).toBe(1)
+    expect(result.succeeded).toBe(0)
+    const audit = readAuditLines()
+    expect(audit).toHaveLength(1)
+    expect(audit[0]?.status).toBe('error')
+    expect(audit[0]?.patch_status).toBe('skipped_for_upstream_error')
+  })
+
+  it('partial PATCH success: confirmed ids get patch_status success, missing ids get error', async (): Promise<void> => {
     server.use(
       http.get(`${YNAB_API_BASE_URL}/budgets/${BUDGET_ID}/categories`, () =>
         HttpResponse.json(categoriesResponse),
@@ -289,7 +320,9 @@ describe('runCategorize (e2e)', (): void => {
     const audit = readAuditLines()
     const byId = new Map(audit.map(e => [e.transaction_id, e]))
     expect(byId.get('txn-1')?.status).toBe('ok')
-    expect(byId.get('txn-2')?.status).toBe('patch_error')
+    expect(byId.get('txn-1')?.patch_status).toBe('success')
+    expect(byId.get('txn-2')?.status).toBe('ok')
+    expect(byId.get('txn-2')?.patch_status).toBe('error')
     expect(byId.get('txn-2')?.error).toContain('transaction_ids')
   })
 

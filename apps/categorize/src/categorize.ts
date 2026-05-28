@@ -47,7 +47,10 @@ type CategoriesContext = {
   routingHints: readonly string[]
 }
 
-type CategorizationOutcome = { patch: TransactionPatch; auditEntry: AuditEntry }
+// Categorize fills in everything but `patch_status` — the persistence stage (or dry-run
+// loop) decides that and overrides on emit.
+type AuditCore = Omit<AuditEntry, 'patch_status'>
+type CategorizationOutcome = { patch: TransactionPatch; auditEntry: AuditCore }
 
 export async function runCategorize({
   config,
@@ -172,7 +175,9 @@ export async function runCategorize({
 
   if (opts.dryRun) {
     // Emit audit immediately in dry-run since no PATCH will happen.
-    for (const o of outcomes.successes) logger.audit(o.auditEntry)
+    for (const o of outcomes.successes) {
+      logger.audit({ ...o.auditEntry, patch_status: 'skipped_for_dry_run' })
+    }
     logger.info({ msg: 'Dry run — skipping PATCH', extra: { proposed: outcomes.successes.length } })
 
     return {
@@ -245,14 +250,15 @@ async function categorizeAll({
         msg: `Categorize failed for ${txn.id}`,
         extra: { error: message },
       })
-      logger.audit(
-        buildAuditEntry({
+      logger.audit({
+        ...buildAuditEntry({
           txn,
           categoryId: null,
           categoryName: null,
           extra: { status: 'error', error: message },
         }),
-      )
+        patch_status: 'skipped_for_upstream_error',
+      })
     }
   }
 
@@ -281,13 +287,13 @@ async function patchInBatches({
       for (const o of batch) {
         if (updated.has(o.patch.id)) {
           succeeded += 1
-          logger.audit(o.auditEntry)
+          logger.audit({ ...o.auditEntry, patch_status: 'success' })
         } else {
           failed += 1
           missing += 1
           logger.audit({
             ...o.auditEntry,
-            status: 'patch_error',
+            patch_status: 'error',
             error: 'not in YNAB response transaction_ids',
           })
         }
@@ -306,7 +312,7 @@ async function patchInBatches({
         extra: { size: batch.length, error: message },
       })
       for (const o of batch) {
-        logger.audit({ ...o.auditEntry, status: 'patch_error', error: message })
+        logger.audit({ ...o.auditEntry, patch_status: 'error', error: message })
       }
     }
   }
@@ -470,8 +476,8 @@ export function buildAuditEntry({
   txn: Transaction
   categoryId: string | null
   categoryName: string | null
-  extra: Partial<AuditEntry>
-}): AuditEntry {
+  extra: Partial<AuditCore>
+}): AuditCore {
   return {
     timestamp: new Date().toISOString(),
     transaction_id: txn.id,

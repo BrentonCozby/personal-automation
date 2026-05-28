@@ -126,8 +126,10 @@ Each app's `loadConfig` parses its own subset.
 
 - Eligible empty-memo Amazon transactions get a memo prefixed `auto-gen:`.
 - `categorize` runs after and sees the populated memo in its prompt.
-- Audit log has one row per attempt with status `ok`, `no_emails`,
-  `no_receipt`, `error`, or `patch_error`.
+- Audit log has one row per attempt with `status` of `ok`, `no_emails`,
+  `no_receipt`, or `error`, and `patch_status` of `success`, `error`,
+  `skipped_for_dry_run`, or `skipped_for_upstream_error`. Widening
+  `status` to include `no_emails` / `no_receipt` is part of this work.
 - Unit tests cover the eligibility filter (incl. the `auto-gen:` prefix
   branches), the memo sanitizer, and the prompt builder. e2e test uses msw to
   mock both Gmail and YNAB.
