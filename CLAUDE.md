@@ -13,7 +13,7 @@ These are the conventions this monorepo follows that aren't visible from just re
 
 ## Code style (beyond what Biome enforces)
 
-- **Object args for multi-param functions.** Any function/method/constructor with 2+ args takes a single destructured object: `function foo({ a, b }: { a: T; b: U })`. Single-arg functions stay positional.
+- **Object args for multi-param functions.** Any function/method/constructor with 2+ args takes a single destructured object: `function foo({ a, b }: { a: T; b: U })`. Only use a single positional arg for a function if it will never need another arg.
 - **Blank line before `return`** unless (a) it's an inline return after an `if` (`if (x) return y`) or (b) the return is the only statement in its block.
 - **Factory functions, not classes.** External-system adapters are factory functions named `createX` that return an object of operations. Mutable state lives in the closure.
 - **Named inner functions, not arrows in the returned object.** Inside `createX`, use `function info(...)` not `info: (...) => ...`. Better stack traces.

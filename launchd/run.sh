@@ -27,8 +27,14 @@ for app in "${APPS[@]}"; do
   fi
 done
 
+# Always invoke notify. It reads today's audit logs and decides whether to send.
+# `|| true` so a notify failure doesn't poison $overall_exit. No exit-code gating:
+# $overall_exit is the last non-zero app exit, so gating on a specific value could
+# mask real failures from another app in the same run.
+/bin/zsh -lc "pnpm --filter @ynab-automation/notify notify" || true
+
 # Trim audit logs older than 90 days so the audit/ dir doesn't grow forever.
-find "$PROJECT_DIR/apps"/*/audit -name 'categorize-*.jsonl' -mtime +90 -delete 2>/dev/null || true
+find "$PROJECT_DIR/apps"/*/audit -name '*.jsonl' -mtime +90 -delete 2>/dev/null || true
 
 if [ "$overall_exit" -ne 0 ]; then
   last_err="$(tail -3 "$err_log" | tr '\n' ' ' | sed 's/"/\\"/g')"

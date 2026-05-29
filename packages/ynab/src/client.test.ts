@@ -1,17 +1,13 @@
 import { YnabApiError } from '@ynab-automation/common/errors'
+import { setupMswServer } from '@ynab-automation/common/test-msw'
 import { HttpResponse, http } from 'msw'
-import { setupServer } from 'msw/node'
-import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest'
+import { describe, expect, it } from 'vitest'
 import { createYnabClient } from './client.js'
 import { YNAB_API_BASE_URL } from './constants.js'
 
 const VALID_UUID = '11111111-1111-1111-1111-111111111111'
 
-const server = setupServer()
-
-beforeAll((): void => server.listen({ onUnhandledRequest: 'error' }))
-afterEach((): void => server.resetHandlers())
-afterAll((): void => server.close())
+const server = setupMswServer()
 
 function makeClient(): ReturnType<typeof createYnabClient> {
   return createYnabClient({ token: 'test-token', budgetId: VALID_UUID })

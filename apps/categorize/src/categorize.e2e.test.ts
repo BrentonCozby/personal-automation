@@ -1,10 +1,10 @@
 import { mkdtempSync, readdirSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { setupMswServer } from '@ynab-automation/common/test-msw'
 import { YNAB_API_BASE_URL } from '@ynab-automation/ynab/constants'
 import { HttpResponse, http } from 'msw'
-import { setupServer } from 'msw/node'
-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { type CategorizeAudit, runCategorize } from './categorize.js'
 import type { Config } from './config.js'
 
@@ -12,11 +12,7 @@ const BUDGET_ID = '11111111-1111-1111-1111-111111111111'
 const ACCOUNT_ID = 'acct-A'
 const ANTHROPIC_MESSAGES_URL = 'https://api.anthropic.com/v1/messages'
 
-const server = setupServer()
-
-beforeAll((): void => server.listen({ onUnhandledRequest: 'error' }))
-afterEach((): void => server.resetHandlers())
-afterAll((): void => server.close())
+const server = setupMswServer()
 
 let auditDir: string
 

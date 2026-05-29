@@ -3,14 +3,22 @@ import { fileURLToPath } from 'node:url'
 import dotenv from 'dotenv'
 import { z } from 'zod'
 
-// Loads the monorepo-root `.env` based on the caller's module URL. Assumes the
-// standard `apps/<name>/src/...` layout — three levels up from the caller lands
-// at the repo root. Apps call this once at the top of their config.ts:
+// Resolves the workspace root from a caller's module URL. Assumes the standard
+// `apps/<name>/src/...` or `packages/<name>/src/...` layout — three levels up
+// from the caller lands at the workspace root. Centralized here so the layout
+// assumption is encoded in one place.
+export function resolveWorkspaceRoot(callerUrl: string): string {
+  const callerDir = path.dirname(fileURLToPath(callerUrl))
+
+  return path.resolve(callerDir, '../../..')
+}
+
+// Loads the monorepo-root `.env` based on the caller's module URL. Apps call this
+// once at the top of their config.ts:
 //
 //   loadRootEnv(import.meta.url)
 export function loadRootEnv(callerUrl: string): void {
-  const callerDir = path.dirname(fileURLToPath(callerUrl))
-  dotenv.config({ path: path.resolve(callerDir, '../../../.env') })
+  dotenv.config({ path: path.join(resolveWorkspaceRoot(callerUrl), '.env') })
 }
 
 // Zod string transform that parses the input as JSON. Pair with `.pipe(...)`

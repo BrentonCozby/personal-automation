@@ -4,6 +4,7 @@ import { Writable } from 'node:stream'
 import pino, { type Logger as PinoLogger } from 'pino'
 import pinoPretty from 'pino-pretty'
 import { z } from 'zod'
+import { todayLocalIso } from './date.js'
 import { writeWithProgress } from './progress.js'
 
 // Fields every app's audit entry must include. Each app spreads `baseAuditFields` into its
@@ -27,6 +28,7 @@ export const baseAuditFields = {
 
 export const baseAuditSchema = z.object(baseAuditFields)
 export type BaseAudit = z.infer<typeof baseAuditSchema>
+export type PatchStatus = BaseAudit['patch_status']
 
 type LogParams = { msg: string; extra?: Record<string, unknown> }
 
@@ -103,14 +105,4 @@ export function createLogger<TAudit extends BaseAudit>({
   }
 
   return { info, warn, error, debug, audit }
-}
-
-// Local-date YYYY-MM-DD so the audit file rollover matches the user's wall clock.
-function todayLocalIso(): string {
-  const d = new Date()
-  const y = d.getFullYear()
-  const m = String(d.getMonth() + 1).padStart(2, '0')
-  const day = String(d.getDate()).padStart(2, '0')
-
-  return `${y}-${m}-${day}`
 }

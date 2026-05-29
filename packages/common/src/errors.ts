@@ -53,7 +53,7 @@ export class YnabApiError extends AppError {
   }
 }
 
-function isRetryableHttpStatus(status: number): boolean {
+export function isRetryableHttpStatus(status: number): boolean {
   // 408 timeout, 425 too-early, 429 rate-limited, and any 5xx are transient.
   if (status === 408 || status === 425 || status === 429) return true
   if (status >= 500 && status < 600) return true

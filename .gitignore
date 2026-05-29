@@ -3,6 +3,7 @@ node_modules/
 **/audit/
 .env
 .env.local
+gmail-api-credentials.json
 *.log
 # newsyslog rotates launchd logs to *.log.0.gz … *.log.3.gz (Z flag).
 *.log.*

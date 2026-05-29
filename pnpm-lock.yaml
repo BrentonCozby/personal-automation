@@ -69,6 +69,21 @@ importers:
         specifier: workspace:*
         version: link:../../packages/ynab
 
+  apps/notify:
+    dependencies:
+      '@ynab-automation/common':
+        specifier: workspace:*
+        version: link:../../packages/common
+      '@ynab-automation/gmail':
+        specifier: workspace:*
+        version: link:../../packages/gmail
+      pino:
+        specifier: ^10.3.1
+        version: 10.3.1
+      zod:
+        specifier: ^4.4.3
+        version: 4.4.3
+
   packages/common:
     dependencies:
       cli-spinners:
@@ -86,6 +101,15 @@ importers:
       pino-pretty:
         specifier: ^13.1.3
         version: 13.1.3
+      zod:
+        specifier: ^4.4.3
+        version: 4.4.3
+
+  packages/gmail:
+    dependencies:
+      '@ynab-automation/common':
+        specifier: workspace:*
+        version: link:../common
       zod:
         specifier: ^4.4.3
         version: 4.4.3

@@ -11,7 +11,8 @@
     "./progress": "./src/progress.ts",
     "./chunks": "./src/chunks.ts",
     "./date": "./src/date.ts",
-    "./env": "./src/env.ts"
+    "./env": "./src/env.ts",
+    "./test-msw": "./src/test-msw.ts"
   },
   "scripts": {
     "build": "tsc -b"

@@ -1,0 +1,21 @@
+{
+  "name": "@ynab-automation/gmail",
+  "version": "0.0.0",
+  "type": "module",
+  "private": true,
+  "exports": {
+    "./client": "./src/client.ts",
+    "./auth": "./src/auth.ts",
+    "./constants": "./src/constants.ts",
+    "./schemas": "./src/schemas.ts",
+    "./types": "./src/types.ts"
+  },
+  "scripts": {
+    "build": "tsc -b",
+    "bootstrap": "tsx src/bootstrap.ts"
+  },
+  "dependencies": {
+    "@ynab-automation/common": "workspace:*",
+    "zod": "^4.4.3"
+  }
+}
