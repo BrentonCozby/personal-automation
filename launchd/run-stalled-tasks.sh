@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# launchd wrapper for the stalled-tasks weekly digest. Its own agent
+# launchd wrapper for the stalled-tasks digest. Its own agent
 # (com.personal-automation.stalled-tasks) fires it on the days/times in STALLED_TASKS_SCHEDULE,
 # separate from the daily run.sh. Posts a macOS notification on failure so a broken run isn't
 # silent — same failure-surfacing as run.sh.

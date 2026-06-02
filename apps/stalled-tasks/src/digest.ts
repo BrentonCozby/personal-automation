@@ -2,8 +2,10 @@ import type { Classification, Priority } from './anthropic/schemas.js'
 import { SUBJECT_PREFIX } from './constants.js'
 import type { DueStatus } from './staleness.js'
 
-// One analysis joined back to its locally-computed staleness + due signals. The model never
-// sees staleDays in its output (it's computed here), so ranking can't be hallucinated.
+/**
+ * One analysis joined back to its locally-computed staleness + due signals. The model never
+ * sees staleDays in its output (it's computed here), so ranking can't be hallucinated.
+ */
 export type DigestItem = {
   title: string
   /** The Reminders list the task lives on — shown so shared-list tasks (e.g. Family) are obvious. */
@@ -125,10 +127,10 @@ function renderStartHere({ shown, top }: { shown: DigestItem[]; top: DigestItem 
 
 function renderSummary({ shown, totalStalled }: { shown: number; totalStalled: number }): string {
   if (totalStalled > shown) {
-    return `${totalStalled} stalled total — here are the ${shown} that matter most this week.`
+    return `${totalStalled} stalled total — here are the ${shown} that matter most right now.`
   }
 
-  return `${totalStalled} stalled ${totalStalled === 1 ? 'task' : 'tasks'} this week.`
+  return `${totalStalled} stalled ${totalStalled === 1 ? 'task' : 'tasks'} right now.`
 }
 
 // A surfaced `fine` task isn't stuck (it's clear, just high-priority and undone), so "Stuck"
@@ -202,8 +204,8 @@ function htmlStartHere({ shown, top }: { shown: DigestItem[]; top: DigestItem })
 function htmlSummary({ shown, totalStalled }: { shown: number; totalStalled: number }): string {
   const text =
     totalStalled > shown
-      ? `${totalStalled} stalled total — here are the ${shown} that matter most this week.`
-      : `${totalStalled} stalled ${totalStalled === 1 ? 'task' : 'tasks'} this week.`
+      ? `${totalStalled} stalled total — here are the ${shown} that matter most right now.`
+      : `${totalStalled} stalled ${totalStalled === 1 ? 'task' : 'tasks'} right now.`
 
   return `<div style="font-size:13px;color:#5f6368;margin:0 0 6px;">${escapeHtml(text)}</div>`
 }

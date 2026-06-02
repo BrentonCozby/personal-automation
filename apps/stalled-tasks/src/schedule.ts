@@ -1,6 +1,6 @@
 import { AppError } from '@personal-automation/common/errors'
 
-// Weekday names, index = launchd's StartCalendarInterval Weekday number (0 = Sunday).
+/** Weekday names, index = launchd's StartCalendarInterval Weekday number (0 = Sunday). */
 export const weekdayValues = [
   'Sunday',
   'Monday',
@@ -21,9 +21,11 @@ export type ScheduleSlot = {
   minute: number
 }
 
-// Parses `STALLED_TASKS_SCHEDULE` entries like "Sunday 08:00" (day case-insensitive, 24h HH:MM)
-// into launchd calendar slots. Throws a clear AppError on a malformed entry so a typo fails at
-// setup time rather than silently producing the wrong schedule.
+/**
+ * Parses `STALLED_TASKS_SCHEDULE` entries like "Sunday 08:00" (day case-insensitive, 24h HH:MM)
+ * into launchd calendar slots. Throws a clear AppError on a malformed entry so a typo fails at
+ * setup time rather than silently producing the wrong schedule.
+ */
 export function parseSchedule(entries: readonly string[]): ScheduleSlot[] {
   if (entries.length === 0) {
     throw new AppError({
@@ -61,9 +63,11 @@ function parseSlot(entry: string): ScheduleSlot {
 const PLIST_DOCTYPE =
   '<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">'
 
-// Builds the dedicated launchd agent plist for the digest. Its StartCalendarInterval is an
-// array of {Weekday, Hour, Minute} triggers — one per schedule slot — so the digest fires on
-// exactly the days and times configured, independent of the daily YNAB run.
+/**
+ * Builds the dedicated launchd agent plist for the digest. Its StartCalendarInterval is an
+ * array of {Weekday, Hour, Minute} triggers — one per schedule slot — so the digest fires on
+ * exactly the days and times configured, independent of the daily YNAB run.
+ */
 export function buildStalledTasksPlist({
   projectDir,
   schedule,

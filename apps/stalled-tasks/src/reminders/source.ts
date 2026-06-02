@@ -107,10 +107,12 @@ async function isBuildFresh(): Promise<boolean> {
   }
 }
 
-// Pure: maps the bridge's JSON to Task[], dropping recurring reminders (their own alert is
-// the channel for them) and filtering to the requested lists ([] = all). Throws a clear
-// AppError on an error payload or unparseable output so a permission problem never returns an
-// empty list that would read as "nothing is stalled".
+/**
+ * Pure: maps the bridge's JSON to Task[], dropping recurring reminders (their own alert is
+ * the channel for them) and filtering to the requested lists ([] = all). Throws a clear
+ * AppError on an error payload or unparseable output so a permission problem never returns an
+ * empty list that would read as "nothing is stalled".
+ */
 export function parseBridgeOutput({
   raw,
   lists,

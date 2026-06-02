@@ -22,9 +22,11 @@ export type RunLogEntry = {
   shown: boolean
 }
 
-// One JSONL line per analyzed task, appended to runs/run-<today>.jsonl. This is the
-// corrections substrate for tuning the prompt later (compare classifications to what I'd
-// have wanted), so it records every task — not just the ones that made the digest.
+/**
+ * One JSONL line per analyzed task, appended to runs/run-<today>.jsonl. This is the corrections
+ * substrate for tuning the prompt later (compare classifications to what I'd have wanted), so it
+ * records every task — not just the ones that made the digest.
+ */
 export function appendRunLog({
   entries,
   today,

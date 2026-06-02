@@ -39,7 +39,7 @@ function logResult(result: RunResult): void {
       break
     case 'no_actionable':
       console.log(
-        `${result.totalStalled} stalled, none actionable enough to flag this week. No email.`,
+        `${result.totalStalled} stalled, none actionable enough to flag right now. No email.`,
       )
       break
     case 'dry_run':

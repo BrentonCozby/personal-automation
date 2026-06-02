@@ -129,15 +129,15 @@ it('caps the action list to maxItems but counts all stalled tasks', () => {
   expect(digest.flaggedCount).toBe(5)
   expect(digest.totalStalled).toBe(8)
   expect(digest.subject).toBe('Task Review — 5 flagged')
-  expect(digest.body).toContain('8 stalled total — here are the 5 that matter most this week.')
+  expect(digest.body).toContain('8 stalled total — here are the 5 that matter most right now.')
 })
 
 it('uses a singular summary line when nothing is capped', () => {
   const one = build([item({ title: 'solo' })])
-  expect(one.body).toContain('1 stalled task this week.')
+  expect(one.body).toContain('1 stalled task right now.')
 
   const two = build([item({ title: 'a' }), item({ title: 'b' })])
-  expect(two.body).toContain('2 stalled tasks this week.')
+  expect(two.body).toContain('2 stalled tasks right now.')
 })
 
 it('leads with a Start here line built from the top-ranked actionable item', () => {

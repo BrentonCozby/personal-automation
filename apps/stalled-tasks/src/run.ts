@@ -139,7 +139,7 @@ export async function runStalledTasks({
   })
 
   if (digest.flaggedCount === 0) {
-    logger.info({ totalStalled: digest.totalStalled }, 'Nothing actionable this week; no email.')
+    logger.info({ totalStalled: digest.totalStalled }, 'Nothing actionable right now; no email.')
 
     return { kind: 'no_actionable', totalStalled: digest.totalStalled }
   }
