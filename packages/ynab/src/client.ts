@@ -32,7 +32,7 @@ export function createYnabClient({ token, budgetId }: YnabClientInit): YnabClien
   }: {
     path: string
     init?: RequestInit
-    schema?: { parse: (data: unknown) => T }
+    schema: { parse: (data: unknown) => T }
   }): Promise<T> {
     return withRetry(async () => {
       const res = await fetch(`${YNAB_API_BASE_URL}${path}`, {
@@ -43,19 +43,17 @@ export function createYnabClient({ token, budgetId }: YnabClientInit): YnabClien
           ...(init.headers ?? {}),
         },
       })
+      const method = init.method || 'GET'
       if (!res.ok) {
         const body = await res.text()
-        throw new YnabApiError({
-          status: res.status,
-          method: init.method || 'GET',
-          path,
-          body,
-        })
+        throw new YnabApiError({ status: res.status, method, path, body })
       }
-      if (res.status === 204) return undefined as T
+      if (res.status === 204) {
+        throw new YnabApiError({ status: 204, method, path, body: 'unexpected empty response' })
+      }
       const json = await res.json()
 
-      return schema ? schema.parse(json) : (json as T)
+      return schema.parse(json)
     })
   }
 
