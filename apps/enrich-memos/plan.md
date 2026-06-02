@@ -130,7 +130,7 @@ Each app's `loadConfig` parses its own subset.
   `status` of `ok`, `no_emails`, `no_receipt`, or `error`, and
   `patch_status` of `success`, `error`, `skipped_for_dry_run`, or
   `skipped_for_upstream_error`. The schema lives in this app — spread
-  `baseAuditFields` from `@ynab-automation/common/logger` into a local
+  `baseAuditFields` from `@personal-automation/common/logger` into a local
   `enrichMemosAuditSchema` and pass it to `createLogger({ auditSchema })`.
 - Unit tests cover the eligibility filter (incl. the `auto-gen:` prefix
   branches), the memo sanitizer, and the prompt builder. e2e test uses msw to

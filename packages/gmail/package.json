@@ -1,5 +1,5 @@
 {
-  "name": "@ynab-automation/gmail",
+  "name": "@personal-automation/gmail",
   "version": "0.0.0",
   "type": "module",
   "private": true,
@@ -15,7 +15,7 @@
     "bootstrap": "tsx src/bootstrap.ts"
   },
   "dependencies": {
-    "@ynab-automation/common": "workspace:*",
+    "@personal-automation/common": "workspace:*",
     "zod": "^4.4.3"
   }
 }

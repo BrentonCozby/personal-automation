@@ -1,4 +1,4 @@
-import { jsonValue, loadRootEnv } from '@ynab-automation/common/env'
+import { jsonValue, loadRootEnv } from '@personal-automation/common/env'
 import { z } from 'zod'
 
 loadRootEnv(import.meta.url)

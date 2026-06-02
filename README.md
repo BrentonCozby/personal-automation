@@ -1,10 +1,12 @@
-# ynab-automation
+# personal-automation
 
-Personal YNAB automations. pnpm monorepo containing:
+Personal automation monorepo — a pnpm workspace of small scheduled jobs and the shared libraries they use. Budgeting (YNAB) is the main domain today, but the layout isn't YNAB-specific: each automation is its own app on top of shared infrastructure.
 
 - **`apps/categorize`** — daily CLI that auto-categorizes Amazon transactions using the Anthropic API (Claude Haiku by default).
 - **`apps/enrich-memos`** — planned Phase 2 (design only — see [apps/enrich-memos/plan.md](apps/enrich-memos/plan.md)). Reads Amazon receipt emails, parses product names, PATCHes `memo` on matching YNAB transactions so the categorizer has better data to work with.
+- **`apps/notify`** — emails a digest after the daily run when any app's audit log shows errors (design in [apps/notify/plan.md](apps/notify/plan.md)).
 - **`packages/ynab`** — shared YNAB API client (zod-validated) + schemas + types + milliunits helpers.
+- **`packages/gmail`** — Gmail API client (OAuth + send), zod-validated.
 - **`packages/common`** — shared helpers: pino-based logger, AppError + retry, PID lockfile, ora spinner, plus tiny utilities (json, chunks, date).
 
 Commit messages follow [Conventional Commits](https://www.conventionalcommits.org/) — enforced via a husky `commit-msg` hook running commitlint.
@@ -54,18 +56,18 @@ The categorizer always appends a JSONL audit line per decision to `apps/categori
 
 ## Production
 
-`launchd/com.ynab-automation` runs `launchd/run.sh` daily at 12:00 local time. The wrapper runs each app in `APPS` sequentially (currently just `categorize`; uncomment `enrich-memos` once it lands) and posts a macOS notification if any non-zero exits.
+`launchd/com.personal-automation` runs `launchd/run.sh` daily at 12:00 local time. The wrapper runs each app in `APPS` sequentially (currently just `categorize`; uncomment `enrich-memos` once it lands) and posts a macOS notification if any non-zero exits.
 
 ```bash
 ./launchd/setup.sh   # generates the plist + newsyslog.conf with this checkout's path and your username
-cp launchd/com.ynab-automation.plist ~/Library/LaunchAgents/
-launchctl load ~/Library/LaunchAgents/com.ynab-automation.plist
+cp launchd/com.personal-automation.plist ~/Library/LaunchAgents/
+launchctl load ~/Library/LaunchAgents/com.personal-automation.plist
 ```
 
 Optional log rotation (weekly, keeps 4 gzipped archives):
 
 ```bash
-sudo cp launchd/newsyslog.ynab-automation.conf /etc/newsyslog.d/
+sudo cp launchd/newsyslog.personal-automation.conf /etc/newsyslog.d/
 ```
 
 A PID lockfile at `$TMPDIR/ynab-categorize.lock` prevents overlapping runs of the categorizer (manual + scheduled, or two scheduled). Stale locks from crashed runs are claimed automatically.

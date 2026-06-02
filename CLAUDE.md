@@ -24,13 +24,15 @@ These are the conventions this monorepo follows that aren't visible from just re
 apps/
   categorize/          # daily Amazon-categorizer CLI
   enrich-memos/        # planned — design in apps/enrich-memos/plan.md
+  notify/              # emails a digest after the daily run on audit-log errors
 packages/
   ynab/                # YNAB client, schemas, types, milliunits
+  gmail/               # Gmail API client (OAuth + send)
   common/              # errors, retry, lock, logger, progress, json, chunks, date
 launchd/               # macOS scheduling: run.sh, setup.sh, plist template, newsyslog conf
 ```
 
-- **Cross-package imports** use the package name + subpath: `import { withRetry } from '@ynab-automation/common/retry'`. Each package's `exports` map in its `package.json` declares the public API. Internal package files import via relative paths (`./errors.js`).
+- **Cross-package imports** use the package name + subpath: `import { withRetry } from '@personal-automation/common/retry'`. Each package's `exports` map in its `package.json` declares the public API. Internal package files import via relative paths (`./errors.js`).
 - **Apps** depend on packages via `"workspace:*"` in their `package.json`. They don't depend on each other.
 - **Each package has its own `tsconfig.json`** extending `tsconfig.base.json`, with `references` for cross-package deps so `tsc -b` builds them in order.
 - **Schemas are the source of truth for types** in `packages/ynab`. `types.ts` does `z.infer<typeof schema>` so schema changes can't silently drift from types.
@@ -40,7 +42,7 @@ launchd/               # macOS scheduling: run.sh, setup.sh, plist template, new
 - **External services**: each one gets its own folder (`packages/ynab/`, or `apps/categorize/src/anthropic/` for the Claude API client). Inside: `client.ts` (factory), `schemas.ts` (zod), `types.ts` (derived). Anything specific stays in that folder.
 - **Constants**: code-shape constants (flag name/color, payee filter, batch sizes) live in `apps/categorize/src/constants.ts`. The single YNAB-wide constant `YNAB_API_BASE_URL` lives in `packages/ynab/src/constants.ts`. These aren't env-tunable.
 - **Env vars**: `.env` is the single source of truth for everything personal or deployment-specific — secrets (`YNAB_TOKEN`, `ANTHROPIC_API_KEY`), ids (`YNAB_BUDGET_ID`, `ALLOWED_ACCOUNT_IDS`), tuning (`LOOKBACK_DAYS`, `ANTHROPIC_MODEL`, `AUDIT_DIR`), and per-user category config (`EXCLUDED_CATEGORY_GROUPS`, `CATEGORY_ROUTING_HINTS` — both JSON arrays of strings). No `.default()` calls in `config.ts`; loaders throw if any are missing. `.env.example` ships generic placeholders so nothing personal lives in tracked files.
-- **Errors**: extend `AppError` from `@ynab-automation/common/errors`. Set `retryable: true` for transient failures so `withRetry` picks them up. Don't add new error subclasses unless callers actually need to branch on them.
+- **Errors**: extend `AppError` from `@personal-automation/common/errors`. Set `retryable: true` for transient failures so `withRetry` picks them up. Don't add new error subclasses unless callers actually need to branch on them.
 - **Logging**: structured via pino, wrapped in `createLogger` so call sites are `logger.info({ msg, extra })`. The audit log (JSONL) is a separate concern from pino — written via `logger.audit(entry)`.
 
 ## Workflow
@@ -53,7 +55,7 @@ launchd/               # macOS scheduling: run.sh, setup.sh, plist template, new
 ## Things to never do
 
 - Commit `.env` (gitignored, but worth saying).
-- Commit the generated `launchd/*.plist` or `launchd/newsyslog.ynab-automation.conf` files (only the `.template` versions are tracked).
+- Commit the generated `launchd/*.plist` or `launchd/newsyslog.personal-automation.conf` files (only the `.template` versions are tracked).
 - Add a `.default()` in any config loader for an env var — env is the source of truth.
 - Skip the husky hooks with `--no-verify` (per global rules).
 - Force-push to `main` without explicit user permission for that specific push.

@@ -4,8 +4,8 @@
 # Run this once after cloning, or any time the project moves on disk.
 #
 # Generated files:
-#   com.ynab-automation.plist        — daily scheduled job (runs run.sh at 12:00)
-#   newsyslog.ynab-automation.conf   — optional log rotation config
+#   com.personal-automation.plist        — daily scheduled job (runs run.sh at 12:00)
+#   newsyslog.personal-automation.conf   — optional log rotation config
 
 set -euo pipefail
 
@@ -22,19 +22,19 @@ substitute() {
 }
 
 substitute \
-  "$PROJECT_DIR/launchd/com.ynab-automation.plist.template" \
-  "$PROJECT_DIR/launchd/com.ynab-automation.plist"
+  "$PROJECT_DIR/launchd/com.personal-automation.plist.template" \
+  "$PROJECT_DIR/launchd/com.personal-automation.plist"
 
 substitute \
-  "$PROJECT_DIR/launchd/newsyslog.ynab-automation.conf.template" \
-  "$PROJECT_DIR/launchd/newsyslog.ynab-automation.conf"
+  "$PROJECT_DIR/launchd/newsyslog.personal-automation.conf.template" \
+  "$PROJECT_DIR/launchd/newsyslog.personal-automation.conf"
 
 cat <<EOF
 
 Next:
-  cp $PROJECT_DIR/launchd/com.ynab-automation.plist ~/Library/LaunchAgents/
-  launchctl load ~/Library/LaunchAgents/com.ynab-automation.plist
+  cp $PROJECT_DIR/launchd/com.personal-automation.plist ~/Library/LaunchAgents/
+  launchctl load ~/Library/LaunchAgents/com.personal-automation.plist
 
 Optional log rotation (rotates launchd.{out,err}.log weekly, keeps 4):
-  sudo cp $PROJECT_DIR/launchd/newsyslog.ynab-automation.conf /etc/newsyslog.d/
+  sudo cp $PROJECT_DIR/launchd/newsyslog.personal-automation.conf /etc/newsyslog.d/
 EOF

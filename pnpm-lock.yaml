@@ -47,10 +47,10 @@ importers:
       '@anthropic-ai/sdk':
         specifier: ^0.98.0
         version: 0.98.0(zod@4.4.3)
-      '@ynab-automation/common':
+      '@personal-automation/common':
         specifier: workspace:*
         version: link:../../packages/common
-      '@ynab-automation/ynab':
+      '@personal-automation/ynab':
         specifier: workspace:*
         version: link:../../packages/ynab
       p-limit:
@@ -62,19 +62,19 @@ importers:
 
   apps/enrich-memos:
     dependencies:
-      '@ynab-automation/common':
+      '@personal-automation/common':
         specifier: workspace:*
         version: link:../../packages/common
-      '@ynab-automation/ynab':
+      '@personal-automation/ynab':
         specifier: workspace:*
         version: link:../../packages/ynab
 
   apps/notify:
     dependencies:
-      '@ynab-automation/common':
+      '@personal-automation/common':
         specifier: workspace:*
         version: link:../../packages/common
-      '@ynab-automation/gmail':
+      '@personal-automation/gmail':
         specifier: workspace:*
         version: link:../../packages/gmail
       pino:
@@ -107,7 +107,7 @@ importers:
 
   packages/gmail:
     dependencies:
-      '@ynab-automation/common':
+      '@personal-automation/common':
         specifier: workspace:*
         version: link:../common
       zod:
@@ -116,7 +116,7 @@ importers:
 
   packages/ynab:
     dependencies:
-      '@ynab-automation/common':
+      '@personal-automation/common':
         specifier: workspace:*
         version: link:../common
       zod:

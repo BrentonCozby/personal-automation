@@ -3,7 +3,7 @@
 <plist version="1.0">
 <dict>
     <key>Label</key>
-    <string>com.ynab-automation</string>
+    <string>com.personal-automation</string>
 
     <key>ProgramArguments</key>
     <array>

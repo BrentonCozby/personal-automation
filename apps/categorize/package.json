@@ -1,5 +1,5 @@
 {
-  "name": "@ynab-automation/categorize",
+  "name": "@personal-automation/categorize",
   "version": "0.1.0",
   "type": "module",
   "private": true,
@@ -11,8 +11,8 @@
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.98.0",
-    "@ynab-automation/common": "workspace:*",
-    "@ynab-automation/ynab": "workspace:*",
+    "@personal-automation/common": "workspace:*",
+    "@personal-automation/ynab": "workspace:*",
     "p-limit": "^7.3.0",
     "zod": "^4.4.3"
   }

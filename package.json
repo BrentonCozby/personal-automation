@@ -1,7 +1,7 @@
 {
-  "name": "ynab-automation",
+  "name": "personal-automation",
   "version": "0.1.0",
-  "description": "Personal YNAB automations: categorize Amazon transactions, enrich memos.",
+  "description": "Personal automation monorepo: YNAB categorization, memo enrichment, email digests.",
   "type": "module",
   "private": true,
   "packageManager": "pnpm@11.2.2",
@@ -22,8 +22,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
-    "categorize": "pnpm --filter @ynab-automation/categorize categorize",
-    "test:categorize": "pnpm --filter @ynab-automation/categorize test:categorize",
+    "categorize": "pnpm --filter @personal-automation/categorize categorize",
+    "test:categorize": "pnpm --filter @personal-automation/categorize test:categorize",
     "prepare": "husky"
   },
   "devDependencies": {

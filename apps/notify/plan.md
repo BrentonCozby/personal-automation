@@ -46,7 +46,7 @@ unresolved errors visible.
    `notify` (defensive: notify isn't supposed to write audits, but don't
    self-feed if some future change adds them).
 3. Parse each line with `baseAuditSchema` from
-   `@ynab-automation/common/logger`. Notify is schema-agnostic across apps —
+   `@personal-automation/common/logger`. Notify is schema-agnostic across apps —
    per-app fields (`app`, `status`, etc.) are read as untyped extras. Adding
    a new app must not require an edit to notify.
 4. Bucket rows by `patch_status` for each app:
@@ -94,7 +94,7 @@ enrich-memos — 1 error, 11 successes
 ```
 
 The `Amount` column uses `formatDollars` from
-`@ynab-automation/ynab/milliunits` — same helper categorize already uses for
+`@personal-automation/ynab/milliunits` — same helper categorize already uses for
 its logs.
 
 Counts:
@@ -117,7 +117,7 @@ positive confirmation that it ran.
 ```text
 apps/notify/
   package.json        # { "scripts": { "notify": "tsx src/index.ts" } } so
-                      # `pnpm --filter @ynab-automation/notify notify` works
+                      # `pnpm --filter @personal-automation/notify notify` works
   src/
     index.ts          # CLI entrypoint (no args; reads audit dir from env)
     config.ts         # zod-validated loadConfig
@@ -155,7 +155,7 @@ helper requests both scopes during the consent flow so enrich-memos doesn't
 need a second round.
 
 `sendMessage` wraps its HTTP call in `withRetry` from
-`@ynab-automation/common/retry`. The Gmail send endpoint can return transient
+`@personal-automation/common/retry`. The Gmail send endpoint can return transient
 5xx; retrying matches how the YNAB and Anthropic clients already handle
 outbound HTTP.
 
@@ -172,7 +172,7 @@ on the user's machine, asks Google for permission, prints the token to
 paste into `.env`. Triggered via:
 
 ```bash
-pnpm --filter @ynab-automation/gmail bootstrap
+pnpm --filter @personal-automation/gmail bootstrap
 ```
 
 `packages/gmail/src/bootstrap.ts` does:
@@ -226,7 +226,7 @@ cleanup:
 ```bash
 # Always invoke notify. It reads today's audit logs and decides whether to
 # send. `|| true` so a notify failure doesn't poison $overall_exit.
-/bin/zsh -lc "pnpm --filter @ynab-automation/notify notify" || true
+/bin/zsh -lc "pnpm --filter @personal-automation/notify notify" || true
 ```
 
 - No exit-code gating. `$overall_exit` is the *last* non-zero app exit
@@ -334,7 +334,7 @@ Coverage thresholds from the root [vitest.config.ts](../../vitest.config.ts)
   of the send and token-refresh endpoints. No live API calls in CI.
 - `pnpm typecheck`, `pnpm check`, and `pnpm test` all pass from a clean
   state. Coverage stays at or above the root thresholds.
-- `pnpm --filter @ynab-automation/gmail bootstrap` walks the user through
+- `pnpm --filter @personal-automation/gmail bootstrap` walks the user through
   the consent flow and prints a working `GMAIL_OAUTH_REFRESH_TOKEN`.
 - `.env.example` lists the new vars under a `--- Notify ---` and
   `--- Gmail ---` block.

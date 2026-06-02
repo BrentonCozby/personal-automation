@@ -1,7 +1,7 @@
 import path from 'node:path'
-import { todayLocalIso } from '@ynab-automation/common/date'
-import { resolveWorkspaceRoot } from '@ynab-automation/common/env'
-import { formatError } from '@ynab-automation/common/errors'
+import { todayLocalIso } from '@personal-automation/common/date'
+import { resolveWorkspaceRoot } from '@personal-automation/common/env'
+import { formatError } from '@personal-automation/common/errors'
 import { loadConfig } from './config.js'
 import { runNotify } from './notify.js'
 

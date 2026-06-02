@@ -1,5 +1,5 @@
 {
-  "name": "@ynab-automation/notify",
+  "name": "@personal-automation/notify",
   "version": "0.0.0",
   "type": "module",
   "private": true,
@@ -8,8 +8,8 @@
     "notify": "tsx src/index.ts"
   },
   "dependencies": {
-    "@ynab-automation/common": "workspace:*",
-    "@ynab-automation/gmail": "workspace:*",
+    "@personal-automation/common": "workspace:*",
+    "@personal-automation/gmail": "workspace:*",
     "pino": "^10.3.1",
     "zod": "^4.4.3"
   }

@@ -1,5 +1,5 @@
-import { YnabApiError } from '@ynab-automation/common/errors'
-import { setupMswServer } from '@ynab-automation/common/test-msw'
+import { YnabApiError } from '@personal-automation/common/errors'
+import { setupMswServer } from '@personal-automation/common/test-msw'
 import { HttpResponse, http } from 'msw'
 import { describe, expect, it } from 'vitest'
 import { createYnabClient } from './client.js'

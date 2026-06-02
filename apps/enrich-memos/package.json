@@ -1,5 +1,5 @@
 {
-  "name": "@ynab-automation/enrich-memos",
+  "name": "@personal-automation/enrich-memos",
   "version": "0.0.0",
   "type": "module",
   "private": true,
@@ -7,7 +7,7 @@
     "build": "tsc -b"
   },
   "dependencies": {
-    "@ynab-automation/common": "workspace:*",
-    "@ynab-automation/ynab": "workspace:*"
+    "@personal-automation/common": "workspace:*",
+    "@personal-automation/ynab": "workspace:*"
   }
 }

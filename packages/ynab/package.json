@@ -1,5 +1,5 @@
 {
-  "name": "@ynab-automation/ynab",
+  "name": "@personal-automation/ynab",
   "version": "0.0.0",
   "type": "module",
   "private": true,
@@ -14,7 +14,7 @@
     "build": "tsc -b"
   },
   "dependencies": {
-    "@ynab-automation/common": "workspace:*",
+    "@personal-automation/common": "workspace:*",
     "zod": "^4.4.3"
   }
 }

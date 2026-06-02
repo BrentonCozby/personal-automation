@@ -1,5 +1,5 @@
-import { YnabApiError } from '@ynab-automation/common/errors'
-import { withRetry } from '@ynab-automation/common/retry'
+import { YnabApiError } from '@personal-automation/common/errors'
+import { withRetry } from '@personal-automation/common/retry'
 import { YNAB_API_BASE_URL } from './constants.js'
 import {
   categoryGroupsResponseSchema,

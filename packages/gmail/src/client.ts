@@ -1,5 +1,5 @@
-import { AppError, isRetryableHttpStatus } from '@ynab-automation/common/errors'
-import { withRetry } from '@ynab-automation/common/retry'
+import { AppError, isRetryableHttpStatus } from '@personal-automation/common/errors'
+import { withRetry } from '@personal-automation/common/retry'
 import type { GmailAuth } from './auth.js'
 import { GMAIL_API_BASE_URL } from './constants.js'
 import { sendMessageResponseSchema } from './schemas.js'

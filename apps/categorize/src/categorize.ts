@@ -1,25 +1,25 @@
-import { chunks } from '@ynab-automation/common/chunks'
-import { isoDateNDaysAgo } from '@ynab-automation/common/date'
-import { formatError, YnabApiError } from '@ynab-automation/common/errors'
+import { chunks } from '@personal-automation/common/chunks'
+import { isoDateNDaysAgo } from '@personal-automation/common/date'
+import { formatError, YnabApiError } from '@personal-automation/common/errors'
 import {
   baseAuditFields,
   createLogger,
   type Logger,
   RUN_ABORTED_SENTINEL,
-} from '@ynab-automation/common/logger'
-import { createProgress } from '@ynab-automation/common/progress'
+} from '@personal-automation/common/logger'
+import { createProgress } from '@personal-automation/common/progress'
 import {
   createYnabClient,
   type PatchTransactionsResult,
   type YnabClient,
-} from '@ynab-automation/ynab/client'
-import { formatDollars, milliunitsToDollars } from '@ynab-automation/ynab/milliunits'
+} from '@personal-automation/ynab/client'
+import { formatDollars, milliunitsToDollars } from '@personal-automation/ynab/milliunits'
 import type {
   Category,
   CategoryGroup,
   Transaction,
   TransactionPatch,
-} from '@ynab-automation/ynab/types'
+} from '@personal-automation/ynab/types'
 import pLimit from 'p-limit'
 import { z } from 'zod'
 import {

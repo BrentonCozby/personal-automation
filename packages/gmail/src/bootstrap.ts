@@ -1,8 +1,8 @@
 import { spawn } from 'node:child_process'
 import { randomBytes } from 'node:crypto'
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http'
-import { loadRootEnv } from '@ynab-automation/common/env'
-import { formatError } from '@ynab-automation/common/errors'
+import { loadRootEnv } from '@personal-automation/common/env'
+import { formatError } from '@personal-automation/common/errors'
 import {
   GMAIL_SCOPE_READONLY,
   GMAIL_SCOPE_SEND,

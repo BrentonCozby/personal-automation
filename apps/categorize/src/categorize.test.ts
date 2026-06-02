@@ -1,5 +1,5 @@
-import type { Logger } from '@ynab-automation/common/logger'
-import type { Category, CategoryGroup, Transaction } from '@ynab-automation/ynab/types'
+import type { Logger } from '@personal-automation/common/logger'
+import type { Category, CategoryGroup, Transaction } from '@personal-automation/ynab/types'
 import { describe, expect, it, vi } from 'vitest'
 import type { AnthropicCategorizeClient } from './anthropic/client.js'
 import {

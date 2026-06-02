@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Wrapper invoked by launchd. Runs each ynab-automation app in order and posts a
+# Wrapper invoked by launchd. Runs each personal-automation app in order and posts a
 # macOS notification on any non-zero exit so failures don't go unseen.
 #
 # Add new apps by appending to APPS below; they'll run in sequence.
@@ -14,12 +14,12 @@ APPS=(
   'categorize'
 )
 
-err_log="$(mktemp -t ynab-automation.XXXXXX)"
+err_log="$(mktemp -t personal-automation.XXXXXX)"
 trap 'rm -f "$err_log"' EXIT
 
 overall_exit=0
 for app in "${APPS[@]}"; do
-  /bin/zsh -lc "pnpm --filter @ynab-automation/$app $app" 2> >(tee -a "$err_log" >&2)
+  /bin/zsh -lc "pnpm --filter @personal-automation/$app $app" 2> >(tee -a "$err_log" >&2)
   app_exit=$?
   if [ "$app_exit" -ne 0 ]; then
     overall_exit=$app_exit
@@ -31,7 +31,7 @@ done
 # `|| true` so a notify failure doesn't poison $overall_exit. No exit-code gating:
 # $overall_exit is the last non-zero app exit, so gating on a specific value could
 # mask real failures from another app in the same run.
-/bin/zsh -lc "pnpm --filter @ynab-automation/notify notify" || true
+/bin/zsh -lc "pnpm --filter @personal-automation/notify notify" || true
 
 # Trim audit logs older than 90 days so the audit/ dir doesn't grow forever.
 find "$PROJECT_DIR/apps"/*/audit -name '*.jsonl' -mtime +90 -delete 2>/dev/null || true

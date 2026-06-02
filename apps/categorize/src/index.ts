@@ -1,7 +1,7 @@
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { formatError } from '@ynab-automation/common/errors'
-import { acquireLock, type LockHandle, LockHeldError } from '@ynab-automation/common/lock'
+import { formatError } from '@personal-automation/common/errors'
+import { acquireLock, type LockHandle, LockHeldError } from '@personal-automation/common/lock'
 import { runCategorize } from './categorize.js'
 import { loadConfig } from './config.js'
 

@@ -1,4 +1,4 @@
-import { type PatchStatus, RUN_ABORTED_SENTINEL } from '@ynab-automation/common/logger'
+import { type PatchStatus, RUN_ABORTED_SENTINEL } from '@personal-automation/common/logger'
 import { SUBJECT_PREFIX } from './constants.js'
 
 export type AuditRow = {
@@ -93,7 +93,7 @@ function renderRow({ row }: { row: AuditRow }): string {
 }
 
 // amount_dollars is already in dollars in the audit schema, while the only existing
-// helper (`formatDollars` in @ynab-automation/ynab/milliunits) takes milliunits. A
+// helper (`formatDollars` in @personal-automation/ynab/milliunits) takes milliunits. A
 // 3-line inline format is cleaner than round-tripping × 1000 just to reuse it.
 function formatAmount(dollars: number): string {
   const sign = dollars < 0 ? '-' : ''

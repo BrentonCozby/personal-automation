@@ -1,5 +1,5 @@
 {
-  "name": "@ynab-automation/common",
+  "name": "@personal-automation/common",
   "version": "0.0.0",
   "type": "module",
   "private": true,

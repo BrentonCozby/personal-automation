@@ -1,4 +1,4 @@
-import { RUN_ABORTED_SENTINEL } from '@ynab-automation/common/logger'
+import { RUN_ABORTED_SENTINEL } from '@personal-automation/common/logger'
 import { describe, expect, it } from 'vitest'
 import { type AuditRow, buildDigest } from './digest.js'
 
