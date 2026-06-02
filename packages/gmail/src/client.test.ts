@@ -42,7 +42,7 @@ describe('createGmailClient.sendMessage', (): void => {
     expect(decoded).toContain('plain text body')
   })
 
-  it('preserves non-ASCII chars (box-drawing) through base64url', async (): Promise<void> => {
+  it('RFC 2047 encodes a non-ASCII subject and keeps raw UTF-8 in the body', async (): Promise<void> => {
     let receivedRaw = ''
     server.use(
       http.post(`${GMAIL_API_BASE_URL}/users/me/messages/send`, async ({ request }) => {
@@ -61,8 +61,60 @@ describe('createGmailClient.sendMessage', (): void => {
     })
 
     const decoded = Buffer.from(receivedRaw, 'base64url').toString('utf8')
+    // Body carries raw UTF-8 (covered by the body's charset=utf-8).
     expect(decoded).toContain('═══')
-    expect(decoded).toContain('Subject: YNAB Automation — 3 errors')
+    // Subject is an encoded-word that round-trips back to the original text.
+    const subjectLine = decoded.split('\r\n').find(l => l.startsWith('Subject: '))
+    expect(subjectLine).toMatch(/^Subject: =\?UTF-8\?B\?[A-Za-z0-9+/=]+\?=$/)
+    const b64 = (subjectLine ?? '').replace('Subject: =?UTF-8?B?', '').replace('?=', '')
+    expect(Buffer.from(b64, 'base64').toString('utf8')).toBe('YNAB Automation — 3 errors')
+  })
+
+  it('leaves an ASCII subject unencoded', async (): Promise<void> => {
+    let receivedRaw = ''
+    server.use(
+      http.post(`${GMAIL_API_BASE_URL}/users/me/messages/send`, async ({ request }) => {
+        receivedRaw = ((await request.json()) as { raw: string }).raw
+
+        return HttpResponse.json({ id: 'msg-1', threadId: 'thr-1' })
+      }),
+    )
+
+    const client = createGmailClient({ auth: fakeAuth() })
+    await client.sendMessage({
+      to: 'me@example.com',
+      subject: 'Task Review - 5 flagged',
+      body: 'b',
+    })
+
+    const decoded = Buffer.from(receivedRaw, 'base64url').toString('utf8')
+    expect(decoded).toContain('Subject: Task Review - 5 flagged')
+  })
+
+  it('sends multipart/alternative with text + HTML parts when html is provided', async (): Promise<void> => {
+    let receivedRaw = ''
+    server.use(
+      http.post(`${GMAIL_API_BASE_URL}/users/me/messages/send`, async ({ request }) => {
+        receivedRaw = ((await request.json()) as { raw: string }).raw
+
+        return HttpResponse.json({ id: 'msg-1', threadId: 'thr-1' })
+      }),
+    )
+
+    const client = createGmailClient({ auth: fakeAuth() })
+    await client.sendMessage({
+      to: 'me@example.com',
+      subject: 'Hi',
+      body: 'plain fallback',
+      html: '<div>rich <strong>body</strong></div>',
+    })
+
+    const decoded = Buffer.from(receivedRaw, 'base64url').toString('utf8')
+    expect(decoded).toContain('Content-Type: multipart/alternative; boundary="')
+    expect(decoded).toContain('Content-Type: text/plain; charset="utf-8"')
+    expect(decoded).toContain('plain fallback')
+    expect(decoded).toContain('Content-Type: text/html; charset="utf-8"')
+    expect(decoded).toContain('<div>rich <strong>body</strong></div>')
   })
 
   it('throws on 4xx and does not retry (client error)', async (): Promise<void> => {

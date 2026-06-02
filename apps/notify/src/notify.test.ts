@@ -54,6 +54,18 @@ function baseRow(overrides: Record<string, unknown>): Record<string, unknown> {
   }
 }
 
+// The gmail client RFC 2047 encodes a non-ASCII subject (the em dash), so read it back.
+function decodeSubject(rawMessage: string): string {
+  const value =
+    rawMessage
+      .split('\r\n')
+      .find(l => l.startsWith('Subject: '))
+      ?.replace('Subject: ', '') ?? ''
+  const b64 = value.match(/^=\?UTF-8\?B\?(.+)\?=$/)?.[1]
+
+  return b64 ? Buffer.from(b64, 'base64').toString('utf8') : value
+}
+
 describe('runNotify', (): void => {
   it('returns no_errors and skips send when today’s audit logs have no error rows', async (): Promise<void> => {
     const appsDir = setupAppsDir()
@@ -112,7 +124,7 @@ describe('runNotify', (): void => {
 
     const decoded = Buffer.from(receivedRaw, 'base64url').toString('utf8')
     expect(decoded).toContain('To: me@example.com')
-    expect(decoded).toContain('Subject: YNAB Automation — 1 error')
+    expect(decodeSubject(decoded)).toBe('YNAB Automation — 1 error')
     expect(decoded).toContain('Transaction bad')
     expect(decoded).toContain('rate_limit_error: 429 from anthropic')
   })
@@ -130,7 +142,6 @@ describe('runNotify', (): void => {
     ].join('\n')
     writeFileSync(join(auditDir, `ynab-categorize-${TODAY}.jsonl`), content)
 
-    let sentSubject = ''
     let receivedRaw = ''
     server.use(
       http.post(GOOGLE_OAUTH_TOKEN_URL, () =>
@@ -141,10 +152,7 @@ describe('runNotify', (): void => {
         }),
       ),
       http.post(`${GMAIL_API_BASE_URL}/users/me/messages/send`, async ({ request }) => {
-        const body = (await request.json()) as { raw: string }
-        receivedRaw = body.raw
-        const decoded = Buffer.from(body.raw, 'base64url').toString('utf8')
-        sentSubject = decoded.split('\r\n').find(l => l.startsWith('Subject: ')) ?? ''
+        receivedRaw = ((await request.json()) as { raw: string }).raw
 
         return HttpResponse.json({ id: 'msg-1', threadId: 'thr-1' })
       }),
@@ -153,7 +161,8 @@ describe('runNotify', (): void => {
     const result = await runNotify({ config: makeConfig(), today: TODAY, appsDir })
 
     expect(result.kind).toBe('sent')
-    expect(sentSubject).toBe('Subject: YNAB Automation — 1 error')
+    const decoded = Buffer.from(receivedRaw, 'base64url').toString('utf8')
+    expect(decodeSubject(decoded)).toBe('YNAB Automation — 1 error')
     expect(receivedRaw).not.toBe('')
   })
 
