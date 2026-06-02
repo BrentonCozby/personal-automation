@@ -1,7 +1,7 @@
-import { loadRootEnv } from '@personal-automation/common/env'
+import { loadAppEnv } from '@personal-automation/common/env'
 import { z } from 'zod'
 
-loadRootEnv(import.meta.url)
+loadAppEnv(import.meta.url)
 
 const schema = z.object({
   NOTIFY_TO_EMAIL: z.email(),

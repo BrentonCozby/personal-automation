@@ -1,7 +1,7 @@
-import { jsonValue, loadRootEnv } from '@personal-automation/common/env'
+import { jsonValue, loadAppEnv } from '@personal-automation/common/env'
 import { z } from 'zod'
 
-loadRootEnv(import.meta.url)
+loadAppEnv(import.meta.url)
 
 const schema = z.object({
   YNAB_TOKEN: z.string().min(1),

@@ -1,7 +1,7 @@
-import { jsonValue, loadRootEnv } from '@personal-automation/common/env'
+import { jsonValue, loadAppEnv } from '@personal-automation/common/env'
 import { z } from 'zod'
 
-loadRootEnv(import.meta.url)
+loadAppEnv(import.meta.url)
 
 // STALLED_TASKS_SCHEDULE (the days/times the digest runs) isn't here: it's consumed only by the
 // launchd plist generator at setup time, not at app runtime. launchd fires the digest on the

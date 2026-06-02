@@ -1,16 +1,17 @@
 import { writeFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { jsonValue, loadRootEnv, resolveWorkspaceRoot } from '@personal-automation/common/env'
+import { jsonValue, loadAppEnv, resolveWorkspaceRoot } from '@personal-automation/common/env'
 import { formatError } from '@personal-automation/common/errors'
 import { z } from 'zod'
 import { buildStalledTasksPlist, parseSchedule } from './schedule.js'
 
-// Reads STALLED_TASKS_SCHEDULE from the root .env and writes the dedicated launchd agent plist.
-// Invoked by launchd/setup.sh; re-run whenever the schedule changes. The plist is gitignored
+// Reads STALLED_TASKS_SCHEDULE from the stalled-tasks .env and writes the dedicated launchd agent
+// plist. Invoked by launchd/setup.sh; re-run whenever the schedule changes. The plist is gitignored
 // (machine-specific paths), like the YNAB one.
-loadRootEnv(import.meta.url)
+loadAppEnv(import.meta.url)
 
 function main(): void {
+  // biome-ignore lint/complexity/useLiteralKeys: TS strict mode requires bracket access on process.env
   const entries = jsonValue.pipe(z.array(z.string())).parse(process.env['STALLED_TASKS_SCHEDULE'])
   const schedule = parseSchedule(entries)
   const projectDir = resolveWorkspaceRoot(import.meta.url)

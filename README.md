@@ -17,14 +17,18 @@ Commit messages follow [Conventional Commits](https://www.conventionalcommits.or
 
 ```bash
 pnpm install
-cp .env.example .env
+cp .env.example .env                                            # shared secrets + ids
+cp apps/ynab-categorize/.env.example apps/ynab-categorize/.env  # only for apps you run
+cp apps/stalled-tasks/.env.example apps/stalled-tasks/.env
+cp apps/notify/.env.example apps/notify/.env
 ```
 
-`.env` is the single source of truth for every secret, id, and tuning knob. Every variable in it is required at startup — config loaders throw if any are missing — so fill in the vars for the apps you actually run. `.env.example` documents each; in short:
+Config is split: shared secrets and ids live in the root `.env`, and each app's own config sits beside it in `apps/<app>/.env`. At startup an app loads the root `.env` then its own `.env` on top; every variable it needs is required — config loaders throw if any are missing — so only fill in the apps you actually run. Each `.env` has a `.env.example` next to it:
 
-- **Shared**: `ANTHROPIC_API_KEY` (from [console.anthropic.com](https://console.anthropic.com), separate from Claude Pro) and the `GMAIL_OAUTH_*` credentials apps send mail through.
-- **ynab-categorize**: `YNAB_TOKEN`, your `YNAB_BUDGET_ID` + `ALLOWED_ACCOUNT_IDS`, and tuning knobs `LOOKBACK_DAYS`, `EXCLUDED_CATEGORY_GROUPS`, `CATEGORY_ROUTING_HINTS`, `YNAB_CATEGORIZER_ANTHROPIC_MODEL`.
-- **stalled-tasks**: `REMINDERS_LISTS`, `STALLED_TASKS_SCHEDULE`, `STALLED_TASKS_TO_EMAIL`, `STALLED_TASKS_ANTHROPIC_MODEL`.
+- **root `.env`** — `ANTHROPIC_API_KEY` (from [console.anthropic.com](https://console.anthropic.com), separate from Claude Pro), `YNAB_TOKEN` + `YNAB_BUDGET_ID`, and the `GMAIL_OAUTH_*` credentials apps send mail through.
+- **`apps/ynab-categorize/.env`** — `ALLOWED_ACCOUNT_IDS`, `LOOKBACK_DAYS`, `AUDIT_DIR`, `EXCLUDED_CATEGORY_GROUPS`, `CATEGORY_ROUTING_HINTS`, `YNAB_CATEGORIZER_ANTHROPIC_MODEL`.
+- **`apps/stalled-tasks/.env`** — `REMINDERS_LISTS`, `STALLED_TASKS_SCHEDULE`, `STALLED_TASKS_TO_EMAIL`, `STALLED_TASKS_ANTHROPIC_MODEL`, and digest tuning (`DIGEST_MAX_ITEMS`, `STALE_THRESHOLD_DAYS`).
+- **`apps/notify/.env`** — `NOTIFY_TO_EMAIL`.
 
 Requires Node 26+ and pnpm 11+.
 
