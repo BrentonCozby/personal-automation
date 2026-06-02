@@ -1,10 +1,11 @@
 import { mkdtempSync, readdirSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { type Logger, RUN_ABORTED_SENTINEL } from '@ynab-automation/common/logger'
 import { setupMswServer } from '@ynab-automation/common/test-msw'
 import { YNAB_API_BASE_URL } from '@ynab-automation/ynab/constants'
 import { HttpResponse, http } from 'msw'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { type CategorizeAudit, runCategorize } from './categorize.js'
 import type { Config } from './config.js'
 
@@ -255,7 +256,7 @@ describe('runCategorize (e2e)', (): void => {
     expect(audit[0]?.error).toContain('400')
   })
 
-  it('PATCH response with unexpected shape rejects the run instead of being logged', async (): Promise<void> => {
+  it('PATCH response with unexpected shape rejects the run and writes a run-aborted audit entry', async (): Promise<void> => {
     server.use(
       http.get(`${YNAB_API_BASE_URL}/budgets/${BUDGET_ID}/categories`, () =>
         HttpResponse.json(categoriesResponse),
@@ -276,6 +277,75 @@ describe('runCategorize (e2e)', (): void => {
     await expect(
       runCategorize({ config: makeConfig(), opts: { dryRun: false, verbose: false } }),
     ).rejects.toThrow()
+
+    const audit = readAuditLines()
+    const aborted = audit.find(e => e.transaction_id === RUN_ABORTED_SENTINEL)
+    expect(aborted).toBeDefined()
+    expect(aborted?.status).toBe('error')
+    expect(aborted?.patch_status).toBe('error')
+    expect(aborted?.error).toBeTruthy()
+  })
+
+  it('writes a run-aborted audit entry when the categories endpoint returns a bad shape', async (): Promise<void> => {
+    server.use(
+      // Malformed: top-level `data` missing `category_groups`. This rejects in the YNAB
+      // client's Zod parse before any txn work begins — exactly the kind of fatal that
+      // would otherwise leave no audit trail.
+      http.get(`${YNAB_API_BASE_URL}/budgets/${BUDGET_ID}/categories`, () =>
+        HttpResponse.json({ data: {} }),
+      ),
+      http.get(
+        `${YNAB_API_BASE_URL}/budgets/${BUDGET_ID}/accounts/${ACCOUNT_ID}/transactions`,
+        () => HttpResponse.json({ data: { transactions: [] } }),
+      ),
+    )
+
+    await expect(
+      runCategorize({ config: makeConfig(), opts: { dryRun: false, verbose: false } }),
+    ).rejects.toThrow()
+
+    const audit = readAuditLines()
+    expect(audit).toHaveLength(1)
+    expect(audit[0]?.transaction_id).toBe(RUN_ABORTED_SENTINEL)
+    expect(audit[0]?.patch_status).toBe('error')
+    expect(audit[0]?.status).toBe('error')
+  })
+
+  it('propagates the original error when the run-aborted audit write itself fails', async (): Promise<void> => {
+    server.use(
+      // Malformed categories response rejects before any txn work — same fatal as above.
+      http.get(`${YNAB_API_BASE_URL}/budgets/${BUDGET_ID}/categories`, () =>
+        HttpResponse.json({ data: {} }),
+      ),
+      http.get(
+        `${YNAB_API_BASE_URL}/budgets/${BUDGET_ID}/accounts/${ACCOUNT_ID}/transactions`,
+        () => HttpResponse.json({ data: { transactions: [] } }),
+      ),
+    )
+
+    // Logger whose audit() fails (disk full / perms) when the wrapper records the
+    // run-aborted row. The original fatal must still surface, not this write error.
+    const auditWriteError = new Error('audit write failed')
+    const logger: Logger<CategorizeAudit> = {
+      info: vi.fn(),
+      warn: vi.fn(),
+      error: vi.fn(),
+      debug: vi.fn(),
+      audit: vi.fn(() => {
+        throw auditWriteError
+      }),
+    }
+
+    const caught = await runCategorize({
+      config: makeConfig(),
+      opts: { dryRun: false, verbose: false },
+      logger,
+    }).catch((e: unknown) => e)
+
+    expect(caught).toBeInstanceOf(Error)
+    expect((caught as Error).message).not.toContain('audit write failed')
+    expect(logger.audit).toHaveBeenCalledOnce()
+    expect(logger.error).toHaveBeenCalledOnce()
   })
 
   it('categorize failure marks audit status error + patch_status skipped_for_upstream_error', async (): Promise<void> => {

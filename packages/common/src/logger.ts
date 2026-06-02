@@ -30,6 +30,11 @@ export const baseAuditSchema = z.object(baseAuditFields)
 export type BaseAudit = z.infer<typeof baseAuditSchema>
 export type PatchStatus = BaseAudit['patch_status']
 
+// Reserved transaction_id marking a run-level abort, not a real transaction. Producers
+// write it when a run dies before processing entities; the notify digest renders it as a
+// run-level failure. Shared so producer and consumer can't drift.
+export const RUN_ABORTED_SENTINEL = '<run-aborted>'
+
 type LogParams = { msg: string; extra?: Record<string, unknown> }
 
 export type Logger<TAudit extends BaseAudit> = {

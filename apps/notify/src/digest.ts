@@ -1,4 +1,4 @@
-import type { PatchStatus } from '@ynab-automation/common/logger'
+import { type PatchStatus, RUN_ABORTED_SENTINEL } from '@ynab-automation/common/logger'
 import { SUBJECT_PREFIX } from './constants.js'
 
 export type AuditRow = {
@@ -74,6 +74,12 @@ function renderSection({ app, bucket }: { app: string; bucket: AppBucket }): str
 }
 
 function renderRow({ row }: { row: AuditRow }): string {
+  if (row.transaction_id === RUN_ABORTED_SENTINEL) {
+    const reason = row.error ?? '(no error message recorded)'
+
+    return [`  RUN ABORTED`, `    Reason:  ${reason}`].join('\n')
+  }
+
   const payee = row.payee_name ?? '(no payee)'
   const reason = row.error ?? '(no error message recorded)'
 

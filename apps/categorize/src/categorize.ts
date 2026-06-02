@@ -1,7 +1,12 @@
 import { chunks } from '@ynab-automation/common/chunks'
 import { isoDateNDaysAgo } from '@ynab-automation/common/date'
-import { YnabApiError } from '@ynab-automation/common/errors'
-import { baseAuditFields, createLogger, type Logger } from '@ynab-automation/common/logger'
+import { formatError, YnabApiError } from '@ynab-automation/common/errors'
+import {
+  baseAuditFields,
+  createLogger,
+  type Logger,
+  RUN_ABORTED_SENTINEL,
+} from '@ynab-automation/common/logger'
 import { createProgress } from '@ynab-automation/common/progress'
 import {
   createYnabClient,
@@ -71,16 +76,47 @@ type CategorizationOutcome = { patch: TransactionPatch; auditEntry: AuditCore }
 export async function runCategorize({
   config,
   opts,
-}: {
-  config: Config
-  opts: RunOptions
-}): Promise<RunResult> {
-  const logger = createLogger({
+  // Injectable for tests; defaults to the real audit logger.
+  logger = createLogger({
     verbose: opts.verbose,
     name: 'categorize',
     auditSchema: categorizeAuditSchema,
     auditDir: config.auditDir,
-  })
+  }),
+}: {
+  config: Config
+  opts: RunOptions
+  logger?: Logger<CategorizeAudit>
+}): Promise<RunResult> {
+  try {
+    return await runCategorizeInner({ config, opts, logger })
+  } catch (err) {
+    // Surface fatal aborts in the audit log so the notify digest emails them — the
+    // macOS notification and stderr stack might be missed. Guard the audit write: if
+    // appendFileSync itself fails (disk full, perms), don't let that error replace the
+    // real cause. logger.error goes to pino/stderr, a different sink than the audit
+    // file that just failed, so it still works here.
+    try {
+      logger.audit(buildRunAbortedAuditEntry(err))
+    } catch (auditErr) {
+      logger.error({
+        msg: 'Failed to write run-aborted audit entry',
+        extra: { error: formatError(auditErr) },
+      })
+    }
+    throw err
+  }
+}
+
+async function runCategorizeInner({
+  config,
+  opts,
+  logger,
+}: {
+  config: Config
+  opts: RunOptions
+  logger: Logger<CategorizeAudit>
+}): Promise<RunResult> {
   const ynab = createYnabClient({ token: config.ynabToken, budgetId: config.budgetId })
   const llm = createAnthropicClient({
     apiKey: config.anthropicApiKey,
@@ -488,6 +524,22 @@ function resolveCategoryId({
   }
 
   return { id: result.categoryId, status: 'ok' }
+}
+
+export function buildRunAbortedAuditEntry(err: unknown): CategorizeAudit {
+  return {
+    app: 'categorize',
+    timestamp: new Date().toISOString(),
+    transaction_id: RUN_ABORTED_SENTINEL,
+    payee_name: null,
+    memo: null,
+    amount_dollars: 0,
+    patch_status: 'error',
+    status: 'error',
+    chosen_category_id: null,
+    chosen_category_name: null,
+    error: formatError(err),
+  }
 }
 
 export function buildAuditEntry({

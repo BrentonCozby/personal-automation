@@ -1,3 +1,4 @@
+import { RUN_ABORTED_SENTINEL } from '@ynab-automation/common/logger'
 import { describe, expect, it } from 'vitest'
 import { type AuditRow, buildDigest } from './digest.js'
 
@@ -125,6 +126,26 @@ describe('buildDigest', (): void => {
     expect(digest.body).toContain('categorize — 0 errors, 1 success')
     expect(digest.body).toContain('(no errors)')
     expect(digest.body).toContain('enrich-memos — 1 error, 0 successes')
+  })
+
+  it('renders a run-aborted row as a run-level header instead of a transaction', (): void => {
+    const digest = buildDigest({
+      rows: [
+        row({
+          transaction_id: RUN_ABORTED_SENTINEL,
+          payee_name: null,
+          amount_dollars: 0,
+          patch_status: 'error',
+          error: 'TypeError: Cannot read properties of undefined (reading "foo")',
+        }),
+      ],
+    })
+
+    expect(digest.errorCount).toBe(1)
+    expect(digest.body).toContain('RUN ABORTED')
+    expect(digest.body).toContain('Reason:  TypeError: Cannot read properties of undefined')
+    expect(digest.body).not.toContain('Transaction <run-aborted>')
+    expect(digest.body).not.toContain('Amount:')
   })
 
   it('renders apps in stable alphabetical order', (): void => {
