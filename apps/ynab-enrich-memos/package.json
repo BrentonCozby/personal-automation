@@ -1,5 +1,5 @@
 {
-  "name": "@personal-automation/enrich-memos",
+  "name": "@personal-automation/ynab-enrich-memos",
   "version": "0.0.0",
   "type": "module",
   "private": true,

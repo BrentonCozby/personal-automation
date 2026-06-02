@@ -42,7 +42,22 @@ importers:
         specifier: ^4.1.7
         version: 4.1.7(@types/node@25.9.1)(@vitest/coverage-v8@4.1.7)(msw@2.14.6(@types/node@25.9.1)(typescript@6.0.3))(vite@8.0.14(@types/node@25.9.1)(esbuild@0.28.0)(jiti@2.6.1)(tsx@4.22.3)(yaml@2.9.0))
 
-  apps/categorize:
+  apps/notify:
+    dependencies:
+      '@personal-automation/common':
+        specifier: workspace:*
+        version: link:../../packages/common
+      '@personal-automation/gmail':
+        specifier: workspace:*
+        version: link:../../packages/gmail
+      pino:
+        specifier: ^10.3.1
+        version: 10.3.1
+      zod:
+        specifier: ^4.4.3
+        version: 4.4.3
+
+  apps/ynab-categorize:
     dependencies:
       '@anthropic-ai/sdk':
         specifier: ^0.98.0
@@ -60,7 +75,7 @@ importers:
         specifier: ^4.4.3
         version: 4.4.3
 
-  apps/enrich-memos:
+  apps/ynab-enrich-memos:
     dependencies:
       '@personal-automation/common':
         specifier: workspace:*
@@ -68,21 +83,6 @@ importers:
       '@personal-automation/ynab':
         specifier: workspace:*
         version: link:../../packages/ynab
-
-  apps/notify:
-    dependencies:
-      '@personal-automation/common':
-        specifier: workspace:*
-        version: link:../../packages/common
-      '@personal-automation/gmail':
-        specifier: workspace:*
-        version: link:../../packages/gmail
-      pino:
-        specifier: ^10.3.1
-        version: 10.3.1
-      zod:
-        specifier: ^4.4.3
-        version: 4.4.3
 
   packages/common:
     dependencies:

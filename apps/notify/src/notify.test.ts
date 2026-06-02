@@ -59,7 +59,7 @@ describe('runNotify', (): void => {
     const appsDir = setupAppsDir()
     writeJsonl({
       appsDir,
-      app: 'categorize',
+      app: 'ynab-categorize',
       rows: [
         baseRow({ transaction_id: 'a', patch_status: 'success' }),
         baseRow({ transaction_id: 'b', patch_status: 'success' }),
@@ -75,7 +75,7 @@ describe('runNotify', (): void => {
     const appsDir = setupAppsDir()
     writeJsonl({
       appsDir,
-      app: 'categorize',
+      app: 'ynab-categorize',
       rows: [
         baseRow({ transaction_id: 'good', patch_status: 'success' }),
         baseRow({
@@ -119,7 +119,7 @@ describe('runNotify', (): void => {
 
   it('skips malformed JSONL lines and still reads valid ones', async (): Promise<void> => {
     const appsDir = setupAppsDir()
-    const auditDir = join(appsDir, 'categorize', 'audit')
+    const auditDir = join(appsDir, 'ynab-categorize', 'audit')
     mkdirSync(auditDir, { recursive: true })
     const content = [
       JSON.stringify(baseRow({ transaction_id: 'good-1', patch_status: 'success' })),
@@ -128,7 +128,7 @@ describe('runNotify', (): void => {
       JSON.stringify(baseRow({ transaction_id: 'good-2', patch_status: 'error', error: 'boom' })),
       '',
     ].join('\n')
-    writeFileSync(join(auditDir, `categorize-${TODAY}.jsonl`), content)
+    writeFileSync(join(auditDir, `ynab-categorize-${TODAY}.jsonl`), content)
 
     let sentSubject = ''
     let receivedRaw = ''
@@ -162,14 +162,14 @@ describe('runNotify', (): void => {
     // App with audit dir but yesterday's file.
     writeJsonl({
       appsDir,
-      app: 'categorize',
+      app: 'ynab-categorize',
       rows: [baseRow({ transaction_id: 'old', patch_status: 'error', error: 'old-boom' })],
       date: '2026-05-27',
     })
     // App with today's file.
     writeJsonl({
       appsDir,
-      app: 'enrich-memos',
+      app: 'ynab-enrich-memos',
       rows: [
         baseRow({
           transaction_id: 'fresh',

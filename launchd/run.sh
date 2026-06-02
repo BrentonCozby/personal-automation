@@ -9,9 +9,9 @@ PROJECT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$PROJECT_DIR"
 
 APPS=(
-  # Enrichment runs first so categorize sees the populated memos.
-  # 'enrich-memos'    # uncomment when Phase 2 lands
-  'categorize'
+  # Enrichment runs first so ynab-categorize sees the populated memos.
+  # 'ynab-enrich-memos'    # uncomment when Phase 2 lands
+  'ynab-categorize'
 )
 
 err_log="$(mktemp -t personal-automation.XXXXXX)"
@@ -39,7 +39,7 @@ find "$PROJECT_DIR/apps"/*/audit -name '*.jsonl' -mtime +90 -delete 2>/dev/null 
 if [ "$overall_exit" -ne 0 ]; then
   last_err="$(tail -3 "$err_log" | tr '\n' ' ' | sed 's/"/\\"/g')"
   /usr/bin/osascript \
-    -e "display notification \"${last_err:-See $PROJECT_DIR/audit/launchd.err.log}\" with title \"YNAB Automation FAILED (exit $overall_exit)\" sound name \"Basso\""
+    -e "display notification \"${last_err:-See $PROJECT_DIR/audit/launchd.err.log}\" with title \"Personal Automation FAILED (exit $overall_exit)\" sound name \"Basso\""
 fi
 
 exit "$overall_exit"

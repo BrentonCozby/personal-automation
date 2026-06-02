@@ -1,13 +1,13 @@
 {
-  "name": "@personal-automation/categorize",
+  "name": "@personal-automation/ynab-categorize",
   "version": "0.1.0",
   "type": "module",
   "private": true,
   "scripts": {
     "build": "tsc -b",
     "start": "node dist/index.js",
-    "categorize": "tsx src/index.ts",
-    "test:categorize": "tsx src/index.ts --dry-run"
+    "ynab-categorize": "tsx src/index.ts",
+    "test:ynab-categorize": "tsx src/index.ts --dry-run"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.98.0",

@@ -2,8 +2,8 @@
 
 Personal automation monorepo — a pnpm workspace of small scheduled jobs and the shared libraries they use. Budgeting (YNAB) is the main domain today, but the layout isn't YNAB-specific: each automation is its own app on top of shared infrastructure.
 
-- **`apps/categorize`** — daily CLI that auto-categorizes Amazon transactions using the Anthropic API (Claude Haiku by default).
-- **`apps/enrich-memos`** — planned Phase 2 (design only — see [apps/enrich-memos/plan.md](apps/enrich-memos/plan.md)). Reads Amazon receipt emails, parses product names, PATCHes `memo` on matching YNAB transactions so the categorizer has better data to work with.
+- **`apps/ynab-categorize`** — daily CLI that auto-categorizes Amazon transactions using the Anthropic API (Claude Haiku by default).
+- **`apps/ynab-enrich-memos`** — planned Phase 2 (design only — see [apps/ynab-enrich-memos/plan.md](apps/ynab-enrich-memos/plan.md)). Reads Amazon receipt emails, parses product names, PATCHes `memo` on matching YNAB transactions so the categorizer has better data to work with.
 - **`apps/notify`** — emails a digest after the daily run when any app's audit log shows errors (design in [apps/notify/plan.md](apps/notify/plan.md)).
 - **`packages/ynab`** — shared YNAB API client (zod-validated) + schemas + types + milliunits helpers.
 - **`packages/gmail`** — Gmail API client (OAuth + send), zod-validated.
@@ -32,18 +32,18 @@ Requires Node 26+ and pnpm 11+.
 
 ```bash
 # Dry run with verbose logs — does NOT PATCH
-pnpm test:categorize
+pnpm test:ynab-categorize
 
 # Real run
-pnpm categorize
+pnpm ynab-categorize
 
 # Override lookback window
-pnpm categorize --lookback-days 5
+pnpm ynab-categorize --lookback-days 5
 ```
 
-The categorizer always appends a JSONL audit line per decision to `apps/categorize/audit/categorize-YYYY-MM-DD.jsonl`.
+The categorizer always appends a JSONL audit line per decision to `apps/ynab-categorize/audit/ynab-categorize-YYYY-MM-DD.jsonl`.
 
-## What `categorize` does
+## What `ynab-categorize` does
 
 1. Loads category groups from YNAB, drops hidden/deleted, drops "Internal Master Category" and the `EXCLUDED_CATEGORY_GROUPS` list, and discovers the "Uncategorized" id for fallback.
 2. Loads transactions per allowed account `since LOOKBACK_DAYS`, keeps only those that are:
@@ -56,7 +56,7 @@ The categorizer always appends a JSONL audit line per decision to `apps/categori
 
 ## Production
 
-`launchd/com.personal-automation` runs `launchd/run.sh` daily at 12:00 local time. The wrapper runs each app in `APPS` sequentially (currently just `categorize`; uncomment `enrich-memos` once it lands) and posts a macOS notification if any non-zero exits.
+`launchd/com.personal-automation` runs `launchd/run.sh` daily at 12:00 local time. The wrapper runs each app in `APPS` sequentially (currently just `ynab-categorize`; uncomment `ynab-enrich-memos` once it lands) and posts a macOS notification if any non-zero exits.
 
 ```bash
 ./launchd/setup.sh   # generates the plist + newsyslog.conf with this checkout's path and your username

@@ -57,7 +57,7 @@ describe('createGmailClient.sendMessage', (): void => {
     await client.sendMessage({
       to: 'me@example.com',
       subject: 'YNAB Automation — 3 errors',
-      body: 'categorize — 3 errors\n═══════════════════════\n  Transaction abc',
+      body: 'ynab-categorize — 3 errors\n═══════════════════════\n  Transaction abc',
     })
 
     const decoded = Buffer.from(receivedRaw, 'base64url').toString('utf8')

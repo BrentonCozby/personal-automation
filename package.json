@@ -22,8 +22,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
-    "categorize": "pnpm --filter @personal-automation/categorize categorize",
-    "test:categorize": "pnpm --filter @personal-automation/categorize test:categorize",
+    "ynab-categorize": "pnpm --filter @personal-automation/ynab-categorize ynab-categorize",
+    "test:ynab-categorize": "pnpm --filter @personal-automation/ynab-categorize test:ynab-categorize",
     "prepare": "husky"
   },
   "devDependencies": {

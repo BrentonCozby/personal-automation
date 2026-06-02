@@ -1,10 +1,10 @@
-# enrich-memos plan
+# ynab-enrich-memos plan
 
 Reads Amazon receipt emails from Gmail and PATCHes the parsed product list into
-the `memo` field of matching YNAB transactions, so when `categorize` runs after
+the `memo` field of matching YNAB transactions, so when `ynab-categorize` runs after
 it has real item names to reason from instead of an empty memo.
 
-Runs **before** `categorize` in `launchd/run.sh`'s `APPS` array, using the same
+Runs **before** `ynab-categorize` in `launchd/run.sh`'s `APPS` array, using the same
 shared packages, same `.env`, and the same audit dir.
 
 Shape borrowed from a community n8n workflow: fetch transactions, filter to
@@ -20,7 +20,7 @@ Enrich a transaction only if **all** of these hold:
 2. `account_id` is in `ALLOWED_ACCOUNT_IDS`
 3. Not a transfer (`transfer_account_id` and `transfer_transaction_id` both
    null)
-4. `flag_name !== 'auto-categorized'` — categorize has already run; overwriting
+4. `flag_name !== 'auto-categorized'` — ynab-categorize has already run; overwriting
    its memo would erase the data the LLM saw and break the audit trail
 5. `memo` is empty OR does **not** start with `auto-gen:`
 
@@ -47,7 +47,7 @@ useful in practice.
       workflow does, to prevent re-runs; we rely on the date-window expiring
       instead so receipts that arrive late still get picked up.
    3. **Messages found** → send messages + transaction info to the Anthropic
-      API (same `ANTHROPIC_API_KEY` / `ANTHROPIC_MODEL` as `categorize`).
+      API (same `ANTHROPIC_API_KEY` / `ANTHROPIC_MODEL` as `ynab-categorize`).
       Prompt asks for a single line of `Item1 ($X), Item2 ($Y) — Total $TOTAL`,
       or the sentinel `__NO_RECEIPT__` if no valid receipt could be identified.
       Use `messages.parse()` with a Zod schema covering both shapes.
@@ -55,12 +55,12 @@ useful in practice.
       audit row with status `no_receipt`.
    5. **Otherwise** → sanitize (strip newlines/quotes/control chars), prepend
       `auto-gen:` plus a space, clamp to 499 chars, queue for PATCH.
-4. Bulk PATCH in batches of 10 (same as `categorize`).
+4. Bulk PATCH in batches of 10 (same as `ynab-categorize`).
 
 ## Module layout
 
 ```text
-apps/enrich-memos/
+apps/ynab-enrich-memos/
   src/
     index.ts          # entrypoint + CLI args (--dry-run, --verbose, --lookback-days), lockfile
     config.ts         # zod-validated loadConfig
@@ -75,7 +75,7 @@ apps/enrich-memos/
       schemas.ts      # zod for the LLM response (item line or __NO_RECEIPT__ sentinel)
 ```
 
-The Anthropic client at `apps/categorize/src/anthropic/client.ts` needs to
+The Anthropic client at `apps/ynab-categorize/src/anthropic/client.ts` needs to
 move into a shared package so both apps can use the same factory — see open
 question 2 below for the location decision.
 
@@ -94,14 +94,14 @@ GMAIL_OAUTH_REFRESH_TOKEN=
 ```
 
 Reusing `YNAB_TOKEN`, `YNAB_BUDGET_ID`, `ALLOWED_ACCOUNT_IDS`,
-`ANTHROPIC_API_KEY`, `ANTHROPIC_MODEL`, and `AUDIT_DIR` from `categorize`.
+`ANTHROPIC_API_KEY`, `ANTHROPIC_MODEL`, and `AUDIT_DIR` from `ynab-categorize`.
 Each app's `loadConfig` parses its own subset.
 
 ## Shared-package contracts this app relies on
 
 - `packages/common/src/logger.ts` — `createLogger` takes a required `name`
   param and writes to `${name}-YYYY-MM-DD.jsonl`. This app passes
-  `name: 'enrich-memos'`.
+  `name: 'ynab-enrich-memos'`.
 - `packages/ynab/src/schemas.ts` — `transactionSchema` exposes `date:
   z.string()`, needed for the receipt-matching window.
 
@@ -118,15 +118,15 @@ Each app's `loadConfig` parses its own subset.
    schemas and an external dependency, but happy to nest under `common/` if
    that's the prevailing pattern.
 3. **`launchd/run.sh` audit log cleanup.** Currently `find … -name
-   'categorize-*.jsonl' -mtime +90 -delete`. Widen to `*.jsonl` so this app's
+   'ynab-categorize-*.jsonl' -mtime +90 -delete`. Widen to `*.jsonl` so this app's
    audits also rotate. Trivial follow-up in the launchd commit; not blocking
-   enrich-memos work.
+   ynab-enrich-memos work.
 
 ## Done when
 
 - Eligible empty-memo Amazon transactions get a memo prefixed `auto-gen:`.
-- `categorize` runs after and sees the populated memo in its prompt.
-- Audit log has one row per attempt with `app: 'enrich-memos'`,
+- `ynab-categorize` runs after and sees the populated memo in its prompt.
+- Audit log has one row per attempt with `app: 'ynab-enrich-memos'`,
   `status` of `ok`, `no_emails`, `no_receipt`, or `error`, and
   `patch_status` of `success`, `error`, `skipped_for_dry_run`, or
   `skipped_for_upstream_error`. The schema lives in this app — spread
@@ -135,5 +135,5 @@ Each app's `loadConfig` parses its own subset.
 - Unit tests cover the eligibility filter (incl. the `auto-gen:` prefix
   branches), the memo sanitizer, and the prompt builder. e2e test uses msw to
   mock both Gmail and YNAB.
-- `launchd/run.sh` has `enrich-memos` uncommented before `categorize` in
+- `launchd/run.sh` has `ynab-enrich-memos` uncommented before `ynab-categorize` in
   `APPS`, and the audit-log find pattern is widened.

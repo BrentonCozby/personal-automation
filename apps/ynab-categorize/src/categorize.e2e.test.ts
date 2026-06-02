@@ -158,7 +158,7 @@ describe('runCategorize (e2e)', (): void => {
 
     const audit = readAuditLines()
     expect(audit).toHaveLength(1)
-    expect(audit[0]?.app).toBe('categorize')
+    expect(audit[0]?.app).toBe('ynab-categorize')
     expect(audit[0]?.status).toBe('ok')
     expect(audit[0]?.patch_status).toBe('success')
     expect(audit[0]?.chosen_category_id).toBe('cGroceries')

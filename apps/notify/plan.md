@@ -22,7 +22,7 @@ Send an email if today's audit rows across all apps contain any of:
 `skipped_for_dry_run` is not a failure and is ignored.)
 
 This also naturally handles the lock-held case
-([apps/categorize/src/index.ts:56](../../apps/categorize/src/index.ts#L56)
+([apps/ynab-categorize/src/index.ts:56](../../apps/ynab-categorize/src/index.ts#L56)
 exits 2 before writing any audit rows), so notify produces nothing for
 overlap-skipped apps without explicit gating.
 
@@ -67,7 +67,7 @@ showing its error / success counts and one block per failed row. Blank lines
 between rows for breathing room.
 
 ```text
-categorize — 3 errors, 47 successes
+ynab-categorize — 3 errors, 47 successes
 ═══════════════════════════════════
 
   Transaction abc123
@@ -83,7 +83,7 @@ categorize — 3 errors, 47 successes
     Reason:  AnthropicError: timeout after 30000ms
 
 
-enrich-memos — 1 error, 11 successes
+ynab-enrich-memos — 1 error, 11 successes
 ════════════════════════════════════
 
   Transaction ghi789
@@ -94,7 +94,7 @@ enrich-memos — 1 error, 11 successes
 ```
 
 The `Amount` column uses `formatDollars` from
-`@personal-automation/ynab/milliunits` — same helper categorize already uses for
+`@personal-automation/ynab/milliunits` — same helper ynab-categorize already uses for
 its logs.
 
 Counts:
@@ -145,13 +145,13 @@ packages/gmail/
 ```
 
 `sendMessage({ to, subject, body })` is all notify needs, and notify ships
-**before** enrich-memos, so the initial `packages/gmail/` commit lands
+**before** ynab-enrich-memos, so the initial `packages/gmail/` commit lands
 `createGmailClient`, `auth.ts`, schemas/types for send, and `sendMessage`.
-`listMessages` / `getMessage` are added later when enrich-memos is built.
+`listMessages` / `getMessage` are added later when ynab-enrich-memos is built.
 
-**OAuth scopes**: `gmail.send` (notify) and `gmail.readonly` (enrich-memos).
+**OAuth scopes**: `gmail.send` (notify) and `gmail.readonly` (ynab-enrich-memos).
 The same refresh token covers both if consented to up front. The bootstrap
-helper requests both scopes during the consent flow so enrich-memos doesn't
+helper requests both scopes during the consent flow so ynab-enrich-memos doesn't
 need a second round.
 
 `sendMessage` wraps its HTTP call in `withRetry` from
@@ -205,14 +205,14 @@ In `.env.example` (all required, no defaults):
 # --- Notify ---
 NOTIFY_TO_EMAIL=
 
-# --- Gmail (shared by notify and enrich-memos) ---
+# --- Gmail (shared by notify and ynab-enrich-memos) ---
 GMAIL_OAUTH_CLIENT_ID=
 GMAIL_OAUTH_CLIENT_SECRET=
 GMAIL_OAUTH_REFRESH_TOKEN=
 ```
 
-The Gmail vars are the same three enrich-memos will use — defined in one place
-so both apps load from the same source. enrich-memos's plan already lists
+The Gmail vars are the same three ynab-enrich-memos will use — defined in one place
+so both apps load from the same source. ynab-enrich-memos's plan already lists
 them; they move to a shared block when notify lands first.
 
 Reuses `AUDIT_DIR` from the existing config. Notify's `loadConfig` parses
@@ -237,9 +237,9 @@ cleanup:
 - The existing `osascript` notification stays as-is. It still fires for any
   non-zero exit and is the floor for "notify itself failed to send."
 
-Also widen the audit-log cleanup `find` from `categorize-*.jsonl` to
+Also widen the audit-log cleanup `find` from `ynab-categorize-*.jsonl` to
 `*.jsonl` so notify's read targets are also rotated. (This is the same change
-enrich-memos's plan calls out as open question 3 — single line, lands here.)
+ynab-enrich-memos's plan calls out as open question 3 — single line, lands here.)
 
 ## Shared-package contracts notify relies on
 
@@ -270,8 +270,8 @@ the two or three lines of stdout/stderr it produces — "sent digest to X",
 - **Audit JSONL malformed line.** `baseAuditSchema.safeParse` per line; on
   failure, log a `warn` to stderr and skip the line. Don't fail the whole
   digest because one row is bad.
-- **`status: 'fallback'` rows** ([apps/categorize/src/categorize.ts:33](../../apps/categorize/src/categorize.ts#L33))
-  are a soft warning from categorize (default category used because no good
+- **`status: 'fallback'` rows** ([apps/ynab-categorize/src/ynab-categorize.ts:33](../../apps/ynab-categorize/src/ynab-categorize.ts#L33))
+  are a soft warning from ynab-categorize (default category used because no good
   match). They land with `patch_status: 'success'`, so notify counts them as
   successes. Not an error condition. Per-app `status` fields are not
   consulted by notify — the email reflects PATCH outcomes only.
@@ -282,7 +282,7 @@ the two or three lines of stdout/stderr it produces — "sent digest to X",
   daily launchd schedule is set well clear of midnight. If this changes,
   pass the run's start date to notify as a CLI arg.
 - **Mixed dry-run + scheduled rows in the same date file.** If a user runs
-  `pnpm test:categorize --dry-run` interactively earlier in the day and the
+  `pnpm test:ynab-categorize --dry-run` interactively earlier in the day and the
   daily launchd run follows, today's file contains both. `patch_status` is
   the only signal, so `skipped_for_dry_run` rows are excluded and counts
   remain correct. (Note: notify is invoked only by `launchd/run.sh`, not by
@@ -341,4 +341,4 @@ Coverage thresholds from the root [vitest.config.ts](../../vitest.config.ts)
 - `launchd/run.sh` invokes notify on exit 1, leaves exit 2 alone, and the
   audit-log cleanup glob is widened to `*.jsonl`.
 - README setup section documents the OAuth scopes (`gmail.send` plus
-  `gmail.readonly` for later enrich-memos use).
+  `gmail.readonly` for later ynab-enrich-memos use).

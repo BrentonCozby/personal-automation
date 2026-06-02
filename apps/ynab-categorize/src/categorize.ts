@@ -34,7 +34,7 @@ import { FLAG_COLOR, FLAG_NAME, PATCH_BATCH_SIZE, PAYEE_FILTER } from './constan
 
 export const categorizeAuditSchema = z.object({
   ...baseAuditFields,
-  app: z.literal('categorize'),
+  app: z.literal('ynab-categorize'),
   status: z.enum(['ok', 'fallback', 'error']),
   chosen_category_id: z.string().nullable(),
   chosen_category_name: z.string().nullable(),
@@ -79,7 +79,7 @@ export async function runCategorize({
   // Injectable for tests; defaults to the real audit logger.
   logger = createLogger({
     verbose: opts.verbose,
-    name: 'categorize',
+    name: 'ynab-categorize',
     auditSchema: categorizeAuditSchema,
     auditDir: config.auditDir,
   }),
@@ -528,7 +528,7 @@ function resolveCategoryId({
 
 export function buildRunAbortedAuditEntry(err: unknown): CategorizeAudit {
   return {
-    app: 'categorize',
+    app: 'ynab-categorize',
     timestamp: new Date().toISOString(),
     transaction_id: RUN_ABORTED_SENTINEL,
     payee_name: null,
@@ -554,7 +554,7 @@ export function buildAuditEntry({
   extra: Partial<AuditCore>
 }): AuditCore {
   return {
-    app: 'categorize',
+    app: 'ynab-categorize',
     timestamp: new Date().toISOString(),
     transaction_id: txn.id,
     payee_name: txn.payee_name,

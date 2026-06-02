@@ -4,7 +4,7 @@ import { type AuditRow, buildDigest } from './digest.js'
 
 function row(overrides: Partial<AuditRow>): AuditRow {
   return {
-    app: 'categorize',
+    app: 'ynab-categorize',
     transaction_id: 't-1',
     payee_name: 'Amazon',
     amount_dollars: -42.1,
@@ -37,27 +37,27 @@ describe('buildDigest', (): void => {
   it('groups by app and counts errors vs successes per app', (): void => {
     const digest = buildDigest({
       rows: [
-        row({ app: 'categorize', transaction_id: 'a', patch_status: 'success' }),
-        row({ app: 'categorize', transaction_id: 'b', patch_status: 'success' }),
+        row({ app: 'ynab-categorize', transaction_id: 'a', patch_status: 'success' }),
+        row({ app: 'ynab-categorize', transaction_id: 'b', patch_status: 'success' }),
         row({
-          app: 'categorize',
+          app: 'ynab-categorize',
           transaction_id: 'c',
           patch_status: 'error',
           error: 'boom',
         }),
         row({
-          app: 'enrich-memos',
+          app: 'ynab-enrich-memos',
           transaction_id: 'd',
           patch_status: 'skipped_for_upstream_error',
           error: 'timeout',
         }),
-        row({ app: 'enrich-memos', transaction_id: 'e', patch_status: 'success' }),
+        row({ app: 'ynab-enrich-memos', transaction_id: 'e', patch_status: 'success' }),
       ],
     })
 
     expect(digest.errorCount).toBe(2)
-    expect(digest.body).toContain('categorize — 1 error, 2 successes')
-    expect(digest.body).toContain('enrich-memos — 1 error, 1 success')
+    expect(digest.body).toContain('ynab-categorize — 1 error, 2 successes')
+    expect(digest.body).toContain('ynab-enrich-memos — 1 error, 1 success')
   })
 
   it('excludes skipped_for_dry_run rows from both counts', (): void => {
@@ -71,7 +71,7 @@ describe('buildDigest', (): void => {
     })
 
     expect(digest.errorCount).toBe(1)
-    expect(digest.body).toContain('categorize — 1 error, 1 success')
+    expect(digest.body).toContain('ynab-categorize — 1 error, 1 success')
   })
 
   it('renders each error row with labeled fields and quotes the error verbatim', (): void => {
@@ -112,9 +112,9 @@ describe('buildDigest', (): void => {
   it('shows a (no errors) line for apps that ran clean alongside apps that failed', (): void => {
     const digest = buildDigest({
       rows: [
-        row({ app: 'categorize', transaction_id: 'a', patch_status: 'success' }),
+        row({ app: 'ynab-categorize', transaction_id: 'a', patch_status: 'success' }),
         row({
-          app: 'enrich-memos',
+          app: 'ynab-enrich-memos',
           transaction_id: 'b',
           patch_status: 'error',
           error: 'boom',
@@ -123,9 +123,9 @@ describe('buildDigest', (): void => {
     })
 
     expect(digest.errorCount).toBe(1)
-    expect(digest.body).toContain('categorize — 0 errors, 1 success')
+    expect(digest.body).toContain('ynab-categorize — 0 errors, 1 success')
     expect(digest.body).toContain('(no errors)')
-    expect(digest.body).toContain('enrich-memos — 1 error, 0 successes')
+    expect(digest.body).toContain('ynab-enrich-memos — 1 error, 0 successes')
   })
 
   it('renders a run-aborted row as a run-level header instead of a transaction', (): void => {

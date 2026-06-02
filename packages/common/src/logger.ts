@@ -12,8 +12,8 @@ import { writeWithProgress } from './progress.js'
 // apps — the per-app schema is the source of truth, passed to `createLogger` for write-time
 // validation.
 //
-// `patch_status: 'skipped_for_upstream_error'` covers any pre-PATCH failure (categorize
-// error, enrich-memos receipt-not-found, etc.) — read your app's `status` for the cause.
+// `patch_status: 'skipped_for_upstream_error'` covers any pre-PATCH failure (ynab-categorize
+// error, ynab-enrich-memos receipt-not-found, etc.) — read your app's `status` for the cause.
 export const baseAuditFields = {
   timestamp: z.string(),
   transaction_id: z.string(),

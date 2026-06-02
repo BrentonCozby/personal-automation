@@ -4,8 +4,8 @@
     { "path": "./packages/common" },
     { "path": "./packages/gmail" },
     { "path": "./packages/ynab" },
-    { "path": "./apps/categorize" },
-    { "path": "./apps/enrich-memos" },
+    { "path": "./apps/ynab-categorize" },
+    { "path": "./apps/ynab-enrich-memos" },
     { "path": "./apps/notify" }
   ]
 }
