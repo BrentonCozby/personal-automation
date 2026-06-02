@@ -10,7 +10,7 @@ const schema = z.object({
   // coerce to number because process.env values are always strings
   LOOKBACK_DAYS: z.coerce.number().pipe(z.int().positive()),
   ANTHROPIC_API_KEY: z.string().min(1),
-  ANTHROPIC_MODEL: z.string().min(1),
+  YNAB_CATEGORIZER_ANTHROPIC_MODEL: z.string().min(1),
   AUDIT_DIR: z.string().min(1),
   EXCLUDED_CATEGORY_GROUPS: jsonValue.pipe(z.array(z.string())),
   CATEGORY_ROUTING_HINTS: jsonValue.pipe(z.array(z.string())),
@@ -41,7 +41,7 @@ export function loadConfig(): Config {
     allowedAccountIds: new Set(Object.values(parsed.ALLOWED_ACCOUNT_IDS)),
     lookbackDays: parsed.LOOKBACK_DAYS,
     anthropicApiKey: parsed.ANTHROPIC_API_KEY,
-    anthropicModel: parsed.ANTHROPIC_MODEL,
+    anthropicModel: parsed.YNAB_CATEGORIZER_ANTHROPIC_MODEL,
     auditDir: parsed.AUDIT_DIR,
     excludedCategoryGroups: new Set(parsed.EXCLUDED_CATEGORY_GROUPS),
     categoryRoutingHints: parsed.CATEGORY_ROUTING_HINTS,
