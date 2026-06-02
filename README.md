@@ -1,13 +1,14 @@
 # personal-automation
 
-Personal automation monorepo — a pnpm workspace of small scheduled jobs and the shared libraries they use. Budgeting (YNAB) is the main domain today, but the layout isn't YNAB-specific: each automation is its own app on top of shared infrastructure.
+A catch-all monorepo for my personal automation — a pnpm workspace of small scheduled jobs and the shared libraries they build on. There's no "main" app: each automation is its own app on top of shared packages, and the list grows as I add more.
 
 - **`apps/ynab-categorize`** — daily CLI that auto-categorizes Amazon transactions using the Anthropic API (Claude Haiku by default).
-- **`apps/ynab-enrich-memos`** — planned Phase 2 (design only — see [apps/ynab-enrich-memos/plan.md](apps/ynab-enrich-memos/plan.md)). Reads Amazon receipt emails, parses product names, PATCHes `memo` on matching YNAB transactions so the categorizer has better data to work with.
-- **`apps/notify`** — emails a digest after the daily run when any app's audit log shows errors (design in [apps/notify/plan.md](apps/notify/plan.md)).
-- **`apps/stalled-tasks`** — weekly email that reviews open Apple Reminders, classifies why each has stalled, and surfaces the few worth acting on with one next action each (design in [apps/stalled-tasks/plan.md](apps/stalled-tasks/plan.md)).
+- **`apps/ynab-enrich-memos`** — planned (design only — see [apps/ynab-enrich-memos/plan.md](apps/ynab-enrich-memos/plan.md)). Reads Amazon receipt emails, parses product names, PATCHes `memo` on matching YNAB transactions so the categorizer has better data to work with.
+- **`apps/notify`** — emails an error digest after the daily run when any app's audit log shows errors (design in [apps/notify/plan.md](apps/notify/plan.md)).
+- **`apps/stalled-tasks`** — emails a scheduled digest reviewing open Apple Reminders: classifies why each has stalled and surfaces the few worth acting on with one next action each (v2 design in [apps/stalled-tasks/plan.md](apps/stalled-tasks/plan.md)).
+- **`packages/anthropic`** — shared Claude API client (`messages.parse` + `zodOutputFormat`).
 - **`packages/ynab`** — shared YNAB API client (zod-validated) + schemas + types + milliunits helpers.
-- **`packages/gmail`** — Gmail API client (OAuth + send), zod-validated.
+- **`packages/gmail`** — Gmail API client (OAuth + send, optional multipart HTML), zod-validated.
 - **`packages/common`** — shared helpers: pino-based logger, AppError + retry, PID lockfile, ora spinner, plus tiny utilities (json, chunks, date).
 
 Commit messages follow [Conventional Commits](https://www.conventionalcommits.org/) — enforced via a husky `commit-msg` hook running commitlint.
@@ -17,34 +18,37 @@ Commit messages follow [Conventional Commits](https://www.conventionalcommits.or
 ```bash
 pnpm install
 cp .env.example .env
-# Fill in YNAB_TOKEN and replace the placeholder budget id + allowed account ids with yours.
-# Get ANTHROPIC_API_KEY from https://console.anthropic.com (separate from Claude Pro).
-# EXCLUDED_CATEGORY_GROUPS and CATEGORY_ROUTING_HINTS are personal-tuning knobs —
-# add the YNAB category-group names you want hidden from the LLM, and any
-# routing nudges that map specific purchases to your categories.
-# LOOKBACK_DAYS, AUDIT_DIR, and ANTHROPIC_MODEL have working defaults.
 ```
 
-Every variable in `.env` is required at startup — config loaders throw if any are missing.
+`.env` is the single source of truth for every secret, id, and tuning knob. Every variable in it is required at startup — config loaders throw if any are missing — so fill in the vars for the apps you actually run. `.env.example` documents each; in short:
+
+- **Shared**: `ANTHROPIC_API_KEY` (from [console.anthropic.com](https://console.anthropic.com), separate from Claude Pro) and the `GMAIL_OAUTH_*` credentials apps send mail through.
+- **ynab-categorize**: `YNAB_TOKEN`, your `YNAB_BUDGET_ID` + `ALLOWED_ACCOUNT_IDS`, and tuning knobs `LOOKBACK_DAYS`, `EXCLUDED_CATEGORY_GROUPS`, `CATEGORY_ROUTING_HINTS`, `YNAB_CATEGORIZER_ANTHROPIC_MODEL`.
+- **stalled-tasks**: `REMINDERS_LISTS`, `STALLED_TASKS_SCHEDULE`, `STALLED_TASKS_TO_EMAIL`, `STALLED_TASKS_ANTHROPIC_MODEL`.
 
 Requires Node 26+ and pnpm 11+.
 
 ## Run
 
+Each app is a workspace package; run its scripts with `pnpm --filter`. No app is privileged at the root — the pattern is the same for every one:
+
 ```bash
-# Dry run with verbose logs — does NOT PATCH
-pnpm test:ynab-categorize
-
-# Real run
-pnpm ynab-categorize
-
-# Override lookback window
-pnpm ynab-categorize --lookback-days 5
+pnpm --filter @personal-automation/<app> <script>
 ```
 
-The categorizer always appends a JSONL audit line per decision to `apps/ynab-categorize/audit/ynab-categorize-YYYY-MM-DD.jsonl`.
+```bash
+# ynab-categorize — dry run (verbose, does NOT PATCH), then a real run
+pnpm --filter @personal-automation/ynab-categorize test:ynab-categorize
+pnpm --filter @personal-automation/ynab-categorize ynab-categorize
+pnpm --filter @personal-automation/ynab-categorize ynab-categorize --lookback-days 5
 
-## What `ynab-categorize` does
+# stalled-tasks — print the digest to the console without sending
+pnpm --filter @personal-automation/stalled-tasks test:stalled-tasks
+```
+
+## ynab-categorize
+
+The categorizer always appends a JSONL audit line per decision to `apps/ynab-categorize/audit/ynab-categorize-YYYY-MM-DD.jsonl`.
 
 1. Loads category groups from YNAB, drops hidden/deleted, drops "Internal Master Category" and the `EXCLUDED_CATEGORY_GROUPS` list, and discovers the "Uncategorized" id for fallback.
 2. Loads transactions per allowed account `since LOOKBACK_DAYS`, keeps only those that are:
@@ -59,23 +63,18 @@ The categorizer always appends a JSONL audit line per decision to `apps/ynab-cat
 
 A digest that reviews open Apple Reminders, classifies why each has stalled, and emails the few worth acting on with one next action each. It runs on its own launchd schedule — the days/times in `STALLED_TASKS_SCHEDULE` (e.g. `["Sunday 08:00", "Wednesday 18:00"]`), so twice or three times a week is just more entries. It reviews the lists named in `REMINDERS_LISTS` (`[]` = all) and skips **recurring** reminders — those are time-triggered, so their own alert is their channel.
 
-```bash
-# Print the digest to the console without sending:
-pnpm --filter @personal-automation/stalled-tasks test:stalled-tasks
-```
-
 It reads Reminders locally through a Swift/EventKit bridge (`src/reminders/reminders.swift`), compiled on first run into a standalone, ad-hoc-signed binary (`reminders-bridge`). That compile step is a TCC requirement, not an optimization: a non-platform signed binary is its own permission "responsible process", so the Reminders grant attaches to it and holds under launchd. Running `swift reminders.swift` instead would attribute access to the Node runtime that spawned it — which Volta's `execve` makes impossible to grant reliably. It needs:
 
 - **Xcode Command Line Tools** (`xcode-select --install`) — provides `swiftc`.
 - **Reminders access**: the bridge requests it on first run, so macOS shows a consent prompt — click **Allow** (it appears as `reminders-bridge` under System Settings → Privacy & Security → Reminders). Without access the run fails with a clear error rather than emailing "nothing's stalled". Editing `reminders.swift` rebuilds the binary with a new identity, so you'll re-grant once after a change.
 
-`STALLED_TASKS_MODEL` is a separate knob from `ANTHROPIC_MODEL` (the categorizer's). Classifying *why* a task is stuck and naming its next physical step is harder judgment than picking a category id, so it starts on a Sonnet-tier model rather than Haiku. Each run logs its classifications to `apps/stalled-tasks/runs/` for tuning.
+`STALLED_TASKS_ANTHROPIC_MODEL` is a separate knob from `YNAB_CATEGORIZER_ANTHROPIC_MODEL`. Classifying *why* a task is stuck and naming its next physical step is harder judgment than picking a category id, so it starts on a Sonnet-tier model rather than Haiku. Each run logs its classifications to `apps/stalled-tasks/runs/` for tuning.
 
 ## Production
 
 Two launchd agents:
 
-- `com.personal-automation` runs `launchd/run.sh` daily at 12:00 — the YNAB apps in `APPS` (uncomment `ynab-enrich-memos` once it lands) plus notify.
+- `com.personal-automation` runs `launchd/run.sh` daily at 12:00 — each app in the `APPS` array in sequence (uncomment `ynab-enrich-memos` once it lands), then `notify`.
 - `com.personal-automation.stalled-tasks` runs the digest on its `STALLED_TASKS_SCHEDULE` days/times.
 
 Both post a macOS notification on a non-zero exit.
@@ -96,4 +95,4 @@ Optional log rotation (weekly, keeps 4 gzipped archives):
 sudo cp launchd/newsyslog.personal-automation.conf /etc/newsyslog.d/
 ```
 
-A PID lockfile at `$TMPDIR/ynab-categorize.lock` prevents overlapping runs of the categorizer (manual + scheduled, or two scheduled). Stale locks from crashed runs are claimed automatically.
+Each app that can run more than once at a time guards itself with a PID lockfile in `$TMPDIR` (e.g. `ynab-categorize.lock`, `stalled-tasks.lock`) so a manual run and a scheduled run can't overlap. Stale locks from crashed runs are claimed automatically.

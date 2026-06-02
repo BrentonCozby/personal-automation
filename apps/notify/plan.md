@@ -58,7 +58,7 @@ unresolved errors visible.
 
 ## Email shape
 
-**Subject**: `YNAB Automation — N errors`. Varying N lets the inbox preview
+**Subject**: `Personal Automation — N errors`. Varying N lets the inbox preview
 convey load without opening. Don't include the date — Gmail shows it
 already. Gmail threads consecutive emails by the matching subject prefix.
 
@@ -282,7 +282,7 @@ the two or three lines of stdout/stderr it produces — "sent digest to X",
   daily launchd schedule is set well clear of midnight. If this changes,
   pass the run's start date to notify as a CLI arg.
 - **Mixed dry-run + scheduled rows in the same date file.** If a user runs
-  `pnpm test:ynab-categorize --dry-run` interactively earlier in the day and the
+  `pnpm --filter @personal-automation/ynab-categorize test:ynab-categorize` interactively earlier in the day and the
   daily launchd run follows, today's file contains both. `patch_status` is
   the only signal, so `skipped_for_dry_run` rows are excluded and counts
   remain correct. (Note: notify is invoked only by `launchd/run.sh`, not by

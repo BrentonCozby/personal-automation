@@ -47,7 +47,7 @@ useful in practice.
       workflow does, to prevent re-runs; we rely on the date-window expiring
       instead so receipts that arrive late still get picked up.
    3. **Messages found** → send messages + transaction info to the Anthropic
-      API (same `ANTHROPIC_API_KEY` / `ANTHROPIC_MODEL` as `ynab-categorize`).
+      API (same `ANTHROPIC_API_KEY` / `YNAB_CATEGORIZER_ANTHROPIC_MODEL` as `ynab-categorize`).
       Prompt asks for a single line of `Item1 ($X), Item2 ($Y) — Total $TOTAL`,
       or the sentinel `__NO_RECEIPT__` if no valid receipt could be identified.
       Use `messages.parse()` with a Zod schema covering both shapes.
@@ -94,7 +94,7 @@ GMAIL_OAUTH_REFRESH_TOKEN=
 ```
 
 Reusing `YNAB_TOKEN`, `YNAB_BUDGET_ID`, `ALLOWED_ACCOUNT_IDS`,
-`ANTHROPIC_API_KEY`, `ANTHROPIC_MODEL`, and `AUDIT_DIR` from `ynab-categorize`.
+`ANTHROPIC_API_KEY`, `YNAB_CATEGORIZER_ANTHROPIC_MODEL`, and `AUDIT_DIR` from `ynab-categorize`.
 Each app's `loadConfig` parses its own subset.
 
 ## Shared-package contracts this app relies on

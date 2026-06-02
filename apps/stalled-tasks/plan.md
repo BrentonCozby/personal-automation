@@ -39,7 +39,7 @@ Reminders until I've seen exactly what will change.
 - **Interactive `--review`.** A command I run on the Mac that walks each proposed edit and
   applies on keypress. Simpler to build, synchronous, fully in my control — but a new sit-down
   behavior with its own initiation friction, so likelier the occasional deep review than the
-  weekly default.
+  scheduled default.
 
 ### Build prerequisites
 
