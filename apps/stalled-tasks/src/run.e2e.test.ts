@@ -8,7 +8,7 @@ import { HttpResponse, http } from 'msw'
 import pino from 'pino'
 import { afterEach, beforeEach, expect, it } from 'vitest'
 import type { TaskAnalysis } from './anthropic/schemas.js'
-import { type Config, weekdayValues } from './config.js'
+import type { Config } from './config.js'
 import type { TaskSource } from './reminders/source.js'
 import type { Task } from './reminders/types.js'
 import { runStalledTasks } from './run.js'
@@ -33,7 +33,6 @@ afterEach(() => {
 function makeConfig(overrides: Partial<Config> = {}): Config {
   return {
     toEmail: 'me@example.com',
-    digestDay: 'Sunday',
     digestMaxItems: 5,
     staleThresholdDays: 30,
     remindersLists: [],
@@ -119,7 +118,7 @@ it('dry-run builds the digest, sends no email, and records every task to the run
 
   const result = await runStalledTasks({
     config: makeConfig(),
-    opts: { dryRun: true, force: true },
+    opts: { dryRun: true },
     now: NOW,
     source: fakeSource([
       fixtureTask({ id: 'a', title: 'book india flights' }),
@@ -163,7 +162,7 @@ it('joins on index even when the model paraphrases the title entirely', async ()
 
   const result = await runStalledTasks({
     config: makeConfig(),
-    opts: { dryRun: true, force: true },
+    opts: { dryRun: true },
     now: NOW,
     source: fakeSource([fixtureTask({ id: 'h', title: 'replace Heidi’s laptop screen' })]),
     runsDir,
@@ -193,7 +192,7 @@ it('sends the digest via Gmail on a real (msw) send path', async () => {
 
   const result = await runStalledTasks({
     config: makeConfig(),
-    opts: { dryRun: false, force: true },
+    opts: { dryRun: false },
     now: NOW,
     source: fakeSource([fixtureTask()]),
     runsDir,
@@ -210,36 +209,10 @@ it('sends the digest via Gmail on a real (msw) send path', async () => {
   expect(Buffer.from(b64, 'base64').toString('utf8')).toBe('Task Review — 1 flagged')
 })
 
-it('skips before reading reminders when today is not the digest day', async () => {
-  const idx = NOW.getDay()
-  const weekday = weekdayValues[idx]
-  const otherDay = weekdayValues[(idx + 1) % 7]
-  if (!weekday || !otherDay) throw new Error('unreachable: weekday index out of range')
-  let listed = false
-
-  const result = await runStalledTasks({
-    config: makeConfig({ digestDay: otherDay }),
-    opts: { dryRun: false, force: false },
-    now: NOW,
-    source: {
-      list: () => {
-        listed = true
-
-        return Promise.resolve([])
-      },
-    },
-    runsDir,
-    logger: silentLogger,
-  })
-
-  expect(result).toEqual({ kind: 'skipped_not_digest_day', weekday })
-  expect(listed).toBe(false)
-})
-
 it('returns no_open_tasks (and never calls the model) when there are no reminders', async () => {
   const result = await runStalledTasks({
     config: makeConfig(),
-    opts: { dryRun: false, force: true },
+    opts: { dryRun: false },
     now: NOW,
     source: fakeSource([]),
     runsDir,
@@ -255,7 +228,7 @@ it('sends no email when nothing is actionable', async () => {
 
   const result = await runStalledTasks({
     config: makeConfig(),
-    opts: { dryRun: false, force: true },
+    opts: { dryRun: false },
     now: NOW,
     source: fakeSource([fixtureTask()]),
     runsDir,
@@ -277,7 +250,7 @@ it('propagates a Reminders-access failure instead of sending an empty digest', a
   await expect(
     runStalledTasks({
       config: makeConfig(),
-      opts: { dryRun: false, force: true },
+      opts: { dryRun: false },
       now: NOW,
       source,
       runsDir,

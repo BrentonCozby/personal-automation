@@ -43,11 +43,22 @@ else
   echo "         stalled-tasks will build it on first run instead."
 fi
 
+# Generate the digest's dedicated launchd agent from STALLED_TASKS_SCHEDULE (its days/times).
+echo "Generating the stalled-tasks digest schedule…"
+(cd "$PROJECT_DIR" && pnpm --filter @personal-automation/stalled-tasks generate-launchd-plist)
+
 cat <<EOF
 
-Next:
+Next (load both agents — the daily YNAB run and the digest):
   cp $PROJECT_DIR/launchd/com.personal-automation.plist ~/Library/LaunchAgents/
+  cp $PROJECT_DIR/launchd/com.personal-automation.stalled-tasks.plist ~/Library/LaunchAgents/
   launchctl load ~/Library/LaunchAgents/com.personal-automation.plist
+  launchctl load ~/Library/LaunchAgents/com.personal-automation.stalled-tasks.plist
+
+Changed STALLED_TASKS_SCHEDULE later? Re-run this script, then:
+  launchctl unload ~/Library/LaunchAgents/com.personal-automation.stalled-tasks.plist
+  cp $PROJECT_DIR/launchd/com.personal-automation.stalled-tasks.plist ~/Library/LaunchAgents/
+  launchctl load ~/Library/LaunchAgents/com.personal-automation.stalled-tasks.plist
 
 Optional log rotation (rotates launchd.{out,err}.log weekly, keeps 4):
   sudo cp $PROJECT_DIR/launchd/newsyslog.personal-automation.conf /etc/newsyslog.d/

@@ -7,13 +7,12 @@ import { type RunResult, runStalledTasks } from './run.js'
 
 const LOCK_PATH = join(tmpdir(), 'stalled-tasks.lock')
 
-type Args = { dryRun: boolean; force: boolean }
+type Args = { dryRun: boolean }
 
 function parseArgs(argv: string[]): Args {
-  const args: Args = { dryRun: false, force: false }
+  const args: Args = { dryRun: false }
   for (const a of argv) {
     if (a === '--dry-run') args.dryRun = true
-    else if (a === '--force') args.force = true
     else if (a === '--help' || a === '-h') {
       printHelp()
       process.exit(0)
@@ -30,15 +29,11 @@ function printHelp(): void {
 
 Options:
   --dry-run    Print the digest to the console instead of sending email
-  --force      Bypass the DIGEST_DAY gate (run even if today isn't the digest day)
   --help, -h   Show this help`)
 }
 
 function logResult(result: RunResult): void {
   switch (result.kind) {
-    case 'skipped_not_digest_day':
-      console.log(`Today is ${result.weekday}, not the digest day. Skipped.`)
-      break
     case 'no_open_tasks':
       console.log('No open reminders found. Nothing to do.')
       break

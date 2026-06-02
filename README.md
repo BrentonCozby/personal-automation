@@ -57,10 +57,10 @@ The categorizer always appends a JSONL audit line per decision to `apps/ynab-cat
 
 ## stalled-tasks
 
-A weekly digest that reviews open Apple Reminders, classifies why each has stalled, and emails the few worth acting on with one next action each. It runs daily from `launchd/run.sh` but only sends on `DIGEST_DAY`. It reviews the lists named in `REMINDERS_LISTS` (`[]` = all) and skips **recurring** reminders — those are time-triggered, so their own alert is their channel.
+A digest that reviews open Apple Reminders, classifies why each has stalled, and emails the few worth acting on with one next action each. It runs on its own launchd schedule — the days/times in `STALLED_TASKS_SCHEDULE` (e.g. `["Sunday 08:00", "Wednesday 18:00"]`), so twice or three times a week is just more entries. It reviews the lists named in `REMINDERS_LISTS` (`[]` = all) and skips **recurring** reminders — those are time-triggered, so their own alert is their channel.
 
 ```bash
-# Print the digest to the console without sending (also bypasses the day gate):
+# Print the digest to the console without sending:
 pnpm --filter @personal-automation/stalled-tasks test:stalled-tasks
 ```
 
@@ -73,15 +73,22 @@ It reads Reminders locally through a Swift/EventKit bridge (`src/reminders/remin
 
 ## Production
 
-`launchd/com.personal-automation` runs `launchd/run.sh` daily at 12:00 local time. The wrapper runs each app in `APPS` sequentially (currently just `ynab-categorize`; uncomment `ynab-enrich-memos` once it lands) and posts a macOS notification if any non-zero exits.
+Two launchd agents:
+
+- `com.personal-automation` runs `launchd/run.sh` daily at 12:00 — the YNAB apps in `APPS` (uncomment `ynab-enrich-memos` once it lands) plus notify.
+- `com.personal-automation.stalled-tasks` runs the digest on its `STALLED_TASKS_SCHEDULE` days/times.
+
+Both post a macOS notification on a non-zero exit.
 
 ```bash
-./launchd/setup.sh   # generates the plist + newsyslog.conf, builds the Reminders bridge, primes its access grant
+./launchd/setup.sh   # generates both plists, builds the Reminders bridge, primes its access grant
 cp launchd/com.personal-automation.plist ~/Library/LaunchAgents/
+cp launchd/com.personal-automation.stalled-tasks.plist ~/Library/LaunchAgents/
 launchctl load ~/Library/LaunchAgents/com.personal-automation.plist
+launchctl load ~/Library/LaunchAgents/com.personal-automation.stalled-tasks.plist
 ```
 
-`setup.sh` also builds the `stalled-tasks` Reminders bridge and triggers its one-time access prompt — **approve it** so the scheduled run reads silently. That grant is tied to the binary's path, so **re-run `setup.sh` if you move the project** on disk.
+`setup.sh` also builds the `stalled-tasks` Reminders bridge and triggers its one-time access prompt — **approve it** so the scheduled run reads silently. That grant is tied to the binary's path, so **re-run `setup.sh` if you move the project** on disk. Re-run it (and reload the digest agent — `setup.sh` prints the commands) whenever you change `STALLED_TASKS_SCHEDULE`.
 
 Optional log rotation (weekly, keeps 4 gzipped archives):
 

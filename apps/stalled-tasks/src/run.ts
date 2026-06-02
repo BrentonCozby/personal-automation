@@ -10,7 +10,7 @@ import {
 } from './anthropic/client.js'
 import { buildAnalysisPrompt, type PromptTask } from './anthropic/prompts.js'
 import type { TaskAnalysis } from './anthropic/schemas.js'
-import { type Config, type Weekday, weekdayValues } from './config.js'
+import type { Config } from './config.js'
 import { buildDigest, type DigestItem } from './digest.js'
 import { createAppleRemindersSource, type TaskSource } from './reminders/source.js'
 import type { Task } from './reminders/types.js'
@@ -19,11 +19,9 @@ import { type DueStatus, dueStatus, staleDays } from './staleness.js'
 
 export type RunOptions = {
   dryRun: boolean
-  force: boolean
 }
 
 export type RunResult =
-  | { kind: 'skipped_not_digest_day'; weekday: Weekday }
   | { kind: 'no_open_tasks' }
   | { kind: 'no_actionable'; totalStalled: number }
   | { kind: 'dry_run'; subject: string; body: string; flaggedCount: number; totalStalled: number }
@@ -54,13 +52,8 @@ export async function runStalledTasks({
   runsDir?: string
   logger?: pino.Logger
 }): Promise<RunResult> {
-  const weekday = weekdayName(now)
-  if (!opts.force && weekday !== config.digestDay) {
-    logger.info({ weekday, digestDay: config.digestDay }, 'Not the digest day; skipping.')
-
-    return { kind: 'skipped_not_digest_day', weekday }
-  }
-
+  // No day-gate: the launchd agent fires this only on the scheduled days/times (or the user
+  // ran it manually), so when it runs, it runs.
   const spinnersEnabled = process.stdout.isTTY === true
 
   // Throws a clear AppError on a Reminders-access failure — never an empty list that would
@@ -245,13 +238,4 @@ function toRunLogEntry({
     suggested_next_action: item.suggestedNextAction,
     shown,
   }
-}
-
-function weekdayName(date: Date): Weekday {
-  // Date.getDay() is 0=Sunday..6=Saturday, matching weekdayValues' order. Local time, so the
-  // gate fires on the user's wall-clock weekday.
-  const name = weekdayValues[date.getDay()]
-  if (!name) throw new Error(`Unexpected weekday index ${date.getDay()}`)
-
-  return name
 }

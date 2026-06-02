@@ -6,7 +6,8 @@
   "scripts": {
     "build": "tsc -b",
     "stalled-tasks": "tsx src/index.ts",
-    "test:stalled-tasks": "tsx src/index.ts --dry-run --force"
+    "test:stalled-tasks": "tsx src/index.ts --dry-run",
+    "generate-launchd-plist": "tsx src/generate-launchd-plist.ts"
   },
   "dependencies": {
     "@personal-automation/anthropic": "workspace:*",

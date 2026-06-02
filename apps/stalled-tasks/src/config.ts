@@ -3,20 +3,11 @@ import { z } from 'zod'
 
 loadRootEnv(import.meta.url)
 
-export const weekdayValues = [
-  'Sunday',
-  'Monday',
-  'Tuesday',
-  'Wednesday',
-  'Thursday',
-  'Friday',
-  'Saturday',
-] as const
-export type Weekday = (typeof weekdayValues)[number]
-
+// STALLED_TASKS_SCHEDULE (the days/times the digest runs) isn't here: it's consumed only by the
+// launchd plist generator at setup time, not at app runtime. launchd fires the digest on the
+// scheduled days/times, so the app has no day-gate of its own — when invoked, it runs and sends.
 const schema = z.object({
   STALLED_TASKS_TO_EMAIL: z.email(),
-  DIGEST_DAY: z.enum(weekdayValues),
   // coerce because process.env values are always strings
   DIGEST_MAX_ITEMS: z.coerce.number().pipe(z.int().positive()),
   STALE_THRESHOLD_DAYS: z.coerce.number().pipe(z.int().positive()),
@@ -30,7 +21,6 @@ const schema = z.object({
 
 export type Config = {
   toEmail: string
-  digestDay: Weekday
   digestMaxItems: number
   staleThresholdDays: number
   /** Reminders lists to read; empty = all lists. */
@@ -47,7 +37,6 @@ export function loadConfig(): Config {
 
   return {
     toEmail: parsed.STALLED_TASKS_TO_EMAIL,
-    digestDay: parsed.DIGEST_DAY,
     digestMaxItems: parsed.DIGEST_MAX_ITEMS,
     staleThresholdDays: parsed.STALE_THRESHOLD_DAYS,
     remindersLists: parsed.REMINDERS_LISTS,
