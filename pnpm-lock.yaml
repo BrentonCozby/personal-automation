@@ -59,9 +59,9 @@ importers:
 
   apps/ynab-categorize:
     dependencies:
-      '@anthropic-ai/sdk':
-        specifier: ^0.98.0
-        version: 0.98.0(zod@4.4.3)
+      '@personal-automation/anthropic':
+        specifier: workspace:*
+        version: link:../../packages/anthropic
       '@personal-automation/common':
         specifier: workspace:*
         version: link:../../packages/common
@@ -83,6 +83,19 @@ importers:
       '@personal-automation/ynab':
         specifier: workspace:*
         version: link:../../packages/ynab
+
+  packages/anthropic:
+    dependencies:
+      '@anthropic-ai/sdk':
+        specifier: ^0.98.0
+        version: 0.98.0(zod@4.4.3)
+      zod:
+        specifier: ^4.4.3
+        version: 4.4.3
+    devDependencies:
+      '@personal-automation/common':
+        specifier: workspace:*
+        version: link:../common
 
   packages/common:
     dependencies:

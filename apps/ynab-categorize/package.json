@@ -10,7 +10,7 @@
     "test:ynab-categorize": "tsx src/index.ts --dry-run"
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.98.0",
+    "@personal-automation/anthropic": "workspace:*",
     "@personal-automation/common": "workspace:*",
     "@personal-automation/ynab": "workspace:*",
     "p-limit": "^7.3.0",

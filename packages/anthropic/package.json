@@ -1,0 +1,19 @@
+{
+  "name": "@personal-automation/anthropic",
+  "version": "0.0.0",
+  "type": "module",
+  "private": true,
+  "exports": {
+    "./client": "./src/client.ts"
+  },
+  "scripts": {
+    "build": "tsc -b"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.98.0",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@personal-automation/common": "workspace:*"
+  }
+}

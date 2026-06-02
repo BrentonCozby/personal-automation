@@ -1,5 +1,8 @@
-import Anthropic, { AnthropicError } from '@anthropic-ai/sdk'
-import { zodOutputFormat } from '@anthropic-ai/sdk/helpers/zod'
+import {
+  type AnthropicClient,
+  AnthropicError,
+  createAnthropicClient as createClient,
+} from '@personal-automation/anthropic/client'
 import { z } from 'zod'
 
 export { AnthropicError }
@@ -23,29 +26,27 @@ export type AnthropicCategorizeClient = {
   categorize: (params: { prompt: string }) => Promise<CategorizationResult>
 }
 
-type Init = { apiKey: string; model: string }
-
-export function createAnthropicClient({ apiKey, model }: Init): AnthropicCategorizeClient {
-  // SDK handles 429 / 5xx retry with exponential backoff internally (default 2 retries),
-  // so we don't wrap this in withRetry — non-retryable errors bubble up to the per-txn
-  // catch in categorize.ts and are recorded as audit `error` entries.
-  const client = new Anthropic({ apiKey })
+export function createAnthropicClient({
+  apiKey,
+  model,
+}: {
+  apiKey: string
+  model: string
+}): AnthropicCategorizeClient {
+  const client: AnthropicClient = createClient({ apiKey, model })
 
   async function categorize({ prompt }: { prompt: string }): Promise<CategorizationResult> {
-    const start = Date.now()
-    const response = await client.messages.parse({
-      model,
-      max_tokens: MAX_TOKENS,
-      messages: [{ role: 'user', content: prompt }],
-      output_config: { format: zodOutputFormat(categorizationSchema) },
+    const { parsed, latencyMs, inputTokens, outputTokens } = await client.parse({
+      prompt,
+      schema: categorizationSchema,
+      maxTokens: MAX_TOKENS,
     })
 
-    const latencyMs = Date.now() - start
     return {
-      categoryId: response.parsed_output?.category_id ?? null,
+      categoryId: parsed?.category_id ?? null,
       latencyMs,
-      inputTokens: response.usage.input_tokens,
-      outputTokens: response.usage.output_tokens,
+      inputTokens,
+      outputTokens,
     }
   }
 

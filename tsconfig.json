@@ -1,6 +1,7 @@
 {
   "files": [],
   "references": [
+    { "path": "./packages/anthropic" },
     { "path": "./packages/common" },
     { "path": "./packages/gmail" },
     { "path": "./packages/ynab" },
