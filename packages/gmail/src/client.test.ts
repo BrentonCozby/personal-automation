@@ -56,7 +56,7 @@ describe('createGmailClient.sendMessage', (): void => {
     const client = createGmailClient({ auth: fakeAuth() })
     await client.sendMessage({
       to: 'me@example.com',
-      subject: 'YNAB Automation — 3 errors',
+      subject: 'Personal Automation — 3 errors',
       body: 'ynab-categorize — 3 errors\n═══════════════════════\n  Transaction abc',
     })
 
@@ -67,7 +67,7 @@ describe('createGmailClient.sendMessage', (): void => {
     const subjectLine = decoded.split('\r\n').find(l => l.startsWith('Subject: '))
     expect(subjectLine).toMatch(/^Subject: =\?UTF-8\?B\?[A-Za-z0-9+/=]+\?=$/)
     const b64 = (subjectLine ?? '').replace('Subject: =?UTF-8?B?', '').replace('?=', '')
-    expect(Buffer.from(b64, 'base64').toString('utf8')).toBe('YNAB Automation — 3 errors')
+    expect(Buffer.from(b64, 'base64').toString('utf8')).toBe('Personal Automation — 3 errors')
   })
 
   it('leaves an ASCII subject unencoded', async (): Promise<void> => {

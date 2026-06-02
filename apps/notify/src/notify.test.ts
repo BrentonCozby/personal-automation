@@ -124,7 +124,7 @@ describe('runNotify', (): void => {
 
     const decoded = Buffer.from(receivedRaw, 'base64url').toString('utf8')
     expect(decoded).toContain('To: me@example.com')
-    expect(decodeSubject(decoded)).toBe('YNAB Automation — 1 error')
+    expect(decodeSubject(decoded)).toBe('Personal Automation — 1 error')
     expect(decoded).toContain('Transaction bad')
     expect(decoded).toContain('rate_limit_error: 429 from anthropic')
   })
@@ -162,7 +162,7 @@ describe('runNotify', (): void => {
 
     expect(result.kind).toBe('sent')
     const decoded = Buffer.from(receivedRaw, 'base64url').toString('utf8')
-    expect(decodeSubject(decoded)).toBe('YNAB Automation — 1 error')
+    expect(decodeSubject(decoded)).toBe('Personal Automation — 1 error')
     expect(receivedRaw).not.toBe('')
   })
 

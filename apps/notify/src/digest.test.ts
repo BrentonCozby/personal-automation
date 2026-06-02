@@ -18,7 +18,7 @@ describe('buildDigest', (): void => {
     const digest = buildDigest({ rows: [row({}), row({ transaction_id: 't-2' })] })
 
     expect(digest.errorCount).toBe(0)
-    expect(digest.subject).toBe('YNAB Automation — 0 errors')
+    expect(digest.subject).toBe('Personal Automation — 0 errors')
   })
 
   it('pluralizes singular vs plural in the subject', (): void => {
@@ -30,8 +30,8 @@ describe('buildDigest', (): void => {
       ],
     })
 
-    expect(one.subject).toBe('YNAB Automation — 1 error')
-    expect(many.subject).toBe('YNAB Automation — 2 errors')
+    expect(one.subject).toBe('Personal Automation — 1 error')
+    expect(many.subject).toBe('Personal Automation — 2 errors')
   })
 
   it('groups by app and counts errors vs successes per app', (): void => {

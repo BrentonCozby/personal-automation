@@ -1,7 +1,7 @@
 {
   "name": "personal-automation",
   "version": "0.1.0",
-  "description": "Personal automation monorepo: YNAB categorization, memo enrichment, email digests.",
+  "description": "Personal automation monorepo — small scheduled jobs and the shared libraries they build on.",
   "type": "module",
   "private": true,
   "packageManager": "pnpm@11.2.2",
@@ -22,8 +22,6 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
-    "ynab-categorize": "pnpm --filter @personal-automation/ynab-categorize ynab-categorize",
-    "test:ynab-categorize": "pnpm --filter @personal-automation/ynab-categorize test:ynab-categorize",
     "prepare": "husky"
   },
   "devDependencies": {

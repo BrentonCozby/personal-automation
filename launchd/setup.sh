@@ -49,7 +49,7 @@ echo "Generating the stalled-tasks digest schedule…"
 
 cat <<EOF
 
-Next (load both agents — the daily YNAB run and the digest):
+Next (load both agents — the daily run and the digest):
   cp $PROJECT_DIR/launchd/com.personal-automation.plist ~/Library/LaunchAgents/
   cp $PROJECT_DIR/launchd/com.personal-automation.stalled-tasks.plist ~/Library/LaunchAgents/
   launchctl load ~/Library/LaunchAgents/com.personal-automation.plist
