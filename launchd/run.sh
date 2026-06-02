@@ -12,6 +12,8 @@ APPS=(
   # Enrichment runs first so ynab-categorize sees the populated memos.
   # 'ynab-enrich-memos'    # uncomment when Phase 2 lands
   'ynab-categorize'
+  # Independent of the YNAB apps; self-gates to DIGEST_DAY, so it no-ops six days a week.
+  'stalled-tasks'
 )
 
 err_log="$(mktemp -t personal-automation.XXXXXX)"
@@ -33,8 +35,8 @@ done
 # mask real failures from another app in the same run.
 /bin/zsh -lc "pnpm --filter @personal-automation/notify notify" || true
 
-# Trim audit logs older than 90 days so the audit/ dir doesn't grow forever.
-find "$PROJECT_DIR/apps"/*/audit -name '*.jsonl' -mtime +90 -delete 2>/dev/null || true
+# Trim audit + run-log JSONL older than 90 days so those dirs don't grow forever.
+find "$PROJECT_DIR/apps"/*/audit "$PROJECT_DIR/apps"/*/runs -name '*.jsonl' -mtime +90 -delete 2>/dev/null || true
 
 if [ "$overall_exit" -ne 0 ]; then
   last_err="$(tail -3 "$err_log" | tr '\n' ' ' | sed 's/"/\\"/g')"

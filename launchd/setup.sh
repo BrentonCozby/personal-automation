@@ -29,6 +29,20 @@ substitute \
   "$PROJECT_DIR/launchd/newsyslog.personal-automation.conf.template" \
   "$PROJECT_DIR/launchd/newsyslog.personal-automation.conf"
 
+# Build the stalled-tasks Reminders bridge and prime its macOS access grant. The grant is keyed
+# to this binary's absolute path, so it must be (re)done here — including after the project
+# moves on disk (which also regenerates the plist above). Running it once now surfaces the
+# consent prompt while you're present, so the first scheduled run reads Reminders silently.
+BRIDGE_DIR="$PROJECT_DIR/apps/stalled-tasks/src/reminders"
+if /usr/bin/swiftc -O "$BRIDGE_DIR/reminders.swift" -o "$BRIDGE_DIR/reminders-bridge" 2>/dev/null &&
+  /usr/bin/codesign --force --sign - "$BRIDGE_DIR/reminders-bridge" 2>/dev/null; then
+  echo "Built reminders-bridge — approve the Reminders prompt if one appears."
+  "$BRIDGE_DIR/reminders-bridge" >/dev/null 2>&1 || true
+else
+  echo "WARNING: could not build reminders-bridge (needs Xcode CLT: xcode-select --install)."
+  echo "         stalled-tasks will build it on first run instead."
+fi
+
 cat <<EOF
 
 Next:
