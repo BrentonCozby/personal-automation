@@ -41,7 +41,7 @@ find "$PROJECT_DIR/apps"/*/audit "$PROJECT_DIR/apps"/*/runs -name '*.jsonl' -mti
 if [ "$overall_exit" -ne 0 ]; then
   last_err="$(tail -3 "$err_log" | tr '\n' ' ' | sed 's/"/\\"/g')"
   /usr/bin/osascript \
-    -e "display notification \"${last_err:-See $PROJECT_DIR/audit/launchd.err.log}\" with title \"Personal Automation FAILED (exit $overall_exit)\" sound name \"Basso\""
+    -e "display notification \"${last_err:-See $PROJECT_DIR/launchd-daily.err.log}\" with title \"Personal Automation FAILED (exit $overall_exit)\" sound name \"Basso\""
 fi
 
 exit "$overall_exit"

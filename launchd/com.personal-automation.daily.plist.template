@@ -3,7 +3,7 @@
 <plist version="1.0">
 <dict>
     <key>Label</key>
-    <string>com.personal-automation</string>
+    <string>com.personal-automation.daily</string>
 
     <key>ProgramArguments</key>
     <array>
@@ -19,9 +19,9 @@
     </dict>
 
     <key>StandardOutPath</key>
-    <string>{{PROJECT_DIR}}/launchd.out.log</string>
+    <string>{{PROJECT_DIR}}/launchd-daily.out.log</string>
     <key>StandardErrorPath</key>
-    <string>{{PROJECT_DIR}}/launchd.err.log</string>
+    <string>{{PROJECT_DIR}}/launchd-daily.err.log</string>
 
     <key>RunAtLoad</key>
     <false/>

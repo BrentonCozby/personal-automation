@@ -4,7 +4,7 @@
 # Run this once after cloning, or any time the project moves on disk.
 #
 # Generated files:
-#   com.personal-automation.plist        — daily scheduled job (runs run.sh at 12:00)
+#   com.personal-automation.daily.plist  — daily scheduled job (runs run.sh at 12:00)
 #   newsyslog.personal-automation.conf   — optional log rotation config
 
 set -euo pipefail
@@ -22,8 +22,8 @@ substitute() {
 }
 
 substitute \
-  "$PROJECT_DIR/launchd/com.personal-automation.plist.template" \
-  "$PROJECT_DIR/launchd/com.personal-automation.plist"
+  "$PROJECT_DIR/launchd/com.personal-automation.daily.plist.template" \
+  "$PROJECT_DIR/launchd/com.personal-automation.daily.plist"
 
 substitute \
   "$PROJECT_DIR/launchd/newsyslog.personal-automation.conf.template" \
@@ -50,9 +50,9 @@ echo "Generating the stalled-tasks digest schedule…"
 cat <<EOF
 
 Next (load both agents — the daily run and the digest):
-  cp $PROJECT_DIR/launchd/com.personal-automation.plist ~/Library/LaunchAgents/
+  cp $PROJECT_DIR/launchd/com.personal-automation.daily.plist ~/Library/LaunchAgents/
   cp $PROJECT_DIR/launchd/com.personal-automation.stalled-tasks.plist ~/Library/LaunchAgents/
-  launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.personal-automation.plist
+  launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.personal-automation.daily.plist
   launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.personal-automation.stalled-tasks.plist
 
 Changed STALLED_TASKS_SCHEDULE later? Re-run this script, then:
@@ -60,6 +60,6 @@ Changed STALLED_TASKS_SCHEDULE later? Re-run this script, then:
   cp $PROJECT_DIR/launchd/com.personal-automation.stalled-tasks.plist ~/Library/LaunchAgents/
   launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.personal-automation.stalled-tasks.plist
 
-Optional log rotation (rotates launchd.{out,err}.log weekly, keeps 4):
+Optional log rotation (rotates launchd-daily.{out,err}.log weekly, keeps 4):
   sudo cp $PROJECT_DIR/launchd/newsyslog.personal-automation.conf /etc/newsyslog.d/
 EOF

@@ -21,6 +21,7 @@ Commit messages follow [Conventional Commits](https://www.conventionalcommits.or
 - [ynab-enrich-memos](#ynab-enrich-memos)
 - [stalled-tasks](#stalled-tasks)
 - [Production](#production)
+- [Checking status](#checking-status)
 
 ## Setup
 
@@ -89,7 +90,7 @@ Runs before `ynab-categorize` so the categorizer reasons from real item names in
 
 ## stalled-tasks
 
-A digest that reviews open Apple Reminders, classifies why each has stalled, and emails the few worth acting on with one next action each. It runs on its own launchd schedule — the days/times in `STALLED_TASKS_SCHEDULE` (e.g. `["Sunday 08:00", "Wednesday 18:00"]`), so twice or three times a week is just more entries. It reviews the lists named in `REMINDERS_LISTS` (`[]` = all) and skips **recurring** reminders — those are time-triggered, so their own alert is their channel.
+A digest that reviews open Apple Reminders, classifies why each has stalled, and emails the few worth acting on with one next action each. It runs on its own launchd schedule — the days/times in `STALLED_TASKS_SCHEDULE` (e.g. `["Sunday 08:00", "Wednesday 08:00"]`), so twice or three times a week is just more entries. It reviews the lists named in `REMINDERS_LISTS` (`[]` = all) and skips **recurring** reminders — those are time-triggered, so their own alert is their channel.
 
 It reads Reminders locally through a Swift/EventKit bridge (`src/reminders/reminders.swift`), compiled on first run into a standalone, ad-hoc-signed binary (`reminders-bridge`). That compile step is a TCC requirement, not an optimization: a non-platform signed binary is its own permission "responsible process", so the Reminders grant attaches to it and holds under launchd. Running `swift reminders.swift` instead would attribute access to the Node runtime that spawned it — which Volta's `execve` makes impossible to grant reliably. It needs:
 
@@ -102,16 +103,18 @@ It reads Reminders locally through a Swift/EventKit bridge (`src/reminders/remin
 
 Two launchd agents:
 
-- `com.personal-automation` runs `launchd/run.sh` daily at 12:00 — each app in the `APPS` array in sequence (`ynab-enrich-memos` then `ynab-categorize`), then `notify`.
+- `com.personal-automation.daily` runs `launchd/run.sh` daily at 12:00 — each app in the `APPS` array in sequence (`ynab-enrich-memos` then `ynab-categorize`), then `notify`.
 - `com.personal-automation.stalled-tasks` runs the digest on its `STALLED_TASKS_SCHEDULE` days/times.
+
+There are two because launchd binds one agent to one program on one schedule: a plist's `StartCalendarInterval` can list many times, but they all run the same script. The two agents are siblings grouped by schedule — `com.personal-automation` is just the shared namespace, not a job. The `.daily` agent's noon slot happens to run three apps; the `.stalled-tasks` agent's schedule runs one. An app gets its own agent only when it needs its own schedule — otherwise it's another entry in `run.sh`. Keeping them apart also means each gets its own logs and its own failure notification.
 
 Both post a macOS notification on a non-zero exit.
 
 ```bash
 ./launchd/setup.sh   # generates both plists, builds the Reminders bridge, primes its access grant
-cp launchd/com.personal-automation.plist ~/Library/LaunchAgents/
+cp launchd/com.personal-automation.daily.plist ~/Library/LaunchAgents/
 cp launchd/com.personal-automation.stalled-tasks.plist ~/Library/LaunchAgents/
-launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.personal-automation.plist
+launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.personal-automation.daily.plist
 launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.personal-automation.stalled-tasks.plist
 ```
 
@@ -124,3 +127,86 @@ sudo cp launchd/newsyslog.personal-automation.conf /etc/newsyslog.d/
 ```
 
 Each app that can run more than once at a time guards itself with a PID lockfile in `$TMPDIR` (e.g. `ynab-categorize.lock`, `stalled-tasks.lock`) so a manual run and a scheduled run can't overlap. Stale locks from crashed runs are claimed automatically.
+
+## Checking status
+
+Quick commands to see whether the scheduled jobs are healthy and what the last run did.
+
+### Are the agents loaded and OK?
+
+The quick check — three columns: PID, last exit code, label. A label showing up means it's loaded; a `0` in the middle means the last run was clean. A `-` PID means "not running this instant," which is the normal, healthy state for a scheduled job — it only shows a real PID during the seconds it's actually running.
+
+```bash
+launchctl list | grep personal-automation
+# -  0  com.personal-automation.daily
+# -  0  com.personal-automation.stalled-tasks
+
+# Same thing as an explicit OK / CHECK line per agent
+launchctl list | awk '/personal-automation/ {print ($2==0 ? "OK   " : "CHECK") "  " $3 "  (last exit " $2 ")"}'
+```
+
+Only reach for the verbose `launchctl print` when you need details the line above doesn't show — next scheduled fire time, run count, the resolved program path:
+
+```bash
+launchctl print "gui/$(id -u)/com.personal-automation.daily"
+launchctl print "gui/$(id -u)/com.personal-automation.stalled-tasks"
+```
+
+### Run logs (launchd stdout/stderr)
+
+The daily run and the digest each write a stdout + stderr log in the project root:
+
+```bash
+# Daily run (ynab-enrich-memos → ynab-categorize → notify)
+tail -n 50 launchd-daily.out.log
+tail -n 50 launchd-daily.err.log
+
+# stalled-tasks digest
+tail -n 50 launchd-stalled-tasks.out.log
+tail -n 50 launchd-stalled-tasks.err.log
+```
+
+A non-empty `*.err.log` isn't always a failure — pnpm and progress spinners write to stderr. Check the agent's last exit code (above) for the real verdict.
+
+### What did the last run do? (audit logs)
+
+Each YNAB app appends one JSONL line per transaction to `apps/<app>/audit/<app>-YYYY-MM-DD.jsonl`; `stalled-tasks` logs its classifications to `apps/stalled-tasks/runs/run-YYYY-MM-DD.jsonl`. With `jq`:
+
+```bash
+# Today's categorizer decisions, status counts (ok / error / skipped_for_no_match)
+jq -r .status "apps/ynab-categorize/audit/ynab-categorize-$(date +%F).jsonl" | sort | uniq -c
+
+# Today's enrichment results: did each transaction get a memo, and did the PATCH land?
+jq -r '[.status, .patch_status, (.new_memo // "—")] | @tsv' \
+  "apps/ynab-enrich-memos/audit/ynab-enrich-memos-$(date +%F).jsonl"
+
+# Only the failures across both YNAB apps today
+jq -c 'select(.status != "ok")' apps/*/audit/*-"$(date +%F)".jsonl
+
+# Today's stalled-tasks digest: titles and why each was flagged
+jq -r '[.classification, .title] | @tsv' "apps/stalled-tasks/runs/run-$(date +%F).jsonl"
+
+# Most recent audit file per app (when did each last run?)
+ls -t apps/ynab-categorize/audit apps/ynab-enrich-memos/audit apps/stalled-tasks/runs
+```
+
+### Trigger a run now
+
+```bash
+# Force the daily run immediately (-k kills any in-flight copy first)
+launchctl kickstart -k "gui/$(id -u)/com.personal-automation.daily"
+
+# Force the stalled-tasks digest
+launchctl kickstart -k "gui/$(id -u)/com.personal-automation.stalled-tasks"
+```
+
+To run an app by hand without launchd (and without the failure notification), use the `pnpm --filter` commands in [Run](#run) — start with the `test:` dry-run script.
+
+### Stuck lock?
+
+A crashed run can leave a stale lockfile; the next run claims it automatically, but you can inspect or clear it:
+
+```bash
+ls -l "$TMPDIR"/ynab-categorize.lock "$TMPDIR"/stalled-tasks.lock 2>/dev/null
+rm -f "$TMPDIR"/ynab-categorize.lock   # only if you're sure no run is active
+```

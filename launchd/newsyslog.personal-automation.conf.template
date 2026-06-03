@@ -11,5 +11,5 @@
 #   when=$W0   also rotate on Sunday (weekly)
 #   flags=Z    gzip the archives
 
-{{PROJECT_DIR}}/launchd.out.log  {{USERNAME}}:staff  644  4  1024  $W0  Z
-{{PROJECT_DIR}}/launchd.err.log  {{USERNAME}}:staff  644  4  1024  $W0  Z
+{{PROJECT_DIR}}/launchd-daily.out.log  {{USERNAME}}:staff  644  4  1024  $W0  Z
+{{PROJECT_DIR}}/launchd-daily.err.log  {{USERNAME}}:staff  644  4  1024  $W0  Z
