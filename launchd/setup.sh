@@ -60,6 +60,6 @@ Changed STALLED_TASKS_SCHEDULE later? Re-run this script, then:
   cp $PROJECT_DIR/launchd/com.personal-automation.stalled-tasks.plist ~/Library/LaunchAgents/
   launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.personal-automation.stalled-tasks.plist
 
-Optional log rotation (rotates launchd-daily.{out,err}.log weekly, keeps 4):
+Optional log rotation (rotates the launchd-daily.* and launchd-stalled-tasks.* logs weekly, keeps 4):
   sudo cp $PROJECT_DIR/launchd/newsyslog.personal-automation.conf /etc/newsyslog.d/
 EOF
