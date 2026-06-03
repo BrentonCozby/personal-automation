@@ -22,13 +22,20 @@ export type AnthropicClient = {
 export function createAnthropicClient({
   apiKey,
   model,
+  maxRetries = 6,
 }: {
   apiKey: string
   model: string
+  /**
+   * Cap on the SDK's automatic 429/5xx retries. Higher than the SDK default (2) so a bulk run
+   * (e.g. a multi-day enrich backfill) can wait out the per-minute token rate limit instead of
+   * failing once the default retries are spent.
+   */
+  maxRetries?: number
 }): AnthropicClient {
-  // The SDK retries 429/5xx with exponential backoff internally (default 2 retries), so
-  // callers don't wrap this in withRetry — non-retryable failures bubble up as AnthropicError.
-  const client = new Anthropic({ apiKey })
+  // The SDK retries 429/5xx with exponential backoff honoring the Retry-After header, so callers
+  // don't wrap this in withRetry — non-retryable failures bubble up as AnthropicError.
+  const client = new Anthropic({ apiKey, maxRetries })
 
   async function parse<T>({
     prompt,

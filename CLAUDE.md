@@ -23,13 +23,13 @@ These are the conventions this monorepo follows that aren't visible from just re
 ```text
 apps/
   ynab-categorize/     # daily Amazon-categorizer CLI
-  ynab-enrich-memos/   # planned — design in apps/ynab-enrich-memos/plan.md
+  ynab-enrich-memos/   # writes Amazon receipt items into transaction memos; runs before ynab-categorize
   notify/              # emails a digest after the daily run on audit-log errors
   stalled-tasks/       # scheduled digest of stalled Apple Reminders (own launchd agent)
 packages/
   anthropic/           # Claude API client (messages.parse + zodOutputFormat)
   ynab/                # YNAB client, schemas, types, milliunits
-  gmail/               # Gmail API client (OAuth + send, optional multipart HTML)
+  gmail/               # Gmail API client (OAuth, send w/ optional multipart HTML, read/search)
   common/              # errors, retry, lock, logger, progress, json, chunks, date
 launchd/               # macOS scheduling: run.sh, run-stalled-tasks.sh, setup.sh, plist template, newsyslog conf
 ```
@@ -43,7 +43,7 @@ launchd/               # macOS scheduling: run.sh, run-stalled-tasks.sh, setup.s
 
 - **External services**: shared ones are a package (`packages/ynab/`, `packages/gmail/`, `packages/anthropic/` for the Claude API client); app-specific ones live in `apps/<app>/src/<service>/` (e.g. each app's thin `anthropic/` wrapper over the shared client). Inside: `client.ts` (factory), `schemas.ts` (zod), `types.ts` (derived). Anything specific stays in that folder.
 - **Constants**: code-shape constants (flag name/color, payee filter, batch sizes) live in `apps/ynab-categorize/src/constants.ts`. The single YNAB-wide constant `YNAB_API_BASE_URL` lives in `packages/ynab/src/constants.ts`. These aren't env-tunable.
-- **Env vars**: split across `.env` files, all gitignored. Shared secrets and ids live in the monorepo-root `.env` (`YNAB_TOKEN`, `YNAB_BUDGET_ID`, `ANTHROPIC_API_KEY`, `GMAIL_OAUTH_*`); each app's own tuning, recipients, and per-app model live in `apps/<app>/.env` (e.g. `LOOKBACK_DAYS`/`AUDIT_DIR`/`EXCLUDED_CATEGORY_GROUPS` for ynab-categorize, `REMINDERS_LISTS`/`STALLED_TASKS_*` for stalled-tasks). An app's `config.ts` calls `loadAppEnv(import.meta.url)` (from `@personal-automation/common/env`), which loads the root `.env` then the app's `.env` on top; package-level scripts with no app `.env` use `loadRootEnv`. No `.default()` calls in `config.ts` — loaders throw if any required var is missing. A `.env.example` sits next to every `.env` (root + per-app) with generic placeholders so nothing personal lives in tracked files.
+- **Env vars**: split across `.env` files, all gitignored. Shared secrets and ids live in the monorepo-root `.env` (`YNAB_TOKEN`, `YNAB_BUDGET_ID`, `ALLOWED_ACCOUNT_IDS`, `ANTHROPIC_API_KEY`, `GMAIL_OAUTH_*`); each app's own tuning, recipients, and per-app model live in `apps/<app>/.env` (e.g. `LOOKBACK_DAYS`/`AUDIT_DIR`/`EXCLUDED_CATEGORY_GROUPS` for ynab-categorize, `ENRICH_LOOKBACK_DAYS`/`GMAIL_RECEIPT_WINDOW_DAYS`/`GMAIL_FROM_FILTER` for ynab-enrich-memos, `REMINDERS_LISTS`/`STALLED_TASKS_*` for stalled-tasks). `AUDIT_DIR` is declared per-app (it resolves from that app's CWD); apps never read another app's `.env`. An app's `config.ts` calls `loadAppEnv(import.meta.url)` (from `@personal-automation/common/env`), which loads the root `.env` then the app's `.env` on top; package-level scripts with no app `.env` use `loadRootEnv`. No `.default()` calls in `config.ts` — loaders throw if any required var is missing. A `.env.example` sits next to every `.env` (root + per-app) with generic placeholders so nothing personal lives in tracked files.
 - **Errors**: extend `AppError` from `@personal-automation/common/errors`. Set `retryable: true` for transient failures so `withRetry` picks them up. Don't add new error subclasses unless callers actually need to branch on them.
 - **Logging**: structured via pino, wrapped in `createLogger` so call sites are `logger.info({ msg, extra })`. The audit log (JSONL) is a separate concern from pino — written via `logger.audit(entry)`.
 

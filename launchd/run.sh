@@ -10,7 +10,7 @@ cd "$PROJECT_DIR"
 
 APPS=(
   # Enrichment runs first so ynab-categorize sees the populated memos.
-  # 'ynab-enrich-memos'    # uncomment when Phase 2 lands
+  'ynab-enrich-memos'
   'ynab-categorize'
 )
 # stalled-tasks is NOT here — it has its own launchd agent (com.personal-automation.stalled-tasks)

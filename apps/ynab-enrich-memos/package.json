@@ -1,13 +1,20 @@
 {
   "name": "@personal-automation/ynab-enrich-memos",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "type": "module",
   "private": true,
   "scripts": {
-    "build": "tsc -b"
+    "build": "tsc -b",
+    "start": "node dist/index.js",
+    "ynab-enrich-memos": "tsx src/index.ts",
+    "test:ynab-enrich-memos": "tsx src/index.ts --dry-run"
   },
   "dependencies": {
+    "@personal-automation/anthropic": "workspace:*",
     "@personal-automation/common": "workspace:*",
-    "@personal-automation/ynab": "workspace:*"
+    "@personal-automation/gmail": "workspace:*",
+    "@personal-automation/ynab": "workspace:*",
+    "p-limit": "^7.3.0",
+    "zod": "^4.4.3"
   }
 }

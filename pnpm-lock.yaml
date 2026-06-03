@@ -95,12 +95,24 @@ importers:
 
   apps/ynab-enrich-memos:
     dependencies:
+      '@personal-automation/anthropic':
+        specifier: workspace:*
+        version: link:../../packages/anthropic
       '@personal-automation/common':
         specifier: workspace:*
         version: link:../../packages/common
+      '@personal-automation/gmail':
+        specifier: workspace:*
+        version: link:../../packages/gmail
       '@personal-automation/ynab':
         specifier: workspace:*
         version: link:../../packages/ynab
+      p-limit:
+        specifier: ^7.3.0
+        version: 7.3.0
+      zod:
+        specifier: ^4.4.3
+        version: 4.4.3
 
   packages/anthropic:
     dependencies:

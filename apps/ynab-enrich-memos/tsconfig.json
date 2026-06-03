@@ -5,5 +5,10 @@
     "rootDir": "./src"
   },
   "include": ["src/**/*"],
-  "references": [{ "path": "../../packages/common" }, { "path": "../../packages/ynab" }]
+  "references": [
+    { "path": "../../packages/anthropic" },
+    { "path": "../../packages/common" },
+    { "path": "../../packages/gmail" },
+    { "path": "../../packages/ynab" }
+  ]
 }
