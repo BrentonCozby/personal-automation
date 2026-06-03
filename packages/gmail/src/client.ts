@@ -2,8 +2,16 @@ import { AppError, isRetryableHttpStatus } from '@personal-automation/common/err
 import { withRetry } from '@personal-automation/common/retry'
 import type { GmailAuth } from './auth.js'
 import { GMAIL_API_BASE_URL } from './constants.js'
-import { sendMessageResponseSchema } from './schemas.js'
-import type { SendMessageResponse } from './types.js'
+import {
+  getMessageResponseSchema,
+  listMessagesResponseSchema,
+  sendMessageResponseSchema,
+} from './schemas.js'
+import type { GetMessageResponse, GmailMessage, MessageRef, SendMessageResponse } from './types.js'
+
+// One node of a message's MIME tree. Reuses the shape the get-message schema validates so the
+// decode helpers can't drift from what the parser accepts.
+type MessagePart = NonNullable<GetMessageResponse['payload']>
 
 type SendMessageParams = {
   to: string
@@ -20,9 +28,64 @@ const MULTIPART_BOUNDARY = 'personal-automation-alt-boundary-9d8f7a6b1c'
 
 export type GmailClient = {
   sendMessage: (params: SendMessageParams) => Promise<SendMessageResponse>
+  /** Search messages with a Gmail query string (the same syntax as the Gmail search box). */
+  listMessages: (params: { query: string; maxResults: number }) => Promise<MessageRef[]>
+  /** Fetch one message and normalize it — headers flattened, body decoded to text. */
+  getMessage: (params: { id: string }) => Promise<GmailMessage>
 }
 
 export function createGmailClient({ auth }: { auth: GmailAuth }): GmailClient {
+  // GET helper for the read endpoints. sendMessage keeps its own fetch — it POSTs a body and
+  // pre-validates headers, so sharing this would tangle the two paths for little gain.
+  function getJson<T>({
+    path,
+    schema,
+  }: {
+    path: string
+    schema: { parse: (data: unknown) => T }
+  }): Promise<T> {
+    return withRetry(async () => {
+      const token = await auth.getAccessToken()
+      const res = await fetch(`${GMAIL_API_BASE_URL}${path}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      })
+      if (!res.ok) {
+        const text = await res.text()
+        throw new AppError({
+          message: `Gmail GET ${path} → ${res.status}: ${text}`,
+          retryable: isRetryableHttpStatus(res.status),
+        })
+      }
+
+      return schema.parse(await res.json())
+    })
+  }
+
+  function listMessages({
+    query,
+    maxResults,
+  }: {
+    query: string
+    maxResults: number
+  }): Promise<MessageRef[]> {
+    const params = new URLSearchParams({ q: query, maxResults: String(maxResults) })
+
+    // `messages` is omitted (not an empty array) on a no-match query — collapse both to [].
+    return getJson({
+      path: `/users/me/messages?${params.toString()}`,
+      schema: listMessagesResponseSchema,
+    }).then(r => r.messages ?? [])
+  }
+
+  async function getMessage({ id }: { id: string }): Promise<GmailMessage> {
+    const raw = await getJson({
+      path: `/users/me/messages/${encodeURIComponent(id)}?format=full`,
+      schema: getMessageResponseSchema,
+    })
+
+    return normalizeMessage(raw)
+  }
+
   function sendMessage({
     to,
     subject,
@@ -64,7 +127,83 @@ export function createGmailClient({ auth }: { auth: GmailAuth }): GmailClient {
     })
   }
 
-  return { sendMessage }
+  return { sendMessage, listMessages, getMessage }
+}
+
+function normalizeMessage(raw: GetMessageResponse): GmailMessage {
+  const { payload } = raw
+
+  return {
+    id: raw.id,
+    threadId: raw.threadId,
+    snippet: raw.snippet ?? '',
+    subject: headerValue({ payload, name: 'Subject' }),
+    from: headerValue({ payload, name: 'From' }),
+    date: headerValue({ payload, name: 'Date' }),
+    authenticationResults: headerValue({ payload, name: 'Authentication-Results' }),
+    bodyText: extractBodyText(payload),
+  }
+}
+
+function headerValue({
+  payload,
+  name,
+}: {
+  payload: MessagePart | undefined
+  name: string
+}): string | null {
+  const target = name.toLowerCase()
+  const found = payload?.headers?.find(h => h.name.toLowerCase() === target)
+
+  return found?.value ?? null
+}
+
+// Prefer the text/plain part; fall back to text/html with tags stripped. A receipt email is
+// almost always multipart with both, so the plain part is the cheaper, cleaner input for the
+// model. Returns '' when the message carries no textual part.
+function extractBodyText(payload?: MessagePart): string {
+  if (!payload) return ''
+  const plain = collectText({ part: payload, mimeType: 'text/plain' }).trim()
+  if (plain) return plain
+  const html = collectText({ part: payload, mimeType: 'text/html' }).trim()
+  if (html) return stripHtml(html)
+
+  return ''
+}
+
+// Depth-first concatenation of every part matching `mimeType`. Gmail nests parts (e.g.
+// multipart/alternative inside multipart/mixed), so this recurses rather than reading only
+// the top-level body.
+function collectText({ part, mimeType }: { part: MessagePart; mimeType: string }): string {
+  let text =
+    part.mimeType === mimeType && part.body?.data ? `${decodeBase64Url(part.body.data)}\n` : ''
+  for (const child of part.parts ?? []) {
+    text += collectText({ part: child, mimeType })
+  }
+
+  return text
+}
+
+function decodeBase64Url(data: string): string {
+  return Buffer.from(data, 'base64url').toString('utf8')
+}
+
+// Minimal HTML-to-text: drop script/style blocks and tags, decode the handful of entities
+// that show up in receipts, and collapse whitespace. Good enough to hand to the model — we
+// don't need to preserve layout, just the words and prices.
+function stripHtml(html: string): string {
+  return html
+    .replace(/<style[\s\S]*?<\/style>/gi, ' ')
+    .replace(/<script[\s\S]*?<\/script>/gi, ' ')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/&nbsp;/gi, ' ')
+    .replace(/&amp;/gi, '&')
+    .replace(/&lt;/gi, '<')
+    .replace(/&gt;/gi, '>')
+    .replace(/&#39;|&apos;/gi, "'")
+    .replace(/&quot;/gi, '"')
+    .replace(/\s+/g, ' ')
+    .trim()
 }
 
 // Gmail's users.messages.send expects a base64url-encoded RFC 5322 message in the `raw` field.

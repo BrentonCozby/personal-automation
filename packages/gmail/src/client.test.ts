@@ -187,3 +187,182 @@ describe('createGmailClient.sendMessage', (): void => {
     ).rejects.toThrow()
   })
 })
+
+function b64url(text: string): string {
+  return Buffer.from(text, 'utf8').toString('base64url')
+}
+
+describe('createGmailClient.listMessages', (): void => {
+  it('passes the query + maxResults and returns the message refs', async (): Promise<void> => {
+    let receivedUrl = ''
+    let receivedAuth = ''
+    server.use(
+      http.get(`${GMAIL_API_BASE_URL}/users/me/messages`, ({ request }) => {
+        receivedUrl = request.url
+        receivedAuth = request.headers.get('Authorization') ?? ''
+
+        return HttpResponse.json({
+          messages: [
+            { id: 'm1', threadId: 't1' },
+            { id: 'm2', threadId: 't2' },
+          ],
+          resultSizeEstimate: 2,
+        })
+      }),
+    )
+
+    const client = createGmailClient({ auth: fakeAuth() })
+    const refs = await client.listMessages({
+      query: 'from:amazon.com after:2026/05/01',
+      maxResults: 5,
+    })
+
+    expect(refs).toEqual([
+      { id: 'm1', threadId: 't1' },
+      { id: 'm2', threadId: 't2' },
+    ])
+    expect(receivedAuth).toBe('Bearer atok-test')
+    const url = new URL(receivedUrl)
+    expect(url.searchParams.get('q')).toBe('from:amazon.com after:2026/05/01')
+    expect(url.searchParams.get('maxResults')).toBe('5')
+  })
+
+  it('returns an empty array when the query matches nothing (messages omitted)', async (): Promise<void> => {
+    server.use(
+      http.get(`${GMAIL_API_BASE_URL}/users/me/messages`, () =>
+        HttpResponse.json({ resultSizeEstimate: 0 }),
+      ),
+    )
+
+    const client = createGmailClient({ auth: fakeAuth() })
+    expect(await client.listMessages({ query: 'from:nobody', maxResults: 5 })).toEqual([])
+  })
+
+  it('throws on a 4xx without retrying', async (): Promise<void> => {
+    let calls = 0
+    server.use(
+      http.get(`${GMAIL_API_BASE_URL}/users/me/messages`, () => {
+        calls++
+
+        return HttpResponse.text('bad query', { status: 400 })
+      }),
+    )
+
+    const client = createGmailClient({ auth: fakeAuth() })
+    await expect(client.listMessages({ query: 'x', maxResults: 5 })).rejects.toThrow(/Gmail GET/)
+    expect(calls).toBe(1)
+  })
+})
+
+describe('createGmailClient.getMessage', (): void => {
+  it('flattens the headers and decodes the text/plain part', async (): Promise<void> => {
+    server.use(
+      http.get(`${GMAIL_API_BASE_URL}/users/me/messages/msg-1`, ({ request }) => {
+        const url = new URL(request.url)
+        expect(url.searchParams.get('format')).toBe('full')
+
+        return HttpResponse.json({
+          id: 'msg-1',
+          threadId: 'thr-1',
+          snippet: 'Your order of …',
+          payload: {
+            mimeType: 'text/plain',
+            headers: [
+              { name: 'Subject', value: 'Your Amazon.com order' },
+              { name: 'From', value: 'auto-confirm@amazon.com' },
+              { name: 'Date', value: 'Mon, 25 May 2026 10:00:00 -0700' },
+              {
+                name: 'Authentication-Results',
+                value: 'mx.google.com; dmarc=pass header.from=amazon.com',
+              },
+            ],
+            body: { data: b64url('USB-C cable $12.99\nTotal $12.99'), size: 30 },
+          },
+        })
+      }),
+    )
+
+    const client = createGmailClient({ auth: fakeAuth() })
+    const msg = await client.getMessage({ id: 'msg-1' })
+
+    expect(msg.id).toBe('msg-1')
+    expect(msg.subject).toBe('Your Amazon.com order')
+    expect(msg.from).toBe('auto-confirm@amazon.com')
+    expect(msg.snippet).toBe('Your order of …')
+    expect(msg.authenticationResults).toContain('dmarc=pass')
+    expect(msg.bodyText).toBe('USB-C cable $12.99\nTotal $12.99')
+  })
+
+  it('walks nested multipart and prefers the text/plain part over HTML', async (): Promise<void> => {
+    server.use(
+      http.get(`${GMAIL_API_BASE_URL}/users/me/messages/msg-2`, () =>
+        HttpResponse.json({
+          id: 'msg-2',
+          threadId: 'thr-2',
+          payload: {
+            mimeType: 'multipart/alternative',
+            headers: [{ name: 'Subject', value: 'Shipped' }],
+            parts: [
+              { mimeType: 'text/plain', body: { data: b64url('plain wins') } },
+              { mimeType: 'text/html', body: { data: b64url('<p>html loses</p>') } },
+            ],
+          },
+        }),
+      ),
+    )
+
+    const client = createGmailClient({ auth: fakeAuth() })
+    const msg = await client.getMessage({ id: 'msg-2' })
+
+    expect(msg.bodyText).toBe('plain wins')
+  })
+
+  it('falls back to HTML with tags + entities stripped when there is no plain part', async (): Promise<void> => {
+    server.use(
+      http.get(`${GMAIL_API_BASE_URL}/users/me/messages/msg-3`, () =>
+        HttpResponse.json({
+          id: 'msg-3',
+          threadId: 'thr-3',
+          payload: {
+            mimeType: 'multipart/mixed',
+            parts: [
+              {
+                mimeType: 'text/html',
+                body: {
+                  data: b64url(
+                    '<style>.x{}</style><div>Tom &amp; Jerry cable&nbsp;&mdash; $5</div>',
+                  ),
+                },
+              },
+            ],
+          },
+        }),
+      ),
+    )
+
+    const client = createGmailClient({ auth: fakeAuth() })
+    const msg = await client.getMessage({ id: 'msg-3' })
+
+    expect(msg.bodyText).toContain('Tom & Jerry cable')
+    expect(msg.bodyText).not.toContain('<')
+    expect(msg.bodyText).not.toContain('.x{}')
+  })
+
+  it('returns null headers and empty body when the payload is absent', async (): Promise<void> => {
+    server.use(
+      http.get(`${GMAIL_API_BASE_URL}/users/me/messages/msg-4`, () =>
+        HttpResponse.json({ id: 'msg-4', threadId: 'thr-4' }),
+      ),
+    )
+
+    const client = createGmailClient({ auth: fakeAuth() })
+    const msg = await client.getMessage({ id: 'msg-4' })
+
+    expect(msg.subject).toBeNull()
+    expect(msg.from).toBeNull()
+    expect(msg.date).toBeNull()
+    expect(msg.authenticationResults).toBeNull()
+    expect(msg.bodyText).toBe('')
+    expect(msg.snippet).toBe('')
+  })
+})
