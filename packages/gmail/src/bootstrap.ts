@@ -49,7 +49,7 @@ async function main(): Promise<void> {
   console.log('\n=== SUCCESS ===\n')
   console.log('Paste this into your .env file as GMAIL_OAUTH_REFRESH_TOKEN:\n')
   console.log(refreshToken)
-  console.log('\nKeep it secret — it is the only one of the four Gmail env vars that')
+  console.log('\nKeep it secret — it is the only one of the three Gmail env vars that')
   console.log('is truly sensitive.\n')
 }
 

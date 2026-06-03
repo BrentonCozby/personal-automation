@@ -1,6 +1,6 @@
 // Reads open (incomplete) Apple Reminders via EventKit and prints them as JSON to stdout.
 // source.ts compiles this into the `reminders-bridge` binary and runs it. The contract:
-//   success      → {"reminders":[{id,title,notes,list,created,lastModified,due}, ...]}
+//   success      → {"reminders":[{id,title,notes,list,created,lastModified,due,recurring}, ...]}
 //   no access    → {"error":"not_authorized","status":<rawValue>}
 //   fetch failed → {"error":"fetch_failed"}
 // Dates are ISO 8601 strings or null. source.ts maps an "error" payload to a thrown AppError,

@@ -52,13 +52,13 @@ cat <<EOF
 Next (load both agents — the daily run and the digest):
   cp $PROJECT_DIR/launchd/com.personal-automation.plist ~/Library/LaunchAgents/
   cp $PROJECT_DIR/launchd/com.personal-automation.stalled-tasks.plist ~/Library/LaunchAgents/
-  launchctl load ~/Library/LaunchAgents/com.personal-automation.plist
-  launchctl load ~/Library/LaunchAgents/com.personal-automation.stalled-tasks.plist
+  launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.personal-automation.plist
+  launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.personal-automation.stalled-tasks.plist
 
 Changed STALLED_TASKS_SCHEDULE later? Re-run this script, then:
-  launchctl unload ~/Library/LaunchAgents/com.personal-automation.stalled-tasks.plist
+  launchctl bootout gui/$(id -u)/com.personal-automation.stalled-tasks
   cp $PROJECT_DIR/launchd/com.personal-automation.stalled-tasks.plist ~/Library/LaunchAgents/
-  launchctl load ~/Library/LaunchAgents/com.personal-automation.stalled-tasks.plist
+  launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.personal-automation.stalled-tasks.plist
 
 Optional log rotation (rotates launchd.{out,err}.log weekly, keeps 4):
   sudo cp $PROJECT_DIR/launchd/newsyslog.personal-automation.conf /etc/newsyslog.d/
