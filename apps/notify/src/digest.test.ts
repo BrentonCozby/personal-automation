@@ -60,11 +60,12 @@ describe('buildDigest', (): void => {
     expect(digest.body).toContain('ynab-enrich-memos — 1 error, 1 success')
   })
 
-  it('excludes skipped_for_dry_run rows from both counts', (): void => {
+  it('excludes skipped_for_dry_run and skipped_for_no_match rows from both counts', (): void => {
     const digest = buildDigest({
       rows: [
         row({ transaction_id: 'a', patch_status: 'skipped_for_dry_run' }),
-        row({ transaction_id: 'b', patch_status: 'skipped_for_dry_run' }),
+        // Benign "nothing to enrich" — must not read as an error in the digest.
+        row({ transaction_id: 'b', patch_status: 'skipped_for_no_match' }),
         row({ transaction_id: 'c', patch_status: 'success' }),
         row({ transaction_id: 'd', patch_status: 'error', error: 'boom' }),
       ],

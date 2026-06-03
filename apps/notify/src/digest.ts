@@ -34,7 +34,7 @@ export function buildDigest({ rows }: { rows: AuditRow[] }): Digest {
     } else if (row.patch_status === 'success') {
       bucket.successCount += 1
     }
-    // skipped_for_dry_run is excluded from both counts by design.
+    // skipped_for_dry_run and skipped_for_no_match are excluded from both counts by design.
   }
 
   const errorCount = [...byApp.values()].reduce((sum, b) => sum + b.errors.length, 0)

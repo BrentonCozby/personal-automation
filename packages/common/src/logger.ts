@@ -12,15 +12,28 @@ import { writeWithProgress } from './progress.js'
 // apps — the per-app schema is the source of truth, passed to `createLogger` for write-time
 // validation.
 //
-// `patch_status: 'skipped_for_upstream_error'` covers any pre-PATCH failure (ynab-categorize
-// error, ynab-enrich-memos receipt-not-found, etc.) — read your app's `status` for the cause.
+// patch_status values, and how notify's digest treats each:
+//   success                    — PATCH applied (counts as a success)
+//   error                      — PATCH attempted and failed (counts as a digest error)
+//   skipped_for_upstream_error — a failure before PATCH, so none was attempted; counts as a
+//                                digest error (e.g. ynab-categorize's LLM call threw)
+//   skipped_for_dry_run        — dry run, no PATCH (excluded from digest counts)
+//   skipped_for_no_match       — ran fine, nothing to act on, not a failure; excluded from
+//                                digest counts (e.g. ynab-enrich-memos found no matching receipt)
+// Read your app's own `status` field for the specific cause.
 export const baseAuditFields = {
   timestamp: z.string(),
   transaction_id: z.string(),
   payee_name: z.string().nullable(),
   memo: z.string().nullable(),
   amount_dollars: z.number(),
-  patch_status: z.enum(['success', 'error', 'skipped_for_dry_run', 'skipped_for_upstream_error']),
+  patch_status: z.enum([
+    'success',
+    'error',
+    'skipped_for_dry_run',
+    'skipped_for_upstream_error',
+    'skipped_for_no_match',
+  ]),
   prompt_tokens: z.number().optional(),
   latency_ms: z.number().optional(),
   error: z.string().optional(),
