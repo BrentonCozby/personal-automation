@@ -127,6 +127,10 @@ describe('runNotify', (): void => {
     expect(decodeSubject(decoded)).toBe('Personal Automation — 1 error')
     expect(decoded).toContain('Transaction bad')
     expect(decoded).toContain('rate_limit_error: 429 from anthropic')
+    // The email carries both a plain-text fallback and an HTML part.
+    expect(decoded).toContain('multipart/alternative')
+    expect(decoded).toContain('Content-Type: text/html')
+    expect(decoded).toContain('<!doctype html>')
   })
 
   it('skips malformed JSONL lines and still reads valid ones', async (): Promise<void> => {

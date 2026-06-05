@@ -40,6 +40,7 @@ export async function runNotify({ config, today, appsDir }: RunOptions): Promise
     to: config.toEmail,
     subject: digest.subject,
     body: digest.body,
+    html: digest.html,
   })
 
   logger.info(

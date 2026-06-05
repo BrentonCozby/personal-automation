@@ -162,4 +162,75 @@ describe('buildDigest', (): void => {
     expect(alphaIdx).toBeGreaterThanOrEqual(0)
     expect(zetaIdx).toBeGreaterThan(alphaIdx)
   })
+
+  describe('html', (): void => {
+    it('emits an HTML document carrying the app name, transaction, and error', (): void => {
+      const digest = buildDigest({
+        rows: [
+          row({
+            app: 'ynab-enrich-memos',
+            transaction_id: 'abc123',
+            payee_name: 'Amazon',
+            amount_dollars: -116.25,
+            patch_status: 'skipped_for_upstream_error',
+            error: 'Google OAuth token refresh → 400',
+          }),
+        ],
+      })
+
+      expect(digest.html).toContain('<!doctype html>')
+      expect(digest.html).toContain('ynab-enrich-memos')
+      expect(digest.html).toContain('abc123')
+      expect(digest.html).toContain('Amazon')
+      expect(digest.html).toContain('-$116.25')
+      expect(digest.html).toContain('skipped_for_upstream_error')
+      expect(digest.html).toContain('Google OAuth token refresh → 400')
+    })
+
+    it('escapes HTML in error messages and payee names', (): void => {
+      const digest = buildDigest({
+        rows: [
+          row({
+            payee_name: 'Tom & Jerry <Co>',
+            patch_status: 'error',
+            error: '<script>alert("x")</script> & done',
+          }),
+        ],
+      })
+
+      expect(digest.html).toContain('Tom &amp; Jerry &lt;Co&gt;')
+      expect(digest.html).toContain('&lt;script&gt;alert(&quot;x&quot;)&lt;/script&gt; &amp; done')
+      expect(digest.html).not.toContain('<script>alert')
+    })
+
+    it('renders a run-aborted row as a banner rather than a transaction card', (): void => {
+      const digest = buildDigest({
+        rows: [
+          row({
+            transaction_id: RUN_ABORTED_SENTINEL,
+            payee_name: null,
+            amount_dollars: 0,
+            patch_status: 'error',
+            error: 'TypeError: boom',
+          }),
+        ],
+      })
+
+      expect(digest.html).toContain('RUN ABORTED')
+      expect(digest.html).toContain('TypeError: boom')
+      expect(digest.html).not.toContain('&lt;run-aborted&gt;')
+    })
+
+    it('shows a no-errors badge for apps that ran clean', (): void => {
+      const digest = buildDigest({
+        rows: [
+          row({ app: 'ynab-categorize', transaction_id: 'a', patch_status: 'success' }),
+          row({ app: 'ynab-enrich-memos', transaction_id: 'b', patch_status: 'error', error: 'x' }),
+        ],
+      })
+
+      expect(digest.html).toContain('no errors')
+      expect(digest.html).toContain('1 success')
+    })
+  })
 })
