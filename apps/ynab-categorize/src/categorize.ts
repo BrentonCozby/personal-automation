@@ -560,8 +560,10 @@ export function buildAuditEntry({
     payee_name: txn.payee_name,
     memo: txn.memo,
     amount_dollars: milliunitsToDollars(txn.amount),
+    transaction_date: txn.date,
     chosen_category_id: categoryId,
     chosen_category_name: categoryName,
+    result_summary: categoryName,
     status: 'ok',
     ...extra,
   }

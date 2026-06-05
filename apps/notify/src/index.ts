@@ -11,8 +11,8 @@ async function main(): Promise<void> {
   const appsDir = path.join(resolveWorkspaceRoot(import.meta.url), 'apps')
 
   const result = await runNotify({ config, today, appsDir })
-  if (result.kind === 'no_errors') {
-    console.log(`No errors in today's audit logs; skipped send. (rows=${result.rowsRead})`)
+  if (result.kind === 'no_activity') {
+    console.log(`No activity in today's audit logs; skipped send. (rows=${result.rowsRead})`)
   } else {
     console.log(`Sent digest: ${result.errorCount} errors. message_id=${result.messageId}`)
   }

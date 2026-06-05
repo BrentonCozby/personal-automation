@@ -15,7 +15,7 @@ type RunOptions = {
 }
 
 export type RunResult =
-  | { kind: 'no_errors'; rowsRead: number }
+  | { kind: 'no_activity'; rowsRead: number }
   | { kind: 'sent'; errorCount: number; messageId: string }
 
 export async function runNotify({ config, today, appsDir }: RunOptions): Promise<RunResult> {
@@ -24,10 +24,13 @@ export async function runNotify({ config, today, appsDir }: RunOptions): Promise
   const rows = collectAuditRows({ appsDir, today, logger })
   const digest = buildDigest({ rows })
 
-  if (digest.errorCount === 0) {
-    logger.info({ rowsRead: rows.length }, 'No errors in today’s audit logs; skipping email.')
+  // Send a digest whenever the run did something — errors or successes — so the email doubles
+  // as a daily check that categorization and memo-enrichment are still working. Skip only when
+  // nothing was applied (an empty run, or one with only skips).
+  if (digest.errorCount === 0 && digest.successCount === 0) {
+    logger.info({ rowsRead: rows.length }, 'No activity in today’s audit logs; skipping email.')
 
-    return { kind: 'no_errors', rowsRead: rows.length }
+    return { kind: 'no_activity', rowsRead: rows.length }
   }
 
   const auth = createGmailAuth({
@@ -126,6 +129,9 @@ function readJsonlRows({
       payee_name: parsed.data.payee_name,
       amount_dollars: parsed.data.amount_dollars,
       patch_status: parsed.data.patch_status,
+      memo: parsed.data.memo,
+      transaction_date: parsed.data.transaction_date ?? null,
+      result_summary: parsed.data.result_summary ?? null,
       ...(parsed.data.error !== undefined ? { error: parsed.data.error } : {}),
     })
   }

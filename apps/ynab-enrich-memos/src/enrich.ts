@@ -430,6 +430,7 @@ async function enrichOne({
       extra: {
         ...lookExtra,
         new_memo: memo,
+        result_summary: memo,
         latency_ms: result.latencyMs,
         ...(result.inputTokens !== undefined && { prompt_tokens: result.inputTokens }),
       },
@@ -543,6 +544,7 @@ export function buildAuditEntry({
     payee_name: txn.payee_name,
     memo: txn.memo,
     amount_dollars: milliunitsToDollars(txn.amount),
+    transaction_date: txn.date,
     status,
     ...extra,
   }

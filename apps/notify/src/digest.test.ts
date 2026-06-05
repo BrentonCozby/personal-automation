@@ -110,10 +110,16 @@ describe('buildDigest', (): void => {
     expect(digest.body).toContain('Reason:  (no error message recorded)')
   })
 
-  it('shows a (no errors) line for apps that ran clean alongside apps that failed', (): void => {
+  it('lists successes for a clean app alongside an app that failed', (): void => {
     const digest = buildDigest({
       rows: [
-        row({ app: 'ynab-categorize', transaction_id: 'a', patch_status: 'success' }),
+        row({
+          app: 'ynab-categorize',
+          transaction_id: 'a',
+          payee_name: 'Whole Foods',
+          patch_status: 'success',
+          result_summary: 'Groceries',
+        }),
         row({
           app: 'ynab-enrich-memos',
           transaction_id: 'b',
@@ -125,8 +131,90 @@ describe('buildDigest', (): void => {
 
     expect(digest.errorCount).toBe(1)
     expect(digest.body).toContain('ynab-categorize — 0 errors, 1 success')
-    expect(digest.body).toContain('(no errors)')
+    expect(digest.body).toContain('Successes:')
+    expect(digest.body).toContain('Whole Foods')
+    expect(digest.body).toContain('→  Groceries')
     expect(digest.body).toContain('ynab-enrich-memos — 1 error, 0 successes')
+  })
+
+  it('shows the result summary on success rows and falls back to (applied) when absent', (): void => {
+    const withSummary = buildDigest({
+      rows: [
+        row({
+          patch_status: 'success',
+          payee_name: 'Amazon',
+          result_summary: 'auto-gen: AAA batteries',
+        }),
+      ],
+    })
+    const withoutSummary = buildDigest({
+      rows: [row({ patch_status: 'success', payee_name: 'Amazon', result_summary: null })],
+    })
+
+    expect(withSummary.body).toContain('Amazon  -$42.10')
+    expect(withSummary.body).toContain('→  auto-gen: AAA batteries')
+    expect(withoutSummary.body).toContain('→  (applied)')
+  })
+
+  it('shows the memo on success rows so the chosen category can be judged against it', (): void => {
+    const digest = buildDigest({
+      rows: [
+        row({
+          patch_status: 'success',
+          payee_name: 'Amazon',
+          memo: 'auto-gen: AAA batteries (24-pack)',
+          result_summary: 'Household Supplies',
+        }),
+      ],
+    })
+
+    expect(digest.body).toContain('memo: auto-gen: AAA batteries (24-pack)')
+    expect(digest.body).toContain('→  Household Supplies')
+    expect(digest.html).toContain('memo: auto-gen: AAA batteries (24-pack)')
+    expect(digest.html).toContain('Household Supplies')
+  })
+
+  it('shows the transaction date on both success and error rows', (): void => {
+    const digest = buildDigest({
+      rows: [
+        row({ transaction_id: 's', patch_status: 'success', transaction_date: '2026-06-03' }),
+        row({
+          transaction_id: 'e',
+          patch_status: 'error',
+          error: 'boom',
+          transaction_date: '2026-05-28',
+        }),
+      ],
+    })
+
+    expect(digest.body).toContain('Jun 3, 2026')
+    expect(digest.body).toContain('Date:    May 28, 2026')
+    expect(digest.html).toContain('Jun 3, 2026')
+    expect(digest.html).toContain('May 28, 2026')
+  })
+
+  it('omits the date when a row has no transaction_date', (): void => {
+    const digest = buildDigest({
+      rows: [row({ patch_status: 'error', error: 'boom', transaction_date: null })],
+    })
+
+    expect(digest.body).not.toContain('Date:')
+  })
+
+  it('shows a nothing-to-report line for an app with no errors and no successes', (): void => {
+    const digest = buildDigest({
+      rows: [
+        row({
+          app: 'ynab-enrich-memos',
+          transaction_id: 'a',
+          patch_status: 'skipped_for_no_match',
+        }),
+      ],
+    })
+
+    expect(digest.errorCount).toBe(0)
+    expect(digest.body).toContain('ynab-enrich-memos — 0 errors, 0 successes')
+    expect(digest.body).toContain('(nothing to report)')
   })
 
   it('renders a run-aborted row as a run-level header instead of a transaction', (): void => {
@@ -231,6 +319,32 @@ describe('buildDigest', (): void => {
 
       expect(digest.html).toContain('no errors')
       expect(digest.html).toContain('1 success')
+    })
+
+    it('renders each success with its payee and result summary', (): void => {
+      const digest = buildDigest({
+        rows: [
+          row({
+            patch_status: 'success',
+            payee_name: 'Whole Foods',
+            amount_dollars: -54.2,
+            result_summary: 'Groceries',
+          }),
+        ],
+      })
+
+      expect(digest.html).toContain('Whole Foods')
+      expect(digest.html).toContain('-$54.20')
+      expect(digest.html).toContain('Groceries')
+    })
+
+    it('escapes HTML in a result summary', (): void => {
+      const digest = buildDigest({
+        rows: [row({ patch_status: 'success', result_summary: 'auto-gen: <b>x</b> & y' })],
+      })
+
+      expect(digest.html).toContain('auto-gen: &lt;b&gt;x&lt;/b&gt; &amp; y')
+      expect(digest.html).not.toContain('<b>x</b>')
     })
   })
 })

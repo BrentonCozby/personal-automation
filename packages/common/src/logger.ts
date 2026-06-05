@@ -37,6 +37,17 @@ export const baseAuditFields = {
   prompt_tokens: z.number().optional(),
   latency_ms: z.number().optional(),
   error: z.string().optional(),
+  /**
+   * Short, human-readable summary of what the run did to this transaction — the category
+   * assigned, the memo written. The notify digest shows it on success rows so the model's
+   * output can be eyeballed. Absent on errors and skips, where there's no outcome to show.
+   */
+  result_summary: z.string().nullable().optional(),
+  /**
+   * The transaction's own date (YYYY-MM-DD), shown per row in the notify digest. Distinct
+   * from `timestamp`, which is when the audit entry was written (the run time).
+   */
+  transaction_date: z.string().nullable().optional(),
 }
 
 export const baseAuditSchema = z.object(baseAuditFields)

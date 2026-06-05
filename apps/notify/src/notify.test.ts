@@ -67,20 +67,61 @@ function decodeSubject(rawMessage: string): string {
 }
 
 describe('runNotify', (): void => {
-  it('returns no_errors and skips send when today’s audit logs have no error rows', async (): Promise<void> => {
+  it('sends a digest for a success-only run so successes can be verified', async (): Promise<void> => {
     const appsDir = setupAppsDir()
     writeJsonl({
       appsDir,
       app: 'ynab-categorize',
       rows: [
-        baseRow({ transaction_id: 'a', patch_status: 'success' }),
-        baseRow({ transaction_id: 'b', patch_status: 'success' }),
+        baseRow({
+          transaction_id: 'a',
+          patch_status: 'success',
+          payee_name: 'Whole Foods',
+          result_summary: 'Groceries',
+        }),
+        baseRow({
+          transaction_id: 'b',
+          patch_status: 'success',
+          payee_name: 'Costco',
+          result_summary: 'Household Goods',
+        }),
+      ],
+    })
+
+    let receivedRaw = ''
+    server.use(
+      http.post(GOOGLE_OAUTH_TOKEN_URL, () =>
+        HttpResponse.json({ access_token: 'a', expires_in: 3600, token_type: 'Bearer' }),
+      ),
+      http.post(`${GMAIL_API_BASE_URL}/users/me/messages/send`, async ({ request }) => {
+        receivedRaw = ((await request.json()) as { raw: string }).raw
+
+        return HttpResponse.json({ id: 'msg-ok', threadId: 'thr-ok' })
+      }),
+    )
+
+    const result = await runNotify({ config: makeConfig(), today: TODAY, appsDir })
+
+    expect(result).toEqual({ kind: 'sent', errorCount: 0, messageId: 'msg-ok' })
+    const decoded = Buffer.from(receivedRaw, 'base64url').toString('utf8')
+    expect(decoded).toContain('Whole Foods')
+    expect(decoded).toContain('Groceries')
+  })
+
+  it('returns no_activity and skips send when nothing was applied', async (): Promise<void> => {
+    const appsDir = setupAppsDir()
+    writeJsonl({
+      appsDir,
+      app: 'ynab-enrich-memos',
+      rows: [
+        baseRow({ transaction_id: 'a', patch_status: 'skipped_for_no_match' }),
+        baseRow({ transaction_id: 'b', patch_status: 'skipped_for_dry_run' }),
       ],
     })
 
     const result = await runNotify({ config: makeConfig(), today: TODAY, appsDir })
 
-    expect(result).toEqual({ kind: 'no_errors', rowsRead: 2 })
+    expect(result).toEqual({ kind: 'no_activity', rowsRead: 2 })
   })
 
   it('sends a digest via Gmail (full HTTP path with msw) when error rows are present', async (): Promise<void> => {
@@ -230,14 +271,14 @@ describe('runNotify', (): void => {
 
     const result = await runNotify({ config: makeConfig(), today: TODAY, appsDir })
 
-    expect(result).toEqual({ kind: 'no_errors', rowsRead: 0 })
+    expect(result).toEqual({ kind: 'no_activity', rowsRead: 0 })
   })
 
-  it('returns no_errors when the apps dir does not exist', async (): Promise<void> => {
+  it('returns no_activity when the apps dir does not exist', async (): Promise<void> => {
     const appsDir = join(tmpdir(), 'notify-nonexistent-dir', `${Date.now()}`)
 
     const result = await runNotify({ config: makeConfig(), today: TODAY, appsDir })
 
-    expect(result).toEqual({ kind: 'no_errors', rowsRead: 0 })
+    expect(result).toEqual({ kind: 'no_activity', rowsRead: 0 })
   })
 })

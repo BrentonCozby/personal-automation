@@ -8,10 +8,17 @@ export type AuditRow = {
   amount_dollars: number
   patch_status: PatchStatus
   error?: string
+  /** The transaction's memo — the input ynab-categorize used to pick a category. */
+  memo?: string | null
+  /** The transaction's own date (YYYY-MM-DD). */
+  transaction_date?: string | null
+  /** What the run did to this transaction (category assigned, memo written), for success rows. */
+  result_summary?: string | null
 }
 
 export type Digest = {
   errorCount: number
+  successCount: number
   subject: string
   /** Plain-text body. The fallback part of the multipart/alternative email. */
   body: string
@@ -21,7 +28,7 @@ export type Digest = {
 
 type AppBucket = {
   errors: AuditRow[]
-  successCount: number
+  successes: AuditRow[]
 }
 
 export function buildDigest({ rows }: { rows: AuditRow[] }): Digest {
@@ -29,23 +36,24 @@ export function buildDigest({ rows }: { rows: AuditRow[] }): Digest {
   for (const row of rows) {
     let bucket = byApp.get(row.app)
     if (!bucket) {
-      bucket = { errors: [], successCount: 0 }
+      bucket = { errors: [], successes: [] }
       byApp.set(row.app, bucket)
     }
     if (row.patch_status === 'error' || row.patch_status === 'skipped_for_upstream_error') {
       bucket.errors.push(row)
     } else if (row.patch_status === 'success') {
-      bucket.successCount += 1
+      bucket.successes.push(row)
     }
-    // skipped_for_dry_run and skipped_for_no_match are excluded from both counts by design.
+    // skipped_for_dry_run and skipped_for_no_match are excluded from both groups by design.
   }
 
   const errorCount = [...byApp.values()].reduce((sum, b) => sum + b.errors.length, 0)
+  const successCount = [...byApp.values()].reduce((sum, b) => sum + b.successes.length, 0)
   const subject = `${SUBJECT_PREFIX} — ${errorCount} ${errorCount === 1 ? 'error' : 'errors'}`
   const body = renderBody({ byApp })
   const html = renderHtml({ byApp, errorCount })
 
-  return { errorCount, subject, body, html }
+  return { errorCount, successCount, subject, body, html }
 }
 
 function renderBody({ byApp }: { byApp: Map<string, AppBucket> }): string {
@@ -63,18 +71,22 @@ function renderBody({ byApp }: { byApp: Map<string, AppBucket> }): string {
 
 function renderSection({ app, bucket }: { app: string; bucket: AppBucket }): string {
   const errorCount = bucket.errors.length
-  const header = `${app} — ${errorCount} ${errorCount === 1 ? 'error' : 'errors'}, ${bucket.successCount} ${bucket.successCount === 1 ? 'success' : 'successes'}`
+  const successCount = bucket.successes.length
+  const header = `${app} — ${errorCount} ${errorCount === 1 ? 'error' : 'errors'}, ${successCount} ${successCount === 1 ? 'success' : 'successes'}`
   const rule = '═'.repeat([...header].length)
 
-  if (errorCount === 0) {
-    // Surfaces the app in the email even on a clean run, so the digest reads as
-    // "everything that ran, here's what happened" rather than only the broken parts.
-    return `${header}\n${rule}\n\n  (no errors)`
+  const blocks: string[] = []
+  if (errorCount > 0) blocks.push(bucket.errors.map(row => renderRow({ row })).join('\n\n'))
+  if (successCount > 0) {
+    const lines = bucket.successes.map(row => renderSuccessRow({ row }))
+
+    blocks.push(['  Successes:', ...lines].join('\n'))
   }
+  // Surfaces the app even when nothing happened, so the digest reads as "everything that
+  // ran, here's what happened" rather than only the broken parts.
+  if (blocks.length === 0) blocks.push('  (nothing to report)')
 
-  const rowBlocks = bucket.errors.map(row => renderRow({ row }))
-
-  return `${header}\n${rule}\n\n${rowBlocks.join('\n\n')}`
+  return `${header}\n${rule}\n\n${blocks.join('\n\n')}`
 }
 
 function renderRow({ row }: { row: AuditRow }): string {
@@ -86,14 +98,31 @@ function renderRow({ row }: { row: AuditRow }): string {
 
   const payee = row.payee_name ?? '(no payee)'
   const reason = row.error ?? '(no error message recorded)'
+  const date = formatDate(row.transaction_date)
 
   return [
     `  Transaction ${row.transaction_id}`,
+    ...(date ? [`    Date:    ${date}`] : []),
     `    Payee:   ${payee}`,
     `    Amount:  ${formatAmount(row.amount_dollars)}`,
     `    Status:  ${row.patch_status}`,
     `    Reason:  ${reason}`,
   ].join('\n')
+}
+
+// A few lines per applied transaction: payee/amount/date, the memo the decision used (for
+// ynab-categorize), and what the run produced — enough to eyeball that the category / memo
+// looks right.
+function renderSuccessRow({ row }: { row: AuditRow }): string {
+  const payee = row.payee_name ?? '(no payee)'
+  const summary = row.result_summary || '(applied)'
+  const date = formatDate(row.transaction_date)
+
+  const lines = [`    ${payee}  ${formatAmount(row.amount_dollars)}${date ? `  ${date}` : ''}`]
+  if (row.memo) lines.push(`      memo: ${row.memo}`)
+  lines.push(`      →  ${summary}`)
+
+  return lines.join('\n')
 }
 
 // Font stacks shared across every inline style. System fonts only — email clients can't load
@@ -155,7 +184,8 @@ ${sections}
 
 function renderHtmlSection({ app, bucket }: { app: string; bucket: AppBucket }): string {
   const errorCount = bucket.errors.length
-  const successText = `${bucket.successCount} ${bucket.successCount === 1 ? 'success' : 'successes'}`
+  const successCount = bucket.successes.length
+  const successText = `${successCount} ${successCount === 1 ? 'success' : 'successes'}`
   const sectionPill =
     errorCount === 0
       ? pill({ text: 'no errors', tone: 'ok' })
@@ -167,9 +197,22 @@ function renderHtmlSection({ app, bucket }: { app: string; bucket: AppBucket }):
 <div style="font-size:13px; color:#6b7280; margin-top:4px;">${successText}</div>
 </div>`
 
-  const rows = bucket.errors.map(row => renderHtmlRow({ row })).join('')
+  const errors = bucket.errors.map(row => renderHtmlRow({ row })).join('')
 
-  return `${header}${rows}`
+  let successes = ''
+  if (successCount > 0) {
+    const items = bucket.successes.map(row => renderHtmlSuccess({ row })).join('')
+    const label =
+      errorCount > 0 ? `<div style="${MINI_LABEL} margin-top:18px;">Successes</div>` : ''
+    successes = `${label}${items}`
+  }
+
+  const empty =
+    errorCount === 0 && successCount === 0
+      ? '<div style="margin-top:12px; font-size:14px; color:#9ca3af;">Nothing to report.</div>'
+      : ''
+
+  return `${header}${errors}${successes}${empty}`
 }
 
 function renderHtmlRow({ row }: { row: AuditRow }): string {
@@ -186,6 +229,7 @@ function renderHtmlRow({ row }: { row: AuditRow }): string {
   }
 
   const payee = row.payee_name ?? '(no payee)'
+  const date = formatDate(row.transaction_date)
 
   return `
 <div style="margin-top:14px; border:1px solid #e5e7eb; border-radius:10px; overflow:hidden;">
@@ -195,12 +239,37 @@ function renderHtmlRow({ row }: { row: AuditRow }): string {
 </div>
 <div style="padding:12px 14px;">
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;">
+${date ? fieldRow({ label: 'Date', valueHtml: escapeHtml(date) }) : ''}
 ${fieldRow({ label: 'Payee', valueHtml: escapeHtml(payee) })}
 ${fieldRow({ label: 'Amount', valueHtml: escapeHtml(formatAmount(row.amount_dollars)) })}
 ${fieldRow({ label: 'Status', valueHtml: statusText(row.patch_status) })}
 </table>
 ${reasonBlock({ reason })}
 </div>
+</div>`
+}
+
+// A light row per applied transaction — green left accent (vs the bordered red cards for
+// errors). Line 1 is payee · amount · date; for ynab-categorize the memo the decision used
+// follows, then the outcome (category, or the memo written for ynab-enrich-memos) — enough to
+// check at a glance that the result fits.
+function renderHtmlSuccess({ row }: { row: AuditRow }): string {
+  const payee = row.payee_name ?? '(no payee)'
+  const summary = row.result_summary || '(applied)'
+  const date = formatDate(row.transaction_date)
+
+  const meta = [escapeHtml(formatAmount(row.amount_dollars)), ...(date ? [escapeHtml(date)] : [])]
+    .map(part => `<span style="color:#9ca3af;"> · ${part}</span>`)
+    .join('')
+  const memo = row.memo
+    ? `<div style="font-size:13px; color:#6b7280; margin-top:3px; word-break:break-word;">memo: ${escapeHtml(row.memo)}</div>`
+    : ''
+
+  return `
+<div style="margin-top:10px; border-left:3px solid #22c55e; background:#f6fef9; border-radius:0 8px 8px 0; padding:9px 14px;">
+<div style="font-size:14px; color:#111827; line-height:1.45;"><span style="font-weight:600;">${escapeHtml(payee)}</span>${meta}</div>
+${memo}
+<div style="font-size:13.5px; color:#1f2937; margin-top:3px; word-break:break-word;">${escapeHtml(summary)}</div>
 </div>`
 }
 
@@ -248,4 +317,19 @@ function formatAmount(dollars: number): string {
   const sign = dollars < 0 ? '-' : ''
 
   return `${sign}$${Math.abs(dollars).toFixed(2)}`
+}
+
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+
+// Formats a YNAB date ("2026-06-03") as "Jun 3, 2026". Parses the parts by hand rather than
+// via `new Date()`, which would shift the day across time zones. Returns null when absent, or
+// the raw value if it isn't the expected YYYY-MM-DD shape.
+function formatDate(date: string | null | undefined): string | null {
+  if (!date) return null
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(date)
+  if (!match) return date
+  const month = MONTHS[Number(match[2]) - 1]
+  if (!month) return date
+
+  return `${month} ${Number(match[3])}, ${match[1]}`
 }
