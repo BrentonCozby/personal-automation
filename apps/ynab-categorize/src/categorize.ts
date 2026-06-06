@@ -1,6 +1,5 @@
-import { chunks } from '@personal-automation/common/chunks'
 import { isoDateNDaysAgo } from '@personal-automation/common/date'
-import { formatError, YnabApiError } from '@personal-automation/common/errors'
+import { formatError } from '@personal-automation/common/errors'
 import {
   baseAuditFields,
   createLogger,
@@ -8,12 +7,9 @@ import {
   RUN_ABORTED_SENTINEL,
 } from '@personal-automation/common/logger'
 import { createProgress } from '@personal-automation/common/progress'
-import {
-  createYnabClient,
-  type PatchTransactionsResult,
-  type YnabClient,
-} from '@personal-automation/ynab/client'
+import { createYnabClient } from '@personal-automation/ynab/client'
 import { formatDollars, milliunitsToDollars } from '@personal-automation/ynab/milliunits'
+import { patchInBatches } from '@personal-automation/ynab/patch'
 import type {
   Category,
   CategoryGroup,
@@ -71,7 +67,7 @@ type CategoriesContext = {
 // Categorize fills in everything but `patch_status` — the persistence stage (or dry-run
 // loop) decides that and overrides on emit.
 type AuditCore = Omit<CategorizeAudit, 'patch_status'>
-type CategorizationOutcome = { patch: TransactionPatch; auditEntry: AuditCore }
+type CategorizationOutcome = { patch: TransactionPatch; auditCore: AuditCore }
 
 export async function runCategorize({
   config,
@@ -229,7 +225,7 @@ async function runCategorizeInner({
   if (opts.dryRun) {
     // Emit audit immediately in dry-run since no PATCH will happen.
     for (const o of outcomes.successes) {
-      logger.audit({ ...o.auditEntry, patch_status: 'skipped_for_dry_run' })
+      logger.audit({ ...o.auditCore, patch_status: 'skipped_for_dry_run' })
     }
     logger.info({ msg: 'Dry run — skipping PATCH', extra: { proposed: outcomes.successes.length } })
 
@@ -244,6 +240,7 @@ async function runCategorizeInner({
     outcomes: outcomes.successes,
     ynab,
     logger,
+    batchSize: PATCH_BATCH_SIZE,
   })
 
   logger.info({
@@ -320,65 +317,6 @@ export async function categorizeAll({
   return { successes, categorizeFailed }
 }
 
-async function patchInBatches({
-  outcomes,
-  ynab,
-  logger,
-}: {
-  outcomes: CategorizationOutcome[]
-  ynab: YnabClient
-  logger: Logger<CategorizeAudit>
-}): Promise<{ succeeded: number; failed: number }> {
-  let succeeded = 0
-  let failed = 0
-
-  for (const batch of chunks({ arr: outcomes, size: PATCH_BATCH_SIZE })) {
-    const patches = batch.map(o => o.patch)
-    logger.info({ msg: 'PATCH batch', extra: { size: batch.length } })
-
-    let updatedIds: PatchTransactionsResult['updatedIds']
-    try {
-      ;({ updatedIds } = await ynab.patchTransactions(patches))
-    } catch (err) {
-      if (!(err instanceof YnabApiError)) throw err
-      failed += batch.length
-      logger.error({
-        msg: 'PATCH batch failed',
-        extra: { size: batch.length, error: err.message },
-      })
-      for (const o of batch) {
-        logger.audit({ ...o.auditEntry, patch_status: 'error', error: err.message })
-      }
-      continue
-    }
-
-    const updated = new Set(updatedIds)
-    let missing = 0
-    for (const o of batch) {
-      if (updated.has(o.patch.id)) {
-        succeeded += 1
-        logger.audit({ ...o.auditEntry, patch_status: 'success' })
-      } else {
-        failed += 1
-        missing += 1
-        logger.audit({
-          ...o.auditEntry,
-          patch_status: 'error',
-          error: 'not in YNAB response transaction_ids',
-        })
-      }
-    }
-    if (missing > 0) {
-      logger.warn({
-        msg: 'PATCH batch had ids missing from response',
-        extra: { size: batch.length, missing },
-      })
-    }
-  }
-
-  return { succeeded, failed }
-}
-
 async function categorizeOne({
   txn,
   categories,
@@ -422,7 +360,7 @@ async function categorizeOne({
     },
   })
 
-  const auditEntry = buildAuditEntry({
+  const auditCore = buildAuditEntry({
     txn,
     categoryId: chosenId,
     categoryName: chosenName,
@@ -440,7 +378,7 @@ async function categorizeOne({
       flag_color: FLAG_COLOR,
       flag_name: FLAG_NAME,
     },
-    auditEntry,
+    auditCore,
   }
 }
 

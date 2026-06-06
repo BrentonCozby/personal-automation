@@ -8,11 +8,15 @@
     "./logger": "./src/logger.ts",
     "./retry": "./src/retry.ts",
     "./lock": "./src/lock.ts",
+    "./cli": "./src/cli.ts",
     "./progress": "./src/progress.ts",
     "./chunks": "./src/chunks.ts",
     "./date": "./src/date.ts",
     "./env": "./src/env.ts",
-    "./test-msw": "./src/test-msw.ts"
+    "./audit-path": "./src/audit-path.ts",
+    "./html": "./src/html.ts",
+    "./test-msw": "./src/test-msw.ts",
+    "./test-mime": "./src/test-mime.ts"
   },
   "scripts": {
     "build": "tsc -b"

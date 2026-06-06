@@ -31,8 +31,14 @@ export async function withRetry<T>(
 
 function defaultIsRetryable(err: unknown): boolean {
   if (err instanceof AppError) return err.retryable
-  // Network-level errors (fetch failures, aborts) are usually transient.
-  if (err instanceof Error && (err.name === 'AbortError' || err.name === 'TypeError')) return true
+  // Network-level failures are usually transient: fetch errors (TypeError), aborts
+  // (AbortError), and per-request timeouts from AbortSignal.timeout (TimeoutError).
+  if (
+    err instanceof Error &&
+    (err.name === 'AbortError' || err.name === 'TimeoutError' || err.name === 'TypeError')
+  ) {
+    return true
+  }
 
   return false
 }

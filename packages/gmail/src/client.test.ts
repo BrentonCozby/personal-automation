@@ -1,3 +1,4 @@
+import { decodeEmailBodies } from '@personal-automation/common/test-mime'
 import { setupMswServer } from '@personal-automation/common/test-msw'
 import { HttpResponse, http } from 'msw'
 import { describe, expect, it } from 'vitest'
@@ -39,10 +40,10 @@ describe('createGmailClient.sendMessage', (): void => {
     expect(decoded).toContain('To: me@example.com')
     expect(decoded).toContain('Subject: Hi')
     expect(decoded).toContain('Content-Type: text/plain; charset="utf-8"')
-    expect(decoded).toContain('plain text body')
+    expect(decodeEmailBodies(decoded)).toContain('plain text body')
   })
 
-  it('RFC 2047 encodes a non-ASCII subject and keeps raw UTF-8 in the body', async (): Promise<void> => {
+  it('RFC 2047 encodes a non-ASCII subject and round-trips UTF-8 in the body', async (): Promise<void> => {
     let receivedRaw = ''
     server.use(
       http.post(`${GMAIL_API_BASE_URL}/users/me/messages/send`, async ({ request }) => {
@@ -61,8 +62,8 @@ describe('createGmailClient.sendMessage', (): void => {
     })
 
     const decoded = Buffer.from(receivedRaw, 'base64url').toString('utf8')
-    // Body carries raw UTF-8 (covered by the body's charset=utf-8).
-    expect(decoded).toContain('═══')
+    // Body is base64 (charset utf-8); decoding it recovers the original UTF-8 glyphs.
+    expect(decodeEmailBodies(decoded)).toContain('═══')
     // Subject is an encoded-word that round-trips back to the original text.
     const subjectLine = decoded.split('\r\n').find(l => l.startsWith('Subject: '))
     expect(subjectLine).toMatch(/^Subject: =\?UTF-8\?B\?[A-Za-z0-9+/=]+\?=$/)
@@ -112,9 +113,10 @@ describe('createGmailClient.sendMessage', (): void => {
     const decoded = Buffer.from(receivedRaw, 'base64url').toString('utf8')
     expect(decoded).toContain('Content-Type: multipart/alternative; boundary="')
     expect(decoded).toContain('Content-Type: text/plain; charset="utf-8"')
-    expect(decoded).toContain('plain fallback')
     expect(decoded).toContain('Content-Type: text/html; charset="utf-8"')
-    expect(decoded).toContain('<div>rich <strong>body</strong></div>')
+    const bodies = decodeEmailBodies(decoded)
+    expect(bodies).toContain('plain fallback')
+    expect(bodies).toContain('<div>rich <strong>body</strong></div>')
   })
 
   it('throws on 4xx and does not retry (client error)', async (): Promise<void> => {

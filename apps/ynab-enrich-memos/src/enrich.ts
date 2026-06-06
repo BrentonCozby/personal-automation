@@ -1,6 +1,5 @@
-import { chunks } from '@personal-automation/common/chunks'
 import { isoDateNDaysAgo } from '@personal-automation/common/date'
-import { AppError, formatError, YnabApiError } from '@personal-automation/common/errors'
+import { AppError, formatError } from '@personal-automation/common/errors'
 import {
   baseAuditFields,
   createLogger,
@@ -10,12 +9,9 @@ import {
 import { createProgress } from '@personal-automation/common/progress'
 import { createGmailAuth } from '@personal-automation/gmail/auth'
 import { createGmailClient, type GmailClient } from '@personal-automation/gmail/client'
-import {
-  createYnabClient,
-  type PatchTransactionsResult,
-  type YnabClient,
-} from '@personal-automation/ynab/client'
+import { createYnabClient } from '@personal-automation/ynab/client'
 import { milliunitsToDollars } from '@personal-automation/ynab/milliunits'
+import { patchInBatches } from '@personal-automation/ynab/patch'
 import type { Transaction, TransactionPatch } from '@personal-automation/ynab/types'
 import pLimit from 'p-limit'
 import { z } from 'zod'
@@ -209,7 +205,12 @@ async function runEnrichInner({
     }
   }
 
-  const patchResult = await patchInBatches({ outcomes: outcomes.successes, ynab, logger })
+  const patchResult = await patchInBatches({
+    outcomes: outcomes.successes,
+    ynab,
+    logger,
+    batchSize: PATCH_BATCH_SIZE,
+  })
 
   logger.info({
     msg: 'Done',
@@ -436,62 +437,6 @@ async function enrichOne({
       },
     }),
   }
-}
-
-async function patchInBatches({
-  outcomes,
-  ynab,
-  logger,
-}: {
-  outcomes: PatchOutcome[]
-  ynab: YnabClient
-  logger: Logger<EnrichMemosAudit>
-}): Promise<{ succeeded: number; failed: number }> {
-  let succeeded = 0
-  let failed = 0
-
-  for (const batch of chunks({ arr: outcomes, size: PATCH_BATCH_SIZE })) {
-    const patches = batch.map(o => o.patch)
-    logger.info({ msg: 'PATCH batch', extra: { size: batch.length } })
-
-    let updatedIds: PatchTransactionsResult['updatedIds']
-    try {
-      ;({ updatedIds } = await ynab.patchTransactions(patches))
-    } catch (err) {
-      if (!(err instanceof YnabApiError)) throw err
-      failed += batch.length
-      logger.error({ msg: 'PATCH batch failed', extra: { size: batch.length, error: err.message } })
-      for (const o of batch) {
-        logger.audit({ ...o.auditCore, patch_status: 'error', error: err.message })
-      }
-      continue
-    }
-
-    const updated = new Set(updatedIds)
-    let missing = 0
-    for (const o of batch) {
-      if (updated.has(o.patch.id)) {
-        succeeded += 1
-        logger.audit({ ...o.auditCore, patch_status: 'success' })
-      } else {
-        failed += 1
-        missing += 1
-        logger.audit({
-          ...o.auditCore,
-          patch_status: 'error',
-          error: 'not in YNAB response transaction_ids',
-        })
-      }
-    }
-    if (missing > 0) {
-      logger.warn({
-        msg: 'PATCH batch had ids missing from response',
-        extra: { size: batch.length, missing },
-      })
-    }
-  }
-
-  return { succeeded, failed }
 }
 
 export function isEligible({

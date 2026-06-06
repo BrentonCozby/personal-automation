@@ -1,3 +1,8 @@
+import {
+  escapeHtml,
+  MONO_FONT_STACK as MONO,
+  SANS_FONT_STACK as SANS,
+} from '@personal-automation/common/html'
 import { type PatchStatus, RUN_ABORTED_SENTINEL } from '@personal-automation/common/logger'
 import { SUBJECT_PREFIX } from './constants.js'
 
@@ -124,11 +129,6 @@ function renderSuccessRow({ row }: { row: AuditRow }): string {
 
   return lines.join('\n')
 }
-
-// Font stacks shared across every inline style. System fonts only — email clients can't load
-// web fonts reliably, so we lean on what the OS already has.
-const SANS = "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif"
-const MONO = "ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace"
 
 // Small uppercase field label ("TRANSACTION", "REASON"). Reused so the labels stay identical.
 const MINI_LABEL =
@@ -299,15 +299,6 @@ function pill({ text, tone }: { text: string; tone: 'ok' | 'error' }): string {
   const fg = tone === 'ok' ? '#15803d' : '#b91c1c'
 
   return `<span style="display:inline-block; margin-left:8px; padding:2px 9px; border-radius:999px; background:${bg}; color:${fg}; font-size:12px; font-weight:600; vertical-align:middle;">${escapeHtml(text)}</span>`
-}
-
-function escapeHtml(value: string): string {
-  return value
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;')
 }
 
 // amount_dollars is already in dollars in the audit schema, while the only existing

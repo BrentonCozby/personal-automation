@@ -1,3 +1,4 @@
+import { appAuditDir } from '@personal-automation/common/audit-path'
 import { jsonValue, loadAppEnv } from '@personal-automation/common/env'
 import { z } from 'zod'
 
@@ -11,7 +12,6 @@ const schema = z.object({
   LOOKBACK_DAYS: z.coerce.number().pipe(z.int().positive()),
   ANTHROPIC_API_KEY: z.string().min(1),
   YNAB_CATEGORIZER_ANTHROPIC_MODEL: z.string().min(1),
-  AUDIT_DIR: z.string().min(1),
   EXCLUDED_CATEGORY_GROUPS: jsonValue.pipe(z.array(z.string())),
   CATEGORY_ROUTING_HINTS: jsonValue.pipe(z.array(z.string())),
 })
@@ -24,7 +24,7 @@ export type Config = {
   lookbackDays: number
   anthropicApiKey: string
   anthropicModel: string
-  /** Created on first run if missing. Relative paths resolve from CWD. */
+  /** Absolute path to `apps/ynab-categorize/audit`, resolved from this module (CWD-independent). Created on first run. */
   auditDir: string
   /** Matched against `category_group_name` (case-sensitive). Groups in this set are dropped from the LLM prompt entirely, so the model never picks from them. */
   excludedCategoryGroups: Set<string>
@@ -42,7 +42,7 @@ export function loadConfig(): Config {
     lookbackDays: parsed.LOOKBACK_DAYS,
     anthropicApiKey: parsed.ANTHROPIC_API_KEY,
     anthropicModel: parsed.YNAB_CATEGORIZER_ANTHROPIC_MODEL,
-    auditDir: parsed.AUDIT_DIR,
+    auditDir: appAuditDir(import.meta.url),
     excludedCategoryGroups: new Set(parsed.EXCLUDED_CATEGORY_GROUPS),
     categoryRoutingHints: parsed.CATEGORY_ROUTING_HINTS,
   }

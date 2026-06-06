@@ -1,3 +1,4 @@
+import { appAuditDir } from '@personal-automation/common/audit-path'
 import { jsonValue, loadAppEnv } from '@personal-automation/common/env'
 import { z } from 'zod'
 
@@ -9,7 +10,6 @@ const schema = z.object({
   ALLOWED_ACCOUNT_IDS: jsonValue.pipe(z.record(z.string(), z.uuid())),
   ANTHROPIC_API_KEY: z.string().min(1),
   ENRICH_MEMOS_ANTHROPIC_MODEL: z.string().min(1),
-  AUDIT_DIR: z.string().min(1),
   // coerce to number because process.env values are always strings
   ENRICH_LOOKBACK_DAYS: z.coerce.number().pipe(z.int().positive()),
   GMAIL_RECEIPT_WINDOW_DAYS: z.coerce.number().pipe(z.int().positive()),
@@ -26,7 +26,7 @@ export type Config = {
   allowedAccountIds: Set<string>
   anthropicApiKey: string
   anthropicModel: string
-  /** Created on first run if missing. Relative paths resolve from CWD. */
+  /** Absolute path to `apps/ynab-enrich-memos/audit`, resolved from this module (CWD-independent). Created on first run. */
   auditDir: string
   lookbackDays: number
   /** ± window (days) around a transaction's date to search for its receipt email. */
@@ -47,7 +47,7 @@ export function loadConfig(): Config {
     allowedAccountIds: new Set(Object.values(parsed.ALLOWED_ACCOUNT_IDS)),
     anthropicApiKey: parsed.ANTHROPIC_API_KEY,
     anthropicModel: parsed.ENRICH_MEMOS_ANTHROPIC_MODEL,
-    auditDir: parsed.AUDIT_DIR,
+    auditDir: appAuditDir(import.meta.url),
     lookbackDays: parsed.ENRICH_LOOKBACK_DAYS,
     receiptWindowDays: parsed.GMAIL_RECEIPT_WINDOW_DAYS,
     fromFilter: parsed.GMAIL_FROM_FILTER,

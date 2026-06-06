@@ -4,7 +4,8 @@ import { Writable } from 'node:stream'
 import pino, { type Logger as PinoLogger } from 'pino'
 import pinoPretty from 'pino-pretty'
 import { z } from 'zod'
-import { todayLocalIso } from './date.js'
+import { auditFileName } from './audit-path.js'
+import { todayIso } from './date.js'
 import { writeWithProgress } from './progress.js'
 
 // Fields every app's audit entry must include. Each app spreads `baseAuditFields` into its
@@ -80,7 +81,7 @@ export function createLogger<TAudit extends BaseAudit>({
   auditSchema: z.ZodType<TAudit>
   auditDir?: string
 }): Logger<TAudit> {
-  const auditPath = join(auditDir, `${name}-${todayLocalIso()}.jsonl`)
+  const auditPath = join(auditDir, auditFileName({ app: name, date: todayIso() }))
   mkdirSync(dirname(auditPath), { recursive: true })
 
   // Pretty output for TTY (routed through the progress coordinator so logs interleave

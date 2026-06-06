@@ -1,6 +1,6 @@
 import { YnabApiError } from '@personal-automation/common/errors'
 import { withRetry } from '@personal-automation/common/retry'
-import { YNAB_API_BASE_URL } from './constants.js'
+import { YNAB_API_BASE_URL, YNAB_REQUEST_TIMEOUT_MS } from './constants.js'
 import {
   categoryGroupsResponseSchema,
   patchTransactionsResponseSchema,
@@ -37,6 +37,7 @@ export function createYnabClient({ token, budgetId }: YnabClientInit): YnabClien
     return withRetry(async () => {
       const res = await fetch(`${YNAB_API_BASE_URL}${path}`, {
         ...init,
+        signal: AbortSignal.timeout(YNAB_REQUEST_TIMEOUT_MS),
         headers: {
           Authorization: `Bearer ${token}`,
           'Content-Type': 'application/json',

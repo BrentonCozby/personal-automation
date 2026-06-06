@@ -1,4 +1,4 @@
-import { todayLocalIso } from '@personal-automation/common/date'
+import { todayIso } from '@personal-automation/common/date'
 import { createProgress } from '@personal-automation/common/progress'
 import { createGmailAuth } from '@personal-automation/gmail/auth'
 import { createGmailClient, type GmailClient } from '@personal-automation/gmail/client'
@@ -80,7 +80,7 @@ export async function runStalledTasks({
     staleDays: e.staleDays,
     dueStatus: e.dueStatus,
   }))
-  const prompt = buildAnalysisPrompt({ tasks: promptTasks, today: todayLocalIso() })
+  const prompt = buildAnalysisPrompt({ tasks: promptTasks, today: todayIso() })
 
   // The slow step: one Anthropic call that returns everything at once (~30–60s). Log it (so
   // launchd output and the terminal both show the wait) and spin so the run never looks stuck.
@@ -128,7 +128,7 @@ export async function runStalledTasks({
     'Built digest.',
   )
 
-  const today = todayLocalIso()
+  const today = todayIso()
   const shownSet = new Set<DigestItem>(digest.shown)
   appendRunLog({
     entries: items.map(item =>

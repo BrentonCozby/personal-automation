@@ -1,7 +1,6 @@
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { formatError } from '@personal-automation/common/errors'
-import { acquireLock, type LockHandle, LockHeldError } from '@personal-automation/common/lock'
+import { fatal, runWithLock } from '@personal-automation/common/cli'
 import { runCategorize } from './categorize.js'
 import { loadConfig } from './config.js'
 
@@ -46,39 +45,18 @@ Options:
 async function main(): Promise<void> {
   const args = parseArgs(process.argv.slice(2))
 
-  // Prevent overlapping launchd / manual runs. Stale locks from crashed runs are claimed.
-  let lock: LockHandle
-  try {
-    lock = acquireLock(LOCK_PATH)
-  } catch (err) {
-    if (err instanceof LockHeldError) {
-      console.error(`[FATAL] ${err.message}. Another run is in progress; exiting.`)
-      process.exit(2)
-    }
-    throw err
-  }
-
-  // Best-effort cleanup on signals so we don't leave a stale lock on Ctrl-C or launchd kill.
-  const cleanupAndExit = (signalExitCode: number): void => {
-    lock.release()
-    process.exit(signalExitCode)
-  }
-  process.on('SIGINT', () => cleanupAndExit(130))
-  process.on('SIGTERM', () => cleanupAndExit(143))
-
-  try {
-    const config = loadConfig()
-    const result = await runCategorize({ config, opts: args })
-    console.log(
-      `Summary: ${result.succeeded} succeeded, ${result.failed} failed, ${result.skipped} skipped`,
-    )
-    if (result.failed > 0) process.exit(1)
-  } finally {
-    lock.release()
-  }
+  // Lock prevents overlapping launchd / manual runs; stale locks from crashed runs are claimed.
+  await runWithLock({
+    lockPath: LOCK_PATH,
+    run: async () => {
+      const config = loadConfig()
+      const result = await runCategorize({ config, opts: args })
+      console.log(
+        `Summary: ${result.succeeded} succeeded, ${result.failed} failed, ${result.skipped} skipped`,
+      )
+      if (result.failed > 0) process.exit(1)
+    },
+  })
 }
 
-main().catch(err => {
-  console.error('[FATAL]', formatError(err))
-  process.exit(1)
-})
+main().catch(fatal)

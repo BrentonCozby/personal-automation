@@ -1,7 +1,6 @@
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { formatError } from '@personal-automation/common/errors'
-import { acquireLock, type LockHandle, LockHeldError } from '@personal-automation/common/lock'
+import { fatal, runWithLock } from '@personal-automation/common/cli'
 import { loadConfig } from './config.js'
 import { type RunResult, runStalledTasks } from './run.js'
 
@@ -61,36 +60,15 @@ function logResult(result: RunResult): void {
 async function main(): Promise<void> {
   const args = parseArgs(process.argv.slice(2))
 
-  // Prevent overlapping manual + scheduled runs. A stale lock from a crashed run is claimed.
-  let lock: LockHandle
-  try {
-    lock = acquireLock(LOCK_PATH)
-  } catch (err) {
-    if (err instanceof LockHeldError) {
-      console.error(`[FATAL] ${err.message}. Another run is in progress; exiting.`)
-      process.exit(2)
-    }
-    throw err
-  }
-
-  // Best-effort cleanup on signals so a Ctrl-C or launchd kill doesn't leave a stale lock.
-  const cleanupAndExit = (signalExitCode: number): void => {
-    lock.release()
-    process.exit(signalExitCode)
-  }
-  process.on('SIGINT', () => cleanupAndExit(130))
-  process.on('SIGTERM', () => cleanupAndExit(143))
-
-  try {
-    const config = loadConfig()
-    const result = await runStalledTasks({ config, opts: args })
-    logResult(result)
-  } finally {
-    lock.release()
-  }
+  // Lock prevents overlapping manual + scheduled runs; a stale lock from a crashed run is claimed.
+  await runWithLock({
+    lockPath: LOCK_PATH,
+    run: async () => {
+      const config = loadConfig()
+      const result = await runStalledTasks({ config, opts: args })
+      logResult(result)
+    },
+  })
 }
 
-main().catch(err => {
-  console.error('[FATAL]', formatError(err))
-  process.exit(1)
-})
+main().catch(fatal)

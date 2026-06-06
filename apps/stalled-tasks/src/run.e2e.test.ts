@@ -2,6 +2,7 @@ import { mkdtempSync, readdirSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { AppError } from '@personal-automation/common/errors'
+import { decodeEmailBodies } from '@personal-automation/common/test-mime'
 import { setupMswServer } from '@personal-automation/common/test-msw'
 import { GMAIL_API_BASE_URL, GOOGLE_OAUTH_TOKEN_URL } from '@personal-automation/gmail/constants'
 import { HttpResponse, http } from 'msw'
@@ -202,7 +203,7 @@ it('sends the digest via Gmail on a real (msw) send path', async () => {
   expect(result).toEqual({ kind: 'sent', messageId: 'msg-xyz', flaggedCount: 1, totalStalled: 1 })
   const decoded = Buffer.from(receivedRaw, 'base64url').toString('utf8')
   expect(decoded).toContain('To: me@example.com')
-  expect(decoded).toContain('book india flights')
+  expect(decodeEmailBodies(decoded)).toContain('book india flights')
   // Subject carries an em dash, so the gmail client RFC 2047 encodes it; decode it back.
   const subjectLine = decoded.split('\r\n').find(l => l.startsWith('Subject: ')) ?? ''
   const b64 = subjectLine.replace('Subject: =?UTF-8?B?', '').replace('?=', '')

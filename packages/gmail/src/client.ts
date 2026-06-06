@@ -1,7 +1,7 @@
 import { AppError, isRetryableHttpStatus } from '@personal-automation/common/errors'
 import { withRetry } from '@personal-automation/common/retry'
 import type { GmailAuth } from './auth.js'
-import { GMAIL_API_BASE_URL } from './constants.js'
+import { GMAIL_API_BASE_URL, GMAIL_REQUEST_TIMEOUT_MS } from './constants.js'
 import {
   getMessageResponseSchema,
   listMessagesResponseSchema,
@@ -47,6 +47,7 @@ export function createGmailClient({ auth }: { auth: GmailAuth }): GmailClient {
     return withRetry(async () => {
       const token = await auth.getAccessToken()
       const res = await fetch(`${GMAIL_API_BASE_URL}${path}`, {
+        signal: AbortSignal.timeout(GMAIL_REQUEST_TIMEOUT_MS),
         headers: { Authorization: `Bearer ${token}` },
       })
       if (!res.ok) {
@@ -109,6 +110,7 @@ export function createGmailClient({ auth }: { auth: GmailAuth }): GmailClient {
       const token = await auth.getAccessToken()
       const res = await fetch(`${GMAIL_API_BASE_URL}/users/me/messages/send`, {
         method: 'POST',
+        signal: AbortSignal.timeout(GMAIL_REQUEST_TIMEOUT_MS),
         headers: {
           Authorization: `Bearer ${token}`,
           'Content-Type': 'application/json',
@@ -207,9 +209,11 @@ function stripHtml(html: string): string {
 }
 
 // Gmail's users.messages.send expects a base64url-encoded RFC 5322 message in the `raw` field.
-// Charset is utf-8 so box-drawing chars and em dashes render. With `html`, the message is
-// multipart/alternative: the text part first, then the HTML part (clients prefer the last
-// part they can render, so HTML wins where supported and text is the fallback).
+// Each part body is itself base64 (Content-Transfer-Encoding: base64), which both carries UTF-8
+// safely and keeps every line within RFC 5322's 998-octet limit — an HTML digest can have lines
+// far longer than that, which 8bit would emit unwrapped. With `html`, the message is
+// multipart/alternative: the text part first, then the HTML part (clients prefer the last part
+// they can render, so HTML wins where supported and text is the fallback).
 function encodeRfc5322({ to, subject, body, html }: SendMessageParams): string {
   const headers = [`To: ${to}`, `Subject: ${encodeSubjectHeader(subject)}`, 'MIME-Version: 1.0']
 
@@ -220,27 +224,34 @@ function encodeRfc5322({ to, subject, body, html }: SendMessageParams): string {
         '',
         `--${MULTIPART_BOUNDARY}`,
         'Content-Type: text/plain; charset="utf-8"',
-        'Content-Transfer-Encoding: 8bit',
+        'Content-Transfer-Encoding: base64',
         '',
-        body,
+        encodeBase64Body(body),
         '',
         `--${MULTIPART_BOUNDARY}`,
         'Content-Type: text/html; charset="utf-8"',
-        'Content-Transfer-Encoding: 8bit',
+        'Content-Transfer-Encoding: base64',
         '',
-        html,
+        encodeBase64Body(html),
         '',
         `--${MULTIPART_BOUNDARY}--`,
       ]
     : [
         ...headers,
         'Content-Type: text/plain; charset="utf-8"',
-        'Content-Transfer-Encoding: 8bit',
+        'Content-Transfer-Encoding: base64',
         '',
-        body,
+        encodeBase64Body(body),
       ]
 
   return Buffer.from(lines.join('\r\n'), 'utf8').toString('base64url')
+}
+
+// base64 of the UTF-8 bytes, wrapped to 76-char lines per RFC 2045. Empty input yields ''.
+function encodeBase64Body(text: string): string {
+  const b64 = Buffer.from(text, 'utf8').toString('base64')
+
+  return (b64.match(/.{1,76}/g) ?? []).join('\r\n')
 }
 
 // Email headers aren't covered by the body's Content-Type, so a raw UTF-8 character in the

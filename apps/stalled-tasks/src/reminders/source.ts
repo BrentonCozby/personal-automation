@@ -20,6 +20,10 @@ const BRIDGE_SOURCE = fileURLToPath(new URL('./reminders.swift', import.meta.url
 const BRIDGE_BIN = fileURLToPath(new URL('./reminders-bridge', import.meta.url))
 // Bridge JSON grows with the reminder count; 16 MB is far more than any real list needs.
 const MAX_BUFFER = 16 * 1024 * 1024
+// Timeouts so a wedged subprocess (e.g. a bridge stuck behind a TCC prompt under launchd, or a
+// hung swiftc) can't block the whole run forever. execFile kills the child on timeout and rejects.
+const BRIDGE_RUN_TIMEOUT_MS = 60_000
+const BRIDGE_BUILD_TIMEOUT_MS = 120_000
 
 export type TaskSource = {
   list: () => Promise<Task[]>
@@ -56,7 +60,10 @@ export function createAppleRemindersSource({ lists }: { lists: readonly string[]
 async function runBridge(): Promise<string> {
   const bin = await buildBridge()
   try {
-    const { stdout } = await execFileAsync(bin, [], { maxBuffer: MAX_BUFFER })
+    const { stdout } = await execFileAsync(bin, [], {
+      maxBuffer: MAX_BUFFER,
+      timeout: BRIDGE_RUN_TIMEOUT_MS,
+    })
 
     return stdout
   } catch (err) {
@@ -77,8 +84,12 @@ async function runBridge(): Promise<string> {
 async function buildBridge(): Promise<string> {
   if (await isBuildFresh()) return BRIDGE_BIN
   try {
-    await execFileAsync(SWIFTC_BIN, ['-O', BRIDGE_SOURCE, '-o', BRIDGE_BIN])
-    await execFileAsync(CODESIGN_BIN, ['--force', '--sign', '-', BRIDGE_BIN])
+    await execFileAsync(SWIFTC_BIN, ['-O', BRIDGE_SOURCE, '-o', BRIDGE_BIN], {
+      timeout: BRIDGE_BUILD_TIMEOUT_MS,
+    })
+    await execFileAsync(CODESIGN_BIN, ['--force', '--sign', '-', BRIDGE_BIN], {
+      timeout: BRIDGE_BUILD_TIMEOUT_MS,
+    })
   } catch (err) {
     if (isEnoent(err)) {
       throw new AppError({

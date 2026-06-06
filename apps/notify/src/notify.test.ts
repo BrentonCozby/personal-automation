@@ -1,6 +1,7 @@
 import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { decodeEmailBodies } from '@personal-automation/common/test-mime'
 import { setupMswServer } from '@personal-automation/common/test-msw'
 import { GMAIL_API_BASE_URL, GOOGLE_OAUTH_TOKEN_URL } from '@personal-automation/gmail/constants'
 import { HttpResponse, http } from 'msw'
@@ -103,9 +104,9 @@ describe('runNotify', (): void => {
     const result = await runNotify({ config: makeConfig(), today: TODAY, appsDir })
 
     expect(result).toEqual({ kind: 'sent', errorCount: 0, messageId: 'msg-ok' })
-    const decoded = Buffer.from(receivedRaw, 'base64url').toString('utf8')
-    expect(decoded).toContain('Whole Foods')
-    expect(decoded).toContain('Groceries')
+    const bodies = decodeEmailBodies(Buffer.from(receivedRaw, 'base64url').toString('utf8'))
+    expect(bodies).toContain('Whole Foods')
+    expect(bodies).toContain('Groceries')
   })
 
   it('returns no_activity and skips send when nothing was applied', async (): Promise<void> => {
@@ -166,12 +167,13 @@ describe('runNotify', (): void => {
     const decoded = Buffer.from(receivedRaw, 'base64url').toString('utf8')
     expect(decoded).toContain('To: me@example.com')
     expect(decodeSubject(decoded)).toBe('Personal Automation — 1 error')
-    expect(decoded).toContain('Transaction bad')
-    expect(decoded).toContain('rate_limit_error: 429 from anthropic')
     // The email carries both a plain-text fallback and an HTML part.
     expect(decoded).toContain('multipart/alternative')
     expect(decoded).toContain('Content-Type: text/html')
-    expect(decoded).toContain('<!doctype html>')
+    const bodies = decodeEmailBodies(decoded)
+    expect(bodies).toContain('Transaction bad')
+    expect(bodies).toContain('rate_limit_error: 429 from anthropic')
+    expect(bodies).toContain('<!doctype html>')
   })
 
   it('skips malformed JSONL lines and still reads valid ones', async (): Promise<void> => {
@@ -251,8 +253,9 @@ describe('runNotify', (): void => {
     const result = await runNotify({ config: makeConfig(), today: TODAY, appsDir })
 
     expect(result).toEqual({ kind: 'sent', errorCount: 1, messageId: 'msg-1' })
-    expect(receivedBody).toContain('fresh-boom')
-    expect(receivedBody).not.toContain('old-boom')
+    const bodies = decodeEmailBodies(receivedBody)
+    expect(bodies).toContain('fresh-boom')
+    expect(bodies).not.toContain('old-boom')
   })
 
   it('skips a notify-named audit file if one ever appears (self-feed guard)', async (): Promise<void> => {

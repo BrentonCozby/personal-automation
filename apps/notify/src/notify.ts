@@ -1,5 +1,6 @@
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs'
 import { join } from 'node:path'
+import { AUDIT_DIR_NAME, auditFileName } from '@personal-automation/common/audit-path'
 import { baseAuditSchema } from '@personal-automation/common/logger'
 import { createGmailAuth } from '@personal-automation/gmail/auth'
 import { createGmailClient } from '@personal-automation/gmail/client'
@@ -74,20 +75,20 @@ function collectAuditRows({
     return safeIsDirectory(full)
   })
 
+  // The audit layout is the shared contract (audit-path): each app writes
+  // apps/<app>/audit/<app>-<today>.jsonl, so notify reads exactly that path per app.
   const rows: AuditRow[] = []
   for (const appName of appNames) {
     if (appName === SELF_APP_NAME) continue
-    const auditDir = join(appsDir, appName, 'audit')
-    if (!existsSync(auditDir)) continue
+    const filePath = join(
+      appsDir,
+      appName,
+      AUDIT_DIR_NAME,
+      auditFileName({ app: appName, date: today }),
+    )
+    if (!existsSync(filePath)) continue
 
-    for (const file of readdirSync(auditDir)) {
-      if (!file.endsWith(`-${today}.jsonl`)) continue
-      const filePath = join(auditDir, file)
-      const derivedApp = file.replace(`-${today}.jsonl`, '')
-      if (derivedApp === SELF_APP_NAME) continue
-
-      rows.push(...readJsonlRows({ filePath, app: derivedApp, logger }))
-    }
+    rows.push(...readJsonlRows({ filePath, app: appName, logger }))
   }
 
   return rows

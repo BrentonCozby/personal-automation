@@ -1,6 +1,6 @@
 import { AppError, isRetryableHttpStatus } from '@personal-automation/common/errors'
 import { withRetry } from '@personal-automation/common/retry'
-import { GOOGLE_OAUTH_TOKEN_URL } from './constants.js'
+import { GMAIL_REQUEST_TIMEOUT_MS, GOOGLE_OAUTH_TOKEN_URL } from './constants.js'
 import { tokenResponseSchema } from './schemas.js'
 
 export type GmailAuth = {
@@ -36,6 +36,7 @@ export function createGmailAuth({
     return withRetry(async () => {
       const res = await fetch(GOOGLE_OAUTH_TOKEN_URL, {
         method: 'POST',
+        signal: AbortSignal.timeout(GMAIL_REQUEST_TIMEOUT_MS),
         headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
         body,
       })

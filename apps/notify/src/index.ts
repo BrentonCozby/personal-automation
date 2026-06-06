@@ -1,13 +1,13 @@
 import path from 'node:path'
-import { todayLocalIso } from '@personal-automation/common/date'
+import { fatal } from '@personal-automation/common/cli'
+import { todayIso } from '@personal-automation/common/date'
 import { resolveWorkspaceRoot } from '@personal-automation/common/env'
-import { formatError } from '@personal-automation/common/errors'
 import { loadConfig } from './config.js'
 import { runNotify } from './notify.js'
 
 async function main(): Promise<void> {
   const config = loadConfig()
-  const today = todayLocalIso()
+  const today = todayIso()
   const appsDir = path.join(resolveWorkspaceRoot(import.meta.url), 'apps')
 
   const result = await runNotify({ config, today, appsDir })
@@ -18,7 +18,4 @@ async function main(): Promise<void> {
   }
 }
 
-main().catch(err => {
-  console.error('[FATAL]', formatError(err))
-  process.exit(1)
-})
+main().catch(fatal)

@@ -1,3 +1,8 @@
+import {
+  escapeHtml,
+  SANS_FONT_STACK as FONT_STACK,
+  linkify,
+} from '@personal-automation/common/html'
 import type { Classification, Priority } from './anthropic/schemas.js'
 import { SUBJECT_PREFIX } from './constants.js'
 import type { DueStatus } from './staleness.js'
@@ -162,7 +167,6 @@ function renderHabits(habits: DigestItem[]): string {
 // Email HTML must use inline styles (clients strip <style>/<head>), a web-safe font stack, and
 // no external assets. Kept deliberately simple — divs + inline styles render reliably in Gmail.
 
-const FONT_STACK = "-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif"
 const PRIORITY_PILL: Record<Priority, { bg: string; fg: string }> = {
   high: { bg: '#fce8e6', fg: '#c5221f' },
   medium: { bg: '#fef7e0', fg: '#b06000' },
@@ -233,22 +237,4 @@ function htmlHabits(habits: DigestItem[]): string {
     .join('')
 
   return `<div style="margin-top:22px;padding-top:14px;border-top:1px solid #ececec;font-size:13px;color:#5f6368;"><div style="margin-bottom:6px;">Not really tasks — consider moving these out of Reminders:</div><ul style="margin:0;padding-left:18px;">${items}</ul></div>`
-}
-
-function escapeHtml(text: string): string {
-  return text
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-}
-
-// Wrap explicit http(s):// and www. URLs (already HTML-escaped) in links. Schemeless domains
-// like "irs.gov/x" are left as text — keeping the pattern safe from false positives.
-function linkify(escaped: string): string {
-  return escaped.replace(/\b(https?:\/\/[^\s<]+|www\.[^\s<]+)/gi, match => {
-    const href = /^https?:\/\//i.test(match) ? match : `https://${match}`
-
-    return `<a href="${href}" style="color:#1a73e8;">${match}</a>`
-  })
 }
