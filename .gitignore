@@ -4,7 +4,7 @@ node_modules/
 # stalled-tasks tuning records — contain real reminder titles (personal data).
 **/runs/
 # stalled-tasks Reminders bridge — compiled on demand from reminders.swift (platform-specific).
-apps/stalled-tasks/src/reminders/reminders-bridge
+apps/stalled-tasks/src/tasks/apple/reminders-bridge
 .env
 .env.local
 gmail-api-credentials.json

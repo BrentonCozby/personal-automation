@@ -10,10 +10,9 @@ import pino from 'pino'
 import { afterEach, beforeEach, expect, it } from 'vitest'
 import type { TaskAnalysis } from './anthropic/schemas.js'
 import type { Config } from './config.js'
-import type { TaskSource } from './reminders/source.js'
-import type { Task } from './reminders/types.js'
 import { runStalledTasks } from './run.js'
 import type { RunLogEntry } from './run-log.js'
+import type { Task, TaskSource } from './tasks/types.js'
 
 const ANTHROPIC_MESSAGES_URL = 'https://api.anthropic.com/v1/messages'
 const NOW = new Date('2026-06-02T12:00:00Z')
@@ -36,7 +35,8 @@ function makeConfig(overrides: Partial<Config> = {}): Config {
     toEmail: 'me@example.com',
     digestMaxItems: 5,
     staleThresholdDays: 30,
-    remindersLists: [],
+    taskProvider: 'apple',
+    taskLists: [],
     model: 'claude-sonnet-4-6',
     anthropicApiKey: 'test-anthropic-key',
     gmailClientId: 'cid',

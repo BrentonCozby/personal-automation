@@ -34,7 +34,7 @@ Options:
 function logResult(result: RunResult): void {
   switch (result.kind) {
     case 'no_open_tasks':
-      console.log('No open reminders found. Nothing to do.')
+      console.log('No open tasks found. Nothing to do.')
       break
     case 'no_actionable':
       console.log(

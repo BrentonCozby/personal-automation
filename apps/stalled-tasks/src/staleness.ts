@@ -1,4 +1,4 @@
-import type { Task } from './reminders/types.js'
+import type { Task } from './tasks/types.js'
 
 const MS_PER_DAY = 86_400_000
 

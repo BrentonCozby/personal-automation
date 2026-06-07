@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import type { Task } from './reminders/types.js'
 import { dueStatus, staleDays } from './staleness.js'
+import type { Task } from './tasks/types.js'
 
 const NOW = new Date('2026-06-02T12:00:00Z')
 

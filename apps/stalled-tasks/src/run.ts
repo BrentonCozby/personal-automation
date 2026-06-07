@@ -12,10 +12,10 @@ import { buildAnalysisPrompt, type PromptTask } from './anthropic/prompts.js'
 import type { TaskAnalysis } from './anthropic/schemas.js'
 import type { Config } from './config.js'
 import { buildDigest, type DigestItem } from './digest.js'
-import { createAppleRemindersSource, type TaskSource } from './reminders/source.js'
-import type { Task } from './reminders/types.js'
 import { appendRunLog, type RunLogEntry } from './run-log.js'
 import { type DueStatus, dueStatus, staleDays } from './staleness.js'
+import { createTaskSource } from './tasks/source.js'
+import type { Task, TaskSource } from './tasks/types.js'
 
 export type RunOptions = {
   dryRun: boolean
@@ -37,7 +37,7 @@ export async function runStalledTasks({
   config,
   opts,
   now = new Date(),
-  source = createAppleRemindersSource({ lists: config.remindersLists }),
+  source = createTaskSource({ provider: config.taskProvider, lists: config.taskLists }),
   analyzer = createAnalyzer({ apiKey: config.anthropicApiKey, model: config.model }),
   gmail,
   runsDir,
@@ -56,13 +56,13 @@ export async function runStalledTasks({
   // ran it manually), so when it runs, it runs.
   const spinnersEnabled = process.stdout.isTTY === true
 
-  // Throws a clear AppError on a Reminders-access failure — never an empty list that would
+  // Throws a clear AppError on a task-source access failure — never an empty list that would
   // read as "nothing is stalled".
-  logger.info('Reading open reminders…')
+  logger.info('Reading open tasks…')
   const tasks = await source.list()
-  logger.info({ count: tasks.length }, 'Read open reminders.')
+  logger.info({ count: tasks.length }, 'Read open tasks.')
   if (tasks.length === 0) {
-    logger.info('No open reminders found.')
+    logger.info('No open tasks found.')
 
     return { kind: 'no_open_tasks' }
   }

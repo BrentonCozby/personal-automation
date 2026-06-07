@@ -4,7 +4,7 @@ import { fileURLToPath } from 'node:url'
 import { promisify } from 'node:util'
 import { AppError } from '@personal-automation/common/errors'
 import { z } from 'zod'
-import type { Task } from './types.js'
+import type { Task, TaskSource } from '../types.js'
 
 const execFileAsync = promisify(execFile)
 
@@ -25,10 +25,6 @@ const MAX_BUFFER = 16 * 1024 * 1024
 const BRIDGE_RUN_TIMEOUT_MS = 60_000
 const BRIDGE_BUILD_TIMEOUT_MS = 120_000
 
-export type TaskSource = {
-  list: () => Promise<Task[]>
-}
-
 // Swift's JSONEncoder omits keys for nil optionals (it emits no `null`), so notes/due and
 // the timestamps arrive absent rather than null. nullish() accepts both; toTask normalizes
 // undefined → null.
@@ -47,7 +43,7 @@ const bridgeErrorSchema = z.object({ error: z.string(), status: z.number().optio
 
 type RawReminder = z.infer<typeof reminderSchema>
 
-export function createAppleRemindersSource({ lists }: { lists: readonly string[] }): TaskSource {
+export function createAppleTaskSource({ lists }: { lists: readonly string[] }): TaskSource {
   async function list(): Promise<Task[]> {
     const stdout = await runBridge()
 

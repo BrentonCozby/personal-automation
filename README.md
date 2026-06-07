@@ -39,7 +39,7 @@ Config is split: shared secrets and ids live in the root `.env`, and each app's 
 - **root `.env`** — `ANTHROPIC_API_KEY` (from [console.anthropic.com](https://console.anthropic.com), separate from Claude Pro), `YNAB_TOKEN` + `YNAB_BUDGET_ID`, `ALLOWED_ACCOUNT_IDS` (shared by both YNAB apps), and the `GMAIL_OAUTH_*` credentials apps send mail through.
 - **`apps/ynab-categorize/.env`** — `LOOKBACK_DAYS`, `AUDIT_DIR`, `EXCLUDED_CATEGORY_GROUPS`, `CATEGORY_ROUTING_HINTS`, `YNAB_CATEGORIZER_ANTHROPIC_MODEL`.
 - **`apps/ynab-enrich-memos/.env`** — `AUDIT_DIR`, `ENRICH_LOOKBACK_DAYS`, `GMAIL_RECEIPT_WINDOW_DAYS`, `GMAIL_FROM_FILTER`, `ENRICH_MEMOS_ANTHROPIC_MODEL`.
-- **`apps/stalled-tasks/.env`** — `REMINDERS_LISTS`, `STALLED_TASKS_SCHEDULE`, `STALLED_TASKS_TO_EMAIL`, `STALLED_TASKS_ANTHROPIC_MODEL`, and digest tuning (`DIGEST_MAX_ITEMS`, `STALE_THRESHOLD_DAYS`).
+- **`apps/stalled-tasks/.env`** — `TASK_PROVIDER`, `TASK_LISTS`, `STALLED_TASKS_SCHEDULE`, `STALLED_TASKS_TO_EMAIL`, `STALLED_TASKS_ANTHROPIC_MODEL`, and digest tuning (`DIGEST_MAX_ITEMS`, `STALE_THRESHOLD_DAYS`).
 - **`apps/notify/.env`** — `NOTIFY_TO_EMAIL`.
 
 Requires Node 26+ and pnpm 11+.
@@ -90,9 +90,11 @@ Runs before `ynab-categorize` so the categorizer reasons from real item names in
 
 ## stalled-tasks
 
-A digest that reviews open Apple Reminders, classifies why each has stalled, and emails the few worth acting on with one next action each. It runs on its own launchd schedule — the days/times in `STALLED_TASKS_SCHEDULE` (e.g. `["Sunday 08:00", "Wednesday 08:00"]`), so twice or three times a week is just more entries. It reviews the lists named in `REMINDERS_LISTS` (`[]` = all) and skips **recurring** reminders — those are time-triggered, so their own alert is their channel.
+A digest that reviews open tasks, classifies why each has stalled, and emails the few worth acting on with one next action each. It runs on its own launchd schedule — the days/times in `STALLED_TASKS_SCHEDULE` (e.g. `["Sunday 08:00", "Wednesday 08:00"]`), so twice or three times a week is just more entries. It reviews the lists named in `TASK_LISTS` (`[]` = all) and skips **recurring** tasks — those are time-triggered, so their own alert is their channel.
 
-It reads Reminders locally through a Swift/EventKit bridge (`src/reminders/reminders.swift`), compiled on first run into a standalone, ad-hoc-signed binary (`reminders-bridge`). That compile step is a TCC requirement, not an optimization: a non-platform signed binary is its own permission "responsible process", so the Reminders grant attaches to it and holds under launchd. Running `swift reminders.swift` instead would attribute access to the Node runtime that spawned it — which Volta's `execve` makes impossible to grant reliably. It needs:
+The task backend is chosen by `TASK_PROVIDER`: tasks are read through a `TaskSource` (`src/tasks/types.ts`), and `createTaskSource` (`src/tasks/source.ts`) is the single switch point between providers. Today the only implemented provider is `apple` (`src/tasks/apple/`); `google` (Google Tasks) is a planned drop-in. Switching is a config change, not a code change.
+
+The `apple` provider reads Reminders locally through a Swift/EventKit bridge (`src/tasks/apple/reminders.swift`), compiled on first run into a standalone, ad-hoc-signed binary (`reminders-bridge`). It only works on macOS. That compile step is a TCC requirement, not an optimization: a non-platform signed binary is its own permission "responsible process", so the Reminders grant attaches to it and holds under launchd. Running `swift reminders.swift` instead would attribute access to the Node runtime that spawned it — which Volta's `execve` makes impossible to grant reliably. It needs:
 
 - **Xcode Command Line Tools** (`xcode-select --install`) — provides `swiftc`.
 - **Reminders access**: the bridge requests it on first run, so macOS shows a consent prompt — click **Allow** (it appears as `reminders-bridge` under System Settings → Privacy & Security → Reminders). Without access the run fails with a clear error rather than emailing "nothing's stalled". Editing `reminders.swift` rebuilds the binary with a new identity, so you'll re-grant once after a change.

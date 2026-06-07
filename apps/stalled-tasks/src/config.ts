@@ -1,5 +1,6 @@
 import { jsonValue, loadAppEnv } from '@personal-automation/common/env'
 import { z } from 'zod'
+import { TASK_PROVIDERS, type TaskProvider } from './tasks/source.js'
 
 loadAppEnv(import.meta.url)
 
@@ -11,7 +12,9 @@ const schema = z.object({
   // coerce because process.env values are always strings
   DIGEST_MAX_ITEMS: z.coerce.number().pipe(z.int().positive()),
   STALE_THRESHOLD_DAYS: z.coerce.number().pipe(z.int().positive()),
-  REMINDERS_LISTS: jsonValue.pipe(z.array(z.string())),
+  // Which backend to read tasks from. Selecting a provider is a config change, not a code one.
+  TASK_PROVIDER: z.enum(TASK_PROVIDERS),
+  TASK_LISTS: jsonValue.pipe(z.array(z.string())),
   STALLED_TASKS_ANTHROPIC_MODEL: z.string().min(1),
   ANTHROPIC_API_KEY: z.string().min(1),
   GMAIL_OAUTH_CLIENT_ID: z.string().min(1),
@@ -23,8 +26,10 @@ export type Config = {
   toEmail: string
   digestMaxItems: number
   staleThresholdDays: number
-  /** Reminders lists to read; empty = all lists. */
-  remindersLists: string[]
+  /** Which task backend to read from. */
+  taskProvider: TaskProvider
+  /** Task lists to read; empty = all lists. */
+  taskLists: string[]
   model: string
   anthropicApiKey: string
   gmailClientId: string
@@ -39,7 +44,8 @@ export function loadConfig(): Config {
     toEmail: parsed.STALLED_TASKS_TO_EMAIL,
     digestMaxItems: parsed.DIGEST_MAX_ITEMS,
     staleThresholdDays: parsed.STALE_THRESHOLD_DAYS,
-    remindersLists: parsed.REMINDERS_LISTS,
+    taskProvider: parsed.TASK_PROVIDER,
+    taskLists: parsed.TASK_LISTS,
     model: parsed.STALLED_TASKS_ANTHROPIC_MODEL,
     anthropicApiKey: parsed.ANTHROPIC_API_KEY,
     gmailClientId: parsed.GMAIL_OAUTH_CLIENT_ID,

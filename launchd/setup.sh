@@ -33,7 +33,7 @@ substitute \
 # to this binary's absolute path, so it must be (re)done here — including after the project
 # moves on disk (which also regenerates the plist above). Running it once now surfaces the
 # consent prompt while you're present, so the first scheduled run reads Reminders silently.
-BRIDGE_DIR="$PROJECT_DIR/apps/stalled-tasks/src/reminders"
+BRIDGE_DIR="$PROJECT_DIR/apps/stalled-tasks/src/tasks/apple"
 if /usr/bin/swiftc -O "$BRIDGE_DIR/reminders.swift" -o "$BRIDGE_DIR/reminders-bridge" 2>/dev/null &&
   /usr/bin/codesign --force --sign - "$BRIDGE_DIR/reminders-bridge" 2>/dev/null; then
   echo "Built reminders-bridge — approve the Reminders prompt if one appears."
