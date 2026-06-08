@@ -37,7 +37,11 @@ export async function runStalledTasks({
   config,
   opts,
   now = new Date(),
-  source = createTaskSource({ provider: config.taskProvider, lists: config.taskLists }),
+  source = createTaskSource({
+    provider: config.taskProvider,
+    lists: config.taskLists,
+    ...(config.obsidianVaultPath !== undefined ? { vaultPath: config.obsidianVaultPath } : {}),
+  }),
   analyzer = createAnalyzer({ apiKey: config.anthropicApiKey, model: config.model }),
   gmail,
   runsDir,

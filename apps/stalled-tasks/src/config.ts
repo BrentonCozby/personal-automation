@@ -15,6 +15,10 @@ const schema = z.object({
   // Which backend to read tasks from. Selecting a provider is a config change, not a code one.
   TASK_PROVIDER: z.enum(TASK_PROVIDERS),
   TASK_LISTS: jsonValue.pipe(z.array(z.string())),
+  // Provider-specific: only used (and required) when TASK_PROVIDER=obsidian — validated at the
+  // seam in createTaskSource, so an apple setup doesn't have to set it. Optional here, not a
+  // .default(), so the repo's no-default rule holds.
+  OBSIDIAN_VAULT_PATH: z.string().min(1).optional(),
   STALLED_TASKS_ANTHROPIC_MODEL: z.string().min(1),
   ANTHROPIC_API_KEY: z.string().min(1),
   GMAIL_OAUTH_CLIENT_ID: z.string().min(1),
@@ -28,8 +32,10 @@ export type Config = {
   staleThresholdDays: number
   /** Which task backend to read from. */
   taskProvider: TaskProvider
-  /** Task lists to read; empty = all lists. */
+  /** Task lists to read; empty = all lists (apple) or just todos.md (obsidian). */
   taskLists: string[]
+  /** Vault folder for the obsidian provider; undefined for other providers. */
+  obsidianVaultPath?: string
   model: string
   anthropicApiKey: string
   gmailClientId: string
@@ -46,6 +52,10 @@ export function loadConfig(): Config {
     staleThresholdDays: parsed.STALE_THRESHOLD_DAYS,
     taskProvider: parsed.TASK_PROVIDER,
     taskLists: parsed.TASK_LISTS,
+    // Spread rather than assign undefined: exactOptionalPropertyTypes rejects `key: undefined`.
+    ...(parsed.OBSIDIAN_VAULT_PATH !== undefined
+      ? { obsidianVaultPath: parsed.OBSIDIAN_VAULT_PATH }
+      : {}),
     model: parsed.STALLED_TASKS_ANTHROPIC_MODEL,
     anthropicApiKey: parsed.ANTHROPIC_API_KEY,
     gmailClientId: parsed.GMAIL_OAUTH_CLIENT_ID,

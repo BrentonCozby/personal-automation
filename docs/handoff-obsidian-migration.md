@@ -54,9 +54,13 @@ not a rewrite.
 
 ## Tasks
 
-### 1. Create the private vault repo and push it  — you can do this locally
-The cloud session could not (its GitHub token lacks repo-create permission). From
-the **vault folder**:
+### 1. Create the private vault repo and push it  — DONE (2026-06-08)
+Created `github.com/BrentonCozby/obsidian-vault` (private) and pushed the vault
+(initial commit `db231a0`). `.gitignore` excludes `.trash/` (369 MB of importer
+leftovers stayed local); `todos.md` created at the root. Original steps below for
+reference.
+
+From the **vault folder**:
 
 ```bash
 cd "/path/to/your/vault"   # the folder with the notes + .obsidian
@@ -101,7 +105,16 @@ You can't build this for them; walk them through `docs/obsidian-capture.md` §3�
 Screen). Offer to verify the GET/PUT calls with their token via `curl` if a step
 misbehaves.
 
-### 5. Implement `createObsidianTaskSource`  — the coding task
+### 5. Implement `createObsidianTaskSource`  — DONE (2026-06-08)
+Implemented at `apps/stalled-tasks/src/tasks/obsidian/source.ts` (pure
+`parseTodoMarkdown` + read-only file I/O), wired into the seam (`TASK_PROVIDER=obsidian`,
+`OBSIDIAN_VAULT_PATH` optional-in-schema/validated-at-seam), with unit + temp-dir
+tests. typecheck, biome, and coverage (87/85/87/88 vs 80/80/80/75) all green; a
+dry run against a sample vault produced a correct digest (dropped the `🔁` task,
+skipped `[x]`/`[/]`, parsed dates as local midnight). The active provider is still
+`apple` — flip `TASK_PROVIDER=obsidian` + `TASK_LISTS=[]` when ready. Decisions made
+below were followed as written. Original brief retained for reference.
+
 Add an Obsidian provider behind the existing seam. Before writing the regex, read
 **20–30 real lines** from the user's actual `todos.md` (include any hand-typed
 lines, nested subtasks, and lines with no `➕`) so the format assumptions match
