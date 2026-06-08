@@ -45,9 +45,8 @@ not a rewrite.
   - selected by `TASK_PROVIDER` + `TASK_LISTS`
 - `docs/obsidian-capture.md` — full user setup guide (repo, push, token, the iOS
   Shortcut recipe). Reference it; don't duplicate it.
-- `docs/google-migration.md` — earlier analysis, now largely superseded by the
-  Obsidian decision (leave it, or fold the still-relevant bits — §3 host move — into
-  a new doc).
+- `docs/linux-migration.md` — the plan for the remaining macOS couplings
+  (scheduling, notifications, ephemeral filesystem) once the run moves off the Mac.
 
 ---
 
@@ -134,8 +133,8 @@ finalizing the format assumptions.
 `TASK_PROVIDER=obsidian` produces a correct digest from the vault on a dry run
 (`pnpm --filter @personal-automation/stalled-tasks test:stalled-tasks`).
 
-### 6. (Later) De-Apple the rest
-Out of scope for the source swap, but tracked: launchd → cron/systemd or a
+### 6. (Later) De-Apple the rest — see `docs/linux-migration.md`
+Out of scope for the source swap, but tracked there: launchd → cron/systemd or a
 scheduled GitHub Action; `osascript` failure notification → email/ntfy/Pushover;
 ephemeral-filesystem handling for audit/runs on a cloud host. Once Obsidian works,
 `tasks/apple/` + `launchd/` can be removed.
