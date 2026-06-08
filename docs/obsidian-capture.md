@@ -1,189 +1,118 @@
-# Obsidian capture: vault-in-git + one-tap iPhone Shortcut
+# Obsidian capture: one-tap iPhone Shortcut + Obsidian Sync
 
-How the Obsidian vault is version-controlled and how new todos are captured from
-the iPhone home screen in one tap. This replaces Apple Reminders as the capture
-surface; the vault (plain Markdown in git) becomes the system of record that the
-`stalled-tasks` automation will eventually read.
+How todos are captured from the iPhone in one tap, synced across devices, and
+backed up — replacing Apple Reminders as the capture surface. The vault is the
+system of record that the `stalled-tasks` automation reads.
 
-- **Vault repo:** `github.com/brentoncozby/obsidian-vault` (private)
-- **Capture file:** `todos.md` at the vault root — every capture appends one line
+**Architecture:**
+
+- **Live sync — Obsidian Sync.** Desktop ↔ iPhone, first-party, conflict-light.
+  This is the source of truth; the automation reads the Mac's synced copy on disk.
+- **Capture — iOS Shortcut via the Advanced URI plugin.** One tap appends a line
+  to `todos.md`; Obsidian Sync propagates it everywhere.
+- **Backup — weekly `git push` via launchd.** A one-way snapshot to a private
+  GitHub repo for offsite backup. *Not* the live sync path, so it never conflicts.
+- **Consumption — `stalled-tasks`.** Reads `todos.md` with `TASK_PROVIDER=obsidian`.
+
+**Key facts:**
+
+- **Capture file:** `todos.md` at the vault root — every capture appends one line.
 - **Line format:** `- [ ] <text> ➕ <YYYY-MM-DD>` (Obsidian Tasks syntax; the `➕`
-  created-date is what lets staleness work later)
+  created-date drives staleness).
+- **Vault name differs per device.** With Obsidian Sync each device names its local
+  vault independently (Mac: `obsidian-shared`, iPhone: `iphone`). An `obsidian://`
+  URL resolves against the **local** name on the device that runs it — so the
+  Shortcut (running on the phone) must use the *phone's* name.
 
 ---
 
-## Part 1 — Put the vault in a private GitHub repo
+## Part 1 — Live sync (Obsidian Sync)
 
-### 1a. Create the empty repo (manual — the automation can't create repos)
-On GitHub:
-1. Go to <https://github.com/new>
-2. **Repository name:** `obsidian-vault`
-3. Visibility: **Private**
-4. **Do not** add a README, `.gitignore`, or license — leave it empty (so the
-   first push from your Mac is a clean fast-forward).
-5. **Create repository**.
+Obsidian Sync handles desktop ↔ phone; there's nothing to build. Two rules:
 
-### 1b. Push the vault from your Mac
-In a terminal, from your vault folder (the one containing your notes):
-
-```bash
-cd "/path/to/your/vault"
-
-# Recommended .gitignore for an Obsidian vault: keep plugin settings, drop noise.
-cat > .gitignore <<'EOF'
-.obsidian/workspace.json
-.obsidian/workspace-mobile.json
-.obsidian/cache
-.trash/
-.DS_Store
-EOF
-
-# Make sure the capture file exists (the Shortcut appends to it; it must be present).
-[ -f todos.md ] || printf '# Todos\n' > todos.md
-
-git init
-git add .
-git commit -m "Initial vault import"
-git branch -M main
-git remote add origin https://github.com/brentoncozby/obsidian-vault.git
-git push -u origin main
-```
-
-> Heads-up: your notes will sit as **plaintext in a private GitHub repo**. That's
-> fine for todos; if any notes are sensitive, either keep them out of this repo or
-> add `git-crypt` before the first push.
-
-### 1c. Keep it synced automatically
-Install the **Obsidian Git** community plugin (Settings → Community plugins →
-Browse → "Obsidian Git"), then in its settings:
-- **Vault backup interval (minutes):** e.g. `10`
-- **Auto pull on startup / interval:** on
-- It uses your system git credentials (cache the HTTPS token on first push above,
-  or use SSH).
-
-Now desktop edits commit/push on their own. (Obsidian mobile + Obsidian Git works
-too but is finicky — not required for capture, since the Shortcut writes straight
-to GitHub.)
+- **Don't also run the Obsidian Git plugin as live sync** — two sync engines on one
+  vault fight. Keep the Git plugin dormant (all auto-intervals `0`) or disabled;
+  git is backup-only (Part 3).
+- **Note your phone's vault name** for the Shortcut. Easiest way: in Obsidian
+  mobile, open `todos.md` → ⋯ menu → **Copy Advanced URI**, and read the `vault=`
+  value (here it's `iphone`).
 
 ---
 
-## Part 2 — Create a GitHub token for the Shortcut
+## Part 2 — The iPhone capture Shortcut (Advanced URI)
 
-A **fine-grained** token limited to just this repo (minimal blast radius):
+**Prerequisite:** install **and enable** the **Advanced URI** community plugin on
+the **phone** (Settings → Community plugins → Browse → "Advanced URI"; make sure
+**Restricted Mode is off**). Installing it on the Mac does *not* put it on mobile
+unless "Sync installed community plugins" is on in Obsidian Sync settings.
 
-1. <https://github.com/settings/personal-access-tokens/new>
-2. **Token name:** `obsidian-capture-shortcut`
-3. **Expiration:** long (e.g. 1 year or custom) — when it expires, capture stops
-   until you regenerate it.
-4. **Repository access:** *Only select repositories* → `obsidian-vault`
-5. **Permissions → Repository permissions → Contents:** **Read and write**
-   (Metadata: Read is added automatically — leave it.)
-6. **Generate token** and copy it. You'll paste it into the Shortcut once.
+In the **Shortcuts** app, create a shortcut named **"Add ToDo"** with these actions
+in order:
 
----
-
-## Part 3 — The iPhone Shortcut (one tap → type → filed)
-
-Open the **Shortcuts** app → **+** to create a new shortcut, name it e.g.
-**"Add Todo"**, and add these actions in order. Placeholders:
-`OWNER/REPO = brentoncozby/obsidian-vault`, `FILE = todos.md`,
-`TOKEN = <your fine-grained token>`.
-
-1. **Ask for Input**
-   - Input Type: **Text**
-   - Prompt: `New todo`
-   - (This is the first action, so one tap launches straight into the keyboard.)
-     → produces **Provided Input**
-
-2. **Format Date** (add a **Current Date** action first if needed)
-   - Format: **Custom**, format string: `yyyy-MM-dd`
-     → produces the date text
-
-3. **Get Contents of URL** — read the current file
-   - URL: `https://api.github.com/repos/OWNER/REPO/contents/FILE`
-   - Method: **GET**
-   - Headers:
-     - `Authorization` = `Bearer TOKEN`
-     - `Accept` = `application/vnd.github+json`
-
-4. **Get Dictionary Value**
-   - Get **Value** for key `sha` in **Contents of URL**
-   - Tap the result variable and rename it **sha** (Set Variable, optional but
-     clearer)
-
-5. **Get Dictionary Value**
-   - Get **Value** for key `content` in **Contents of URL**
-     → this is base64 with embedded line breaks
-
-6. **Replace Text** — strip the line breaks so base64 decodes cleanly
-   - Find (turn **Regular Expression** ON): `\s`
-   - Replace with: *(empty)*
-   - Input: the `content` from step 5
-
-7. **Base64 Encode** action, switched to **Decode**
-   - Input: the cleaned text from step 6
-     → produces the **existing file text**
-
-8. **Text** — build the new file body
+1. **Ask for Input** — Type: **Text**, Prompt: `New todo` → *Provided Input*
+   (first action, so one tap lands straight on the keyboard)
+2. **Current Date**
+3. **Format Date** — Format: **Custom**, format string `yyyy-MM-dd` → *Formatted Date*
+4. **Text**: `- [ ] [Provided Input] ➕ [Formatted Date]`
+   - The `➕` must be the **emoji** (U+2795), not a keyboard `+` — only the emoji is
+     recognized as the created-date marker. Keep a space on each side.
+5. **URL Encode** — input = the **Text** from step 4 → *URL Encoded Text*
+   (encodes the spaces, `[ ]`, and `➕` that would otherwise break the URL)
+6. **Open URLs**:
    ```
-   [Decoded file text from step 7]
-   - [ ] [Provided Input] ➕ [Formatted Date]
+   obsidian://adv-uri?vault=iphone&filepath=todos.md&mode=append&data=[URL Encoded Text]
    ```
-   (Insert the step-7 variable, press return, type `- [ ] `, insert **Provided
-   Input**, type ` ➕ `, insert the **Formatted Date**.)
+   where `[URL Encoded Text]` is the variable from step 5 (a chip, not literal text).
 
-9. **Base64 Encode** (Encode mode)
-   - Input: the **Text** from step 8
-     → produces **new content (base64)**
+**Put it one tap away:** Shortcut details → **Add to Home Screen**, and place the
+icon where the Reminders app was. (Control Center / Lock Screen also work; the
+Action Button may already be taken.)
 
-10. **Get Contents of URL** — write the file back
-    - URL: `https://api.github.com/repos/OWNER/REPO/contents/FILE`
-    - Method: **PUT**
-    - Headers:
-      - `Authorization` = `Bearer TOKEN`
-      - `Accept` = `application/vnd.github+json`
-    - Request Body: **JSON**, with three fields:
-      - `message` (Text): `capture: ` + **Provided Input**
-      - `content` (Text): **new content (base64)** from step 9
-      - `sha` (Text): **sha** from step 4
+Result: **1 tap → type → return** → the line appends to `todos.md` and syncs. Obsidian
+flashes open briefly to do the write (keep it warm to minimize that).
 
-11. *(optional)* **Show Notification**: `Saved ✓` — so you get a confirmation.
+**About the URL:**
+- `vault=iphone` — the **phone's** local vault name (see Part 1). Spaces → `%20`.
+- `adv-uri` — this plugin version's scheme (alias of `advanced-uri`). Match whatever
+  "Copy Advanced URI" emits.
+- `mode=append` — adds to the end of the file; additive, doesn't overwrite.
 
 ---
 
-## Part 4 — Put it one tap away
-In the Shortcut's details (ⓘ / share icon):
-- **Add to Home Screen** — gives you the Reminders-style icon. One tap → keyboard.
-- Also available, even faster:
-  - **Add to Control Center** (a custom control, iOS 18+)
-  - **Add to Lock Screen** as a button
-  - Assign to the **Action Button** (iPhone 15 Pro and later)
+## Part 3 — Backup (weekly git push via launchd)
 
-Result: **1 tap → type → return → filed** — one fewer tap than Reminders (no
-"+"), and no separate "save" step.
+The vault is backed up weekly to a **private** GitHub repo
+(`github.com/BrentonCozby/obsidian-vault`) by the `com.personal-automation.vault-backup`
+launchd agent (`launchd/run-vault-backup.sh`, Sundays 09:00). It's a one-way
+`git push` of the Mac's synced copy, so it never touches the live Obsidian Sync
+path. Activation (generate the plist, bootstrap the agent, run once by hand to
+confirm the push credential) is in the repo README's **Production** section.
 
----
-
-## Notes & troubleshooting
-- **`todos.md` must exist** in the repo or the GET in step 3 returns 404. Part 1b
-  creates it; don't delete it.
-- **Conflict (HTTP 409 / "does not match")** can happen only if two captures land
-  in the same instant or while Obsidian Git is mid-push — rare for one person. If
-  it ever bites, re-run the Shortcut, or switch to a one-file-per-capture variant
-  (a single PUT to `inbox/<timestamp>.md`, no GET/sha) and let a Tasks query unify
-  them.
-- **Token expired** → capture silently fails; regenerate in Part 2 and update the
-  Shortcut's `Authorization` header.
-- **Viewing todos on the phone:** open `todos.md` on github.com, or set up Obsidian
-  mobile on the vault. Capture itself doesn't need the vault on the phone.
-- **Voice, if you ever want it:** the keyboard's mic key dictates into the same
-  Ask-for-Input box — no Siri or extra setup.
+> The repo stores your notes as plaintext (private). If any note is sensitive,
+> keep it out of this vault or add `git-crypt`.
 
 ---
 
-## Next step (not done yet)
-Add `createObsidianTaskSource` under `apps/stalled-tasks/src/tasks/` that reads
-this vault on disk and parses `- [ ]` lines (mapping `➕` → created, `📅` → due,
-and dropping `🔁` recurring lines so the app keeps ignoring them), wired into the
-existing `TaskSource` seam. That replaces the Apple Reminders source with zero
-OAuth. See `docs/handoff-obsidian-migration.md` §5 for the parsing edge cases.
+## Part 4 — Consumption (`stalled-tasks`)
+
+`stalled-tasks` reads the vault on disk via `TASK_PROVIDER=obsidian` +
+`OBSIDIAN_VAULT_PATH` (the Mac's synced copy — no git needed for reading). It parses
+open `- [ ]` lines: `➕` → created (drives staleness), `📅` → due, and drops `🔁`
+recurring tasks. See the README's **stalled-tasks** section and
+`apps/stalled-tasks/src/tasks/obsidian/`.
+
+---
+
+## Troubleshooting
+
+- **Shortcut opens Obsidian but nothing appends.** Almost always (a) `vault=` doesn't
+  match the phone's local vault name, or (b) the Advanced URI plugin isn't enabled on
+  the phone (check Restricted Mode is off and the plugin is installed on *mobile*).
+  Confirm both via "Copy Advanced URI" in the mobile file menu — it shows the correct
+  `vault=` and scheme.
+- **New line runs onto the previous line.** Prepend a newline to the data, or use the
+  plugin's append-newline setting.
+- **`+` ignored as a created date.** It must be the `➕` emoji (U+2795), not a keyboard `+`.
+- **Editing / deleting todos.** Do it directly in Obsidian (mobile or desktop); Sync
+  propagates. The automation re-reads the file each run.
+- **Voice.** The keyboard's mic key dictates into the Ask-for-Input box — no Siri setup.

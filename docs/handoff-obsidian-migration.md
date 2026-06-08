@@ -7,6 +7,20 @@ on disk and the user's authenticated `gh`/git. Pick up from here.
 Read `CLAUDE.md` first — repo conventions (pnpm, Biome, Vitest, object-args,
 factory functions, env rules) are binding.
 
+> **STATUS (2026-06-08): the core migration is done.** The vault is on GitHub, the
+> `obsidian` task source is implemented and tested, capture works end-to-end, and a
+> weekly git backup runs via launchd. Two things below changed during execution and
+> override what the original plan assumed:
+> - **Sync is Obsidian Sync, not the Git plugin.** Obsidian Sync is the live
+>   cross-device path; git/GitHub is *weekly backup only* (a launchd one-way push).
+> - **Capture is the Advanced URI plugin, not the GitHub API.** The iOS Shortcut
+>   appends to `todos.md` via `obsidian://adv-uri?...&mode=append`, and Obsidian Sync
+>   propagates it — no GitHub token, no GitHub-API Shortcut.
+>
+> `docs/obsidian-capture.md` is the current, accurate setup guide. The active task
+> provider is still `apple`; flip to `obsidian` (`TASK_PROVIDER=obsidian`,
+> `TASK_LISTS=[]`) when ready. Tasks 2–4 below are superseded by that doc.
+
 ---
 
 ## Background (why we're here)
@@ -41,12 +55,14 @@ not a rewrite.
 
 - `apps/stalled-tasks/src/tasks/` — the provider seam:
   - `types.ts` — neutral `Task` / `TaskSource`
-  - `source.ts` — `createTaskSource({ provider, lists })` + `TASK_PROVIDERS`
-    (`apple` | `google`); `google` throws not-implemented
-  - `apple/` — the EventKit bridge (still the default)
-  - selected by `TASK_PROVIDER` + `TASK_LISTS`
-- `docs/obsidian-capture.md` — full user setup guide (repo, push, token, the iOS
-  Shortcut recipe). Reference it; don't duplicate it.
+  - `source.ts` — `createTaskSource({ provider, lists, vaultPath })` + `TASK_PROVIDERS`
+    (`apple` | `google` | `obsidian`); `google` throws not-implemented
+  - `apple/` — the EventKit bridge (still the active provider)
+  - `obsidian/` — the Markdown vault source (implemented; see Task 5)
+  - selected by `TASK_PROVIDER` + `TASK_LISTS` (+ `OBSIDIAN_VAULT_PATH` for obsidian)
+- `docs/obsidian-capture.md` — the current user setup guide (Obsidian Sync + the
+  Advanced URI capture Shortcut + the launchd git backup). Reference it; don't
+  duplicate it.
 - `docs/linux-migration.md` — the plan for the remaining macOS couplings
   (scheduling, notifications, ephemeral filesystem) once the run moves off the Mac.
 
@@ -163,9 +179,8 @@ Suggested shape:
   midnight, which is the previous calendar day in any negative-offset zone — an
   off-by-one on `created` (and on the `dueStatus` past/future cut). The Apple
   source's `toDate` is fine for full ISO strings but wrong here. Parse these as
-  local dates and add a test. (This is the same date-only gotcha
-  `google-migration.md` §1 waves off for `due` — but `created` driving staleness
-  makes it higher-impact.)
+  local dates and add a test. (A date-only `due` would be low-impact, but here
+  `created` drives staleness, so the off-by-one matters.)
 - **Strip metadata from the title.** Pull out `➕`→`created` and `📅`→`due`, drop
   `🔁` lines entirely (recurring — see Decisions), and remove **all** Tasks emoji
   +their trailing values from the title text so the digest/prompt get a clean
