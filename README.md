@@ -105,22 +105,27 @@ The `apple` provider reads Reminders locally through a Swift/EventKit bridge (`s
 
 ## Production
 
-Two launchd agents:
+Three launchd agents:
 
 - `com.personal-automation.daily` runs `launchd/run.sh` daily at 12:00 — each app in the `APPS` array in sequence (`ynab-enrich-memos` then `ynab-categorize`), then `notify`.
 - `com.personal-automation.stalled-tasks` runs the digest on its `STALLED_TASKS_SCHEDULE` days/times.
+- `com.personal-automation.vault-backup` runs `launchd/run-vault-backup.sh` weekly (Sunday 09:00) — a one-way `git push` of the Obsidian vault to its remote for offsite backup. Obsidian Sync is the live cross-device sync; this only snapshots to git, so it never conflicts. The vault path comes from `OBSIDIAN_VAULT_PATH` in `apps/stalled-tasks/.env`.
 
-There are two because launchd binds one agent to one program on one schedule: a plist's `StartCalendarInterval` can list many times, but they all run the same script. The two agents are siblings grouped by schedule — `com.personal-automation` is just the shared namespace, not a job. The `.daily` agent's noon slot happens to run three apps; the `.stalled-tasks` agent's schedule runs one. An app gets its own agent only when it needs its own schedule — otherwise it's another entry in `run.sh`. Keeping them apart also means each gets its own logs and its own failure notification.
+Each is its own agent because launchd binds one agent to one program on one schedule: a plist's `StartCalendarInterval` can list many times, but they all run the same script. The agents are siblings grouped by schedule — `com.personal-automation` is just the shared namespace, not a job. An app gets its own agent only when it needs its own schedule — otherwise it's another entry in `run.sh`. Keeping them apart also means each gets its own logs and its own failure notification.
 
-Both post a macOS notification on a non-zero exit.
+All post a macOS notification on a non-zero exit.
 
 ```bash
-./launchd/setup.sh   # generates both plists, builds the Reminders bridge, primes its access grant
+./launchd/setup.sh   # generates the plists, builds the Reminders bridge, primes its access grant
 cp launchd/com.personal-automation.daily.plist ~/Library/LaunchAgents/
 cp launchd/com.personal-automation.stalled-tasks.plist ~/Library/LaunchAgents/
+cp launchd/com.personal-automation.vault-backup.plist ~/Library/LaunchAgents/
 launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.personal-automation.daily.plist
 launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.personal-automation.stalled-tasks.plist
+launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.personal-automation.vault-backup.plist
 ```
+
+Run `./launchd/run-vault-backup.sh` once by hand before relying on the schedule — it confirms the `git push` credential (the https token in your keychain) is reachable from a launchd context.
 
 `setup.sh` also builds the `stalled-tasks` Reminders bridge and triggers its one-time access prompt — **approve it** so the scheduled run reads silently. That grant is tied to the binary's path, so **re-run `setup.sh` if you move the project** on disk. Re-run it (and reload the digest agent — `setup.sh` prints the commands) whenever you change `STALLED_TASKS_SCHEDULE`.
 

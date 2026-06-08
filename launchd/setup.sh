@@ -4,8 +4,9 @@
 # Run this once after cloning, or any time the project moves on disk.
 #
 # Generated files:
-#   com.personal-automation.daily.plist  — daily scheduled job (runs run.sh at 12:00)
-#   newsyslog.personal-automation.conf   — optional log rotation config
+#   com.personal-automation.daily.plist         — daily scheduled job (runs run.sh at 12:00)
+#   com.personal-automation.vault-backup.plist  — weekly Obsidian vault git backup (Sun 09:00)
+#   newsyslog.personal-automation.conf          — optional log rotation config
 
 set -euo pipefail
 
@@ -24,6 +25,10 @@ substitute() {
 substitute \
   "$PROJECT_DIR/launchd/com.personal-automation.daily.plist.template" \
   "$PROJECT_DIR/launchd/com.personal-automation.daily.plist"
+
+substitute \
+  "$PROJECT_DIR/launchd/com.personal-automation.vault-backup.plist.template" \
+  "$PROJECT_DIR/launchd/com.personal-automation.vault-backup.plist"
 
 substitute \
   "$PROJECT_DIR/launchd/newsyslog.personal-automation.conf.template" \
@@ -49,11 +54,13 @@ echo "Generating the stalled-tasks digest schedule…"
 
 cat <<EOF
 
-Next (load both agents — the daily run and the digest):
+Next (load all three agents — the daily run, the digest, and the vault backup):
   cp $PROJECT_DIR/launchd/com.personal-automation.daily.plist ~/Library/LaunchAgents/
   cp $PROJECT_DIR/launchd/com.personal-automation.stalled-tasks.plist ~/Library/LaunchAgents/
+  cp $PROJECT_DIR/launchd/com.personal-automation.vault-backup.plist ~/Library/LaunchAgents/
   launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.personal-automation.daily.plist
   launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.personal-automation.stalled-tasks.plist
+  launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.personal-automation.vault-backup.plist
 
 Changed STALLED_TASKS_SCHEDULE later? Re-run this script, then:
   launchctl bootout gui/$(id -u)/com.personal-automation.stalled-tasks

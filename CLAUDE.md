@@ -31,7 +31,7 @@ packages/
   ynab/                # YNAB client, schemas, types, milliunits
   gmail/               # Gmail API client (OAuth, send w/ optional multipart HTML, read/search)
   common/              # errors, retry, lock, logger, progress, json, chunks, date
-launchd/               # macOS scheduling: run.sh, run-stalled-tasks.sh, setup.sh, plist template, newsyslog conf
+launchd/               # macOS scheduling: run.sh, run-stalled-tasks.sh, run-vault-backup.sh, setup.sh, plist templates, newsyslog conf
 ```
 
 - **Cross-package imports** use the package name + subpath: `import { withRetry } from '@personal-automation/common/retry'`. Each package's `exports` map in its `package.json` declares the public API. Internal package files import via relative paths (`./errors.js`).
