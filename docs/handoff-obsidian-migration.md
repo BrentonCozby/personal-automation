@@ -30,8 +30,10 @@ not a rewrite.
 - **Capture file:** `todos.md` at vault root; each capture **appends one line**.
 - **Line format:** `- [ ] <text> ➕ <YYYY-MM-DD>` (Obsidian Tasks syntax; the `➕`
   created-date preserves staleness).
-- **Recurring todos stay ignored** by the digest (as today) — the parser must
-  flag `🔁` items so the app drops them.
+- **Recurring todos stay ignored** by the digest (as today) — the pure parser
+  drops `🔁` lines itself, the way the Apple source filters recurring before it
+  maps to `Task`. `recurring` stays an internal parser detail; it never reaches
+  the neutral `Task` (which has no such field).
 - Losing Apple's push notification for recurring items is acceptable; they resurface
   in an Obsidian "Today" view instead. Email is the digest channel.
 
@@ -100,37 +102,88 @@ Screen). Offer to verify the GET/PUT calls with their token via `curl` if a step
 misbehaves.
 
 ### 5. Implement `createObsidianTaskSource`  — the coding task
-Add an Obsidian provider behind the existing seam. Suggested shape:
+Add an Obsidian provider behind the existing seam. Before writing the regex, read
+**20–30 real lines** from the user's actual `todos.md` (include any hand-typed
+lines, nested subtasks, and lines with no `➕`) so the format assumptions match
+reality, not this doc.
+
+Suggested shape:
 
 - `apps/stalled-tasks/src/tasks/obsidian/source.ts`
   - `createObsidianTaskSource({ vaultPath, lists }): TaskSource`
-  - Walk `*.md` under `vaultPath` (respect a configured subset if `lists` is used).
-  - Parse open-task lines `- [ ] …` (skip `- [x]` / `- [-]`). Extract Tasks
-    metadata: `➕`→`created`, `📅`→`due`, `🔁`→ set `recurring: true`.
-  - Map to `Task`. Keep a **pure** parser fn (markdown string → `Task[]`) so it's
-    unit-testable like `apple/source.ts`'s `parseBridgeOutput`.
+  - Keep a **pure** parser fn (markdown string → `Task[]`) split from the file
+    I/O, exactly like `apple/source.ts` splits `parseBridgeOutput` from
+    `runBridge`. The pure fn is what gets the unit tests.
 - Wire-up:
   - Add `'obsidian'` to `TASK_PROVIDERS` and a `case` in `createTaskSource`.
-  - `config.ts`: add `OBSIDIAN_VAULT_PATH` (required; no `.default()` per repo
-    rule) and surface `taskProvider`/`taskLists` as today.
-  - Update `apps/stalled-tasks/.env.example`, `README.md`, `CLAUDE.md`.
+  - `config.ts`: surface `taskProvider`/`taskLists` as today, plus
+    `OBSIDIAN_VAULT_PATH` — see the config note below.
+  - Update `apps/stalled-tasks/.env.example`, the **root** `README.md` (the
+    provider section, lines ~95–97; there is no per-app README), and `CLAUDE.md`.
 
-Design decisions to make (note them in the PR/commit):
-- **Stable `id`** — Tasks doesn't add block-ids by default. Options: hash of
-  normalized line text, or `relativePath:lineText`. Needs to be stable across runs
-  so the run-log/staleness join holds. Recommend a content hash.
-- **`created` fallback** when `➕` is absent — options: git history (first commit
-  touching the line), file mtime, or `null`. Decide one explicitly; don't let
-  `null` happen silently (it weakens staleness).
-- **`list`** — map to top-level folder, a `#tag`, or the file. `todos.md` is the
-  inbox; pick a convention and document it.
+#### What to read, and from where
+- **v1: read `todos.md` only** (plus any extra files/folders named in `lists`).
+  Do **not** walk the whole vault: arbitrary notes, templates, and READMEs in the
+  vault contain incidental `- [ ]` checkboxes that aren't todos and would pollute
+  the digest. `todos.md` is the inbox by design (Task 4) — read it directly.
+- **Read the live `vaultPath` read-only; never write to it, and don't `git pull`
+  it yourself.** Obsidian Git owns that working copy; a concurrent pull/reset
+  races its auto-commit over `.git/index.lock` and can blow away uncommitted
+  edits. The tradeoff: the digest sees the last state Obsidian Git synced to disk,
+  so a phone capture (which PUTs straight to GitHub) is missed until the next
+  auto-pull — and if Obsidian isn't running at fire time, the snapshot can be
+  hours stale. Acceptable for a Mac-only v1; **document it**. The fix (an owned
+  read-only clone the source `git fetch`es before each read) belongs with the
+  cloud-host move in §6, not here — don't build it now.
+- **Throw, don't return `[]`, on a missing/unreadable vault path.** `run.ts`
+  treats an empty list as "nothing is stalled"; a misconfigured path must surface
+  as a clear `AppError`, the way the Apple source throws on a permission failure.
 
-Validate the parser against a **real sample** from the user's vault before
-finalizing the format assumptions.
+#### Parsing rules (the edge cases that bite)
+- **Open = `[ ]` with a single space, nothing else.** Don't enumerate skips
+  (`[x]`, `[-]`): Obsidian Tasks supports custom statuses (`[/]`, `[>]`, `[?]`…).
+  Treat *only* a single-space box as open; everything else is not-open.
+- **Markers + indentation.** Match `-`, `*`, and `+` bullets, and allow leading
+  whitespace (nested subtasks). Obsidian Tasks recognizes all three markers.
+- **Dates are date-only and drive staleness — parse as LOCAL midnight.**
+  `➕`/`📅` carry bare `YYYY-MM-DD`. `new Date('2026-06-01')` parses as **UTC**
+  midnight, which is the previous calendar day in any negative-offset zone — an
+  off-by-one on `created` (and on the `dueStatus` past/future cut). The Apple
+  source's `toDate` is fine for full ISO strings but wrong here. Parse these as
+  local dates and add a test. (This is the same date-only gotcha
+  `google-migration.md` §1 waves off for `due` — but `created` driving staleness
+  makes it higher-impact.)
+- **Strip metadata from the title.** Pull out `➕`→`created` and `📅`→`due`, drop
+  `🔁` lines entirely (recurring — see Decisions), and remove **all** Tasks emoji
+  +their trailing values from the title text so the digest/prompt get a clean
+  `"buy milk"`, not `"buy milk ➕ 2026-06-01 📅 2026-06-10"`. Don't choke on the
+  other Tasks emoji (`⏳ 🛫 ✅`, the priority arrows, `#tags`) — ignore them.
 
-**Definition of done:** `pnpm typecheck`, `pnpm exec biome ci .`,
-`pnpm test:coverage` (thresholds 80/80/80/75) all green; flipping
-`TASK_PROVIDER=obsidian` produces a correct digest from the vault on a dry run
+#### Decisions to make (note them in the PR/commit)
+- **`id` is not load-bearing — keep it trivial.** `Task.id` is set by the Apple
+  source but **read nowhere** in the pipeline (the run-log keys by `title`+`list`,
+  analyses join by array index, staleness uses timestamps). It only needs to be
+  unique within one `list()` call. `relativePath:lineNumber` is plenty — **no
+  content hash**, no cross-run stability requirement.
+- **`created` fallback when `➕` is absent → `null`, never file mtime.** Captured
+  todos always carry `➕` (the Shortcut writes it), so this only hits hand-typed
+  lines. `todos.md` is append-only, so its mtime is "time of the last capture" for
+  *every* line — using mtime would make all hand-typed todos look brand new.
+  Return `null` (staleness unknown) instead; don't invent a date.
+- **`list`** — `todos.md` maps to a single inbox list (e.g. `"todos"`). If `lists`
+  later names extra files/folders, map `Task.list` to the file stem or folder
+  name. Pick one and document it; the neutral `Task.list` stays a display name.
+- **`OBSIDIAN_VAULT_PATH` is provider-specific — make it optional in the schema,
+  required at the seam.** An unconditionally-required field would force
+  `apple` users to set an unused path. Declare it `z.string().optional()` in
+  `config.ts` (not a `.default()`, so the repo rule holds), then throw a clear
+  `AppError` for "provider=obsidian but OBSIDIAN_VAULT_PATH unset" inside
+  `createTaskSource`/`createObsidianTaskSource` — mirroring how the `google` case
+  throws not-implemented.
+
+**Definition of done:** `pnpm typecheck`, `pnpm check`, `pnpm test:coverage`
+(thresholds 80/80/80/75) all green; flipping `TASK_PROVIDER=obsidian` produces a
+correct digest from the real vault on a dry run
 (`pnpm --filter @personal-automation/stalled-tasks test:stalled-tasks`).
 
 ### 6. (Later) De-Apple the rest — see `docs/linux-migration.md`

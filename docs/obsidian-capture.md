@@ -182,7 +182,8 @@ Result: **1 tap → type → return → filed** — one fewer tap than Reminders
 ---
 
 ## Next step (not done yet)
-Add `createObsidianTaskSource` under `apps/stalled-tasks/src/tasks/` that clones/
-reads this repo and parses `- [ ]` lines (mapping `➕` → created, `📅` → due, `🔁`
-→ recurring so the app keeps ignoring recurring items), wired into the existing
-`TaskSource` seam. That replaces the Apple Reminders source with zero OAuth.
+Add `createObsidianTaskSource` under `apps/stalled-tasks/src/tasks/` that reads
+this vault on disk and parses `- [ ]` lines (mapping `➕` → created, `📅` → due,
+and dropping `🔁` recurring lines so the app keeps ignoring them), wired into the
+existing `TaskSource` seam. That replaces the Apple Reminders source with zero
+OAuth. See `docs/handoff-obsidian-migration.md` §5 for the parsing edge cases.
