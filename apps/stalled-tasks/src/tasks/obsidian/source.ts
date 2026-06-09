@@ -11,9 +11,10 @@ const DEFAULT_TODOS_FILE = 'todos.md'
 // Obsidian Tasks "created" / "due" markers. The date that follows each is a bare YYYY-MM-DD.
 const CREATED_DATE = /➕\s*(\d{4}-\d{2}-\d{2})/u
 const DUE_DATE = /📅\s*(\d{4}-\d{2}-\d{2})/u
-// Recurring tasks are time-triggered; their own reminder is the channel, so the digest skips them
-// (matches the Apple source dropping recurring reminders).
-const RECURRENCE = /🔁/u
+// A recurrence rule (`🔁 every week on Sunday`) runs from the marker to the next Tasks emoji or
+// the line end. Stripped from the title; the task is kept and judged by its due date like any
+// other dated task (a recurring task is just one whose due date rolls forward).
+const RECURRENCE_RULE = /🔁[^➕📅⏳🛫✅❌🔺⏫🔼🔽⏬🆔⛔🏁]*/u
 
 // An open task line: optional indentation (nested subtasks count), a `-`/`*`/`+` bullet, then a
 // checkbox with a single space inside. Only `[ ]` is open — a done `[x]`, cancelled `[-]`,
@@ -126,9 +127,11 @@ async function statOrThrow({ path, entry }: { path: string; entry: string }): Pr
 }
 
 /**
- * Pure: maps one Markdown file's open-task lines to Task[]. Drops recurring (`🔁`) tasks and
- * anything that isn't an open `[ ]` checkbox. Unit-testable like the Apple source's
- * `parseBridgeOutput`. `created`/`due` come from the `➕`/`📅` markers, parsed as LOCAL dates —
+ * Pure: maps one Markdown file's open-task lines to Task[]. Keeps every open `[ ]` checkbox —
+ * including recurring ones (the `🔁` rule is stripped from the title, and the task is judged by
+ * its due date like any other) — and skips anything that isn't an open checkbox. Unit-testable
+ * like the Apple source's `parseBridgeOutput`. `created`/`due` come from the `➕`/`📅` markers,
+ * parsed as LOCAL dates —
  * a bare YYYY-MM-DD via `new Date(str)` would be UTC midnight, i.e. the previous day in any
  * negative-offset zone, which would skew the staleness clock that `created` drives. Lines indented
  * under a task (that aren't themselves checkboxes) become its `notes`.
@@ -149,7 +152,6 @@ export function parseTodoMarkdown({
     const match = line.match(OPEN_TASK_LINE)
     if (!match) continue
     const text = match[1] ?? ''
-    if (RECURRENCE.test(text)) continue
     const title = cleanTitle(text)
     if (!title) continue
     tasks.push({
@@ -198,6 +200,7 @@ function collectNotes({
 
 function cleanTitle(text: string): string {
   return text
+    .replace(RECURRENCE_RULE, '')
     .replace(DATE_METADATA, '')
     .replace(TOKEN_METADATA, '')
     .replace(PRIORITY_METADATA, '')

@@ -44,12 +44,15 @@ not a rewrite.
 - **Capture file:** `todos.md` at vault root; each capture **appends one line**.
 - **Line format:** `- [ ] <text> ➕ <YYYY-MM-DD>` (Obsidian Tasks syntax; the `➕`
   created-date preserves staleness).
-- **Recurring todos stay ignored** by the digest (as today) — the pure parser
-  drops `🔁` lines itself, the way the Apple source filters recurring before it
-  maps to `Task`. `recurring` stays an internal parser detail; it never reaches
-  the neutral `Task` (which has no such field).
-- Losing Apple's push notification for recurring items is acceptable; they resurface
-  in an Obsidian "Today" view instead. Email is the digest channel.
+- **Recurring todos are judged like any dated task** (revised 2026-06-08; originally
+  the digest dropped them). The Obsidian parser keeps `🔁` lines, strips the rule from
+  the title, and the digest's existing `isCandidate` logic judges them by due date —
+  overdue surfaces, a future due date counts as scheduled. Anchor recurring tasks with
+  a `📅`/`⏳` date so they surface only when an occurrence is overdue (and appear in the
+  Obsidian "Today" view on their day). A recurring task with no date falls back to
+  creation-age like any undated task.
+- Email is the digest channel; the Obsidian "Today" view (a Tasks query) is the
+  always-on list, replacing Apple's Today list for recurring items.
 
 ## Already done in `personal-automation` (committed to `main`)
 

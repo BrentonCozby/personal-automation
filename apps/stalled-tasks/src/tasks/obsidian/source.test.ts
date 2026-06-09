@@ -47,12 +47,21 @@ it('treats only `[ ]` as open — skips done, cancelled, in-progress, and other 
   expect(tasks.map(t => t.title)).toEqual(['open task'])
 })
 
-it('drops recurring (🔁) tasks — their own reminder is the channel', () => {
+it('keeps recurring tasks, stripping the 🔁 rule from the title', () => {
   const tasks = parse(
     ['- [ ] book flights', '- [ ] water the plants 🔁 every week ➕ 2026-06-01'].join('\n'),
   )
 
-  expect(tasks.map(t => t.title)).toEqual(['book flights'])
+  expect(tasks.map(t => t.title)).toEqual(['book flights', 'water the plants'])
+  expect(tasks[1]?.created?.getDate()).toBe(1)
+})
+
+it('strips a recurrence rule sitting between the title and the dates', () => {
+  const [task] = parse('- [ ] call mom 🔁 every week on Sunday ➕ 2026-06-04 📅 2026-06-14')
+
+  expect(task?.title).toBe('call mom')
+  expect(task?.created?.getDate()).toBe(4)
+  expect(task?.due?.getDate()).toBe(14)
 })
 
 it('supports -, *, and + bullet markers and leading indentation (subtasks)', () => {

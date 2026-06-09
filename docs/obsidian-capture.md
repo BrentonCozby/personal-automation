@@ -97,8 +97,9 @@ confirm the push credential) is in the repo README's **Production** section.
 
 `stalled-tasks` reads the vault on disk via `TASK_PROVIDER=obsidian` +
 `OBSIDIAN_VAULT_PATH` (the Mac's synced copy — no git needed for reading). It parses
-open `- [ ]` lines: `➕` → created (drives staleness), `📅` → due, and drops `🔁`
-recurring tasks. See the README's **stalled-tasks** section and
+open `- [ ]` lines: `➕` → created (drives staleness for undated tasks), `📅` → due,
+and recurring (`🔁`) tasks are kept and judged by their due date. See the README's
+**stalled-tasks** section and
 `apps/stalled-tasks/src/tasks/obsidian/`.
 
 ---
