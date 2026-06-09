@@ -203,7 +203,7 @@ describe('filterCategoriesForPrompt', (): void => {
 })
 
 describe('buildAuditEntry', (): void => {
-  it('builds entry with default status ok and extra fields', (): void => {
+  it('builds entry with default status categorized and extra fields', (): void => {
     const entry = buildAuditEntry({
       txn: makeTxn(),
       categoryId: 'c1',
@@ -212,7 +212,7 @@ describe('buildAuditEntry', (): void => {
     })
     expect(entry.transaction_id).toBe('txn-1')
     expect(entry.amount_dollars).toBe(-15)
-    expect(entry.status).toBe('ok')
+    expect(entry.status).toBe('categorized')
     expect(entry.latency_ms).toBe(100)
   })
 

@@ -13,12 +13,12 @@ import { writeWithProgress } from './progress.js'
 // apps — the per-app schema is the source of truth, passed to `createLogger` for write-time
 // validation.
 //
-// patch_status values, and how notify's digest treats each:
-//   success                    — PATCH applied (counts as a success)
-//   error                      — PATCH attempted and failed (counts as a digest error)
-//   skipped_for_upstream_error — a failure before PATCH, so none was attempted; counts as a
+// outcome values, and how notify's digest treats each:
+//   applied                    — change written to YNAB (counts as a success)
+//   failed                     — write attempted and failed (counts as a digest error)
+//   failed_upstream            — a failure before the write, so none was attempted; counts as a
 //                                digest error (e.g. ynab-categorize's LLM call threw)
-//   skipped_for_dry_run        — dry run, no PATCH (excluded from digest counts)
+//   skipped_for_dry_run        — dry run, nothing written (excluded from digest counts)
 //   skipped_for_no_match       — ran fine, nothing to act on, not a failure; excluded from
 //                                digest counts (e.g. ynab-enrich-memos found no matching receipt)
 // Read your app's own `status` field for the specific cause.
@@ -28,11 +28,11 @@ export const baseAuditFields = {
   payee_name: z.string().nullable(),
   memo: z.string().nullable(),
   amount_dollars: z.number(),
-  patch_status: z.enum([
-    'success',
-    'error',
+  outcome: z.enum([
+    'applied',
+    'failed',
+    'failed_upstream',
     'skipped_for_dry_run',
-    'skipped_for_upstream_error',
     'skipped_for_no_match',
   ]),
   prompt_tokens: z.number().optional(),
@@ -53,7 +53,7 @@ export const baseAuditFields = {
 
 export const baseAuditSchema = z.object(baseAuditFields)
 export type BaseAudit = z.infer<typeof baseAuditSchema>
-export type PatchStatus = BaseAudit['patch_status']
+export type Outcome = BaseAudit['outcome']
 
 // Reserved transaction_id marking a run-level abort, not a real transaction. Producers
 // write it when a run dies before processing entities; the notify digest renders it as a

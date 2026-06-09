@@ -8,7 +8,7 @@ function row(overrides: Partial<AuditRow>): AuditRow {
     transaction_id: 't-1',
     payee_name: 'Amazon',
     amount_dollars: -42.1,
-    patch_status: 'success',
+    outcome: 'applied',
     ...overrides,
   }
 }
@@ -22,11 +22,11 @@ describe('buildDigest', (): void => {
   })
 
   it('pluralizes singular vs plural in the subject', (): void => {
-    const one = buildDigest({ rows: [row({ patch_status: 'error', error: 'boom' })] })
+    const one = buildDigest({ rows: [row({ outcome: 'failed', error: 'boom' })] })
     const many = buildDigest({
       rows: [
-        row({ transaction_id: 't1', patch_status: 'error', error: 'a' }),
-        row({ transaction_id: 't2', patch_status: 'error', error: 'b' }),
+        row({ transaction_id: 't1', outcome: 'failed', error: 'a' }),
+        row({ transaction_id: 't2', outcome: 'failed', error: 'b' }),
       ],
     })
 
@@ -37,21 +37,21 @@ describe('buildDigest', (): void => {
   it('groups by app and counts errors vs successes per app', (): void => {
     const digest = buildDigest({
       rows: [
-        row({ app: 'ynab-categorize', transaction_id: 'a', patch_status: 'success' }),
-        row({ app: 'ynab-categorize', transaction_id: 'b', patch_status: 'success' }),
+        row({ app: 'ynab-categorize', transaction_id: 'a', outcome: 'applied' }),
+        row({ app: 'ynab-categorize', transaction_id: 'b', outcome: 'applied' }),
         row({
           app: 'ynab-categorize',
           transaction_id: 'c',
-          patch_status: 'error',
+          outcome: 'failed',
           error: 'boom',
         }),
         row({
           app: 'ynab-enrich-memos',
           transaction_id: 'd',
-          patch_status: 'skipped_for_upstream_error',
+          outcome: 'failed_upstream',
           error: 'timeout',
         }),
-        row({ app: 'ynab-enrich-memos', transaction_id: 'e', patch_status: 'success' }),
+        row({ app: 'ynab-enrich-memos', transaction_id: 'e', outcome: 'applied' }),
       ],
     })
 
@@ -63,11 +63,11 @@ describe('buildDigest', (): void => {
   it('excludes skipped_for_dry_run and skipped_for_no_match rows from both counts', (): void => {
     const digest = buildDigest({
       rows: [
-        row({ transaction_id: 'a', patch_status: 'skipped_for_dry_run' }),
+        row({ transaction_id: 'a', outcome: 'skipped_for_dry_run' }),
         // Benign "nothing to enrich" — must not read as an error in the digest.
-        row({ transaction_id: 'b', patch_status: 'skipped_for_no_match' }),
-        row({ transaction_id: 'c', patch_status: 'success' }),
-        row({ transaction_id: 'd', patch_status: 'error', error: 'boom' }),
+        row({ transaction_id: 'b', outcome: 'skipped_for_no_match' }),
+        row({ transaction_id: 'c', outcome: 'applied' }),
+        row({ transaction_id: 'd', outcome: 'failed', error: 'boom' }),
       ],
     })
 
@@ -82,7 +82,7 @@ describe('buildDigest', (): void => {
           transaction_id: 'abc123',
           payee_name: 'Amazon',
           amount_dollars: -42.1,
-          patch_status: 'error',
+          outcome: 'failed',
           error: 'rate_limit_error: 429 from anthropic',
         }),
       ],
@@ -91,20 +91,20 @@ describe('buildDigest', (): void => {
     expect(digest.body).toContain('Transaction abc123')
     expect(digest.body).toContain('Payee:   Amazon')
     expect(digest.body).toContain('Amount:  -$42.10')
-    expect(digest.body).toContain('Status:  error')
+    expect(digest.body).toContain('Outcome: failed')
     expect(digest.body).toContain('Reason:  rate_limit_error: 429 from anthropic')
   })
 
   it('formats positive amounts without a sign and rounds to two decimals', (): void => {
     const digest = buildDigest({
-      rows: [row({ patch_status: 'error', error: 'x', amount_dollars: 12.345 })],
+      rows: [row({ outcome: 'failed', error: 'x', amount_dollars: 12.345 })],
     })
 
     expect(digest.body).toContain('Amount:  $12.35')
   })
 
   it('falls back to placeholders when payee or error are missing', (): void => {
-    const digest = buildDigest({ rows: [row({ patch_status: 'error', payee_name: null })] })
+    const digest = buildDigest({ rows: [row({ outcome: 'failed', payee_name: null })] })
 
     expect(digest.body).toContain('Payee:   (no payee)')
     expect(digest.body).toContain('Reason:  (no error message recorded)')
@@ -117,13 +117,13 @@ describe('buildDigest', (): void => {
           app: 'ynab-categorize',
           transaction_id: 'a',
           payee_name: 'Whole Foods',
-          patch_status: 'success',
+          outcome: 'applied',
           result_summary: 'Groceries',
         }),
         row({
           app: 'ynab-enrich-memos',
           transaction_id: 'b',
-          patch_status: 'error',
+          outcome: 'failed',
           error: 'boom',
         }),
       ],
@@ -144,14 +144,14 @@ describe('buildDigest', (): void => {
           app: 'ynab-categorize',
           transaction_id: 'a',
           payee_name: 'Whole Foods',
-          patch_status: 'success',
+          outcome: 'applied',
           result_summary: 'Groceries',
         }),
         row({
           app: 'ynab-enrich-memos',
           transaction_id: 'b',
           payee_name: 'Amazon',
-          patch_status: 'success',
+          outcome: 'applied',
           result_summary: 'auto-gen: AAA batteries',
         }),
       ],
@@ -173,13 +173,13 @@ describe('buildDigest', (): void => {
           app: 'ynab-enrich-memos',
           transaction_id: 'b',
           payee_name: 'Amazon',
-          patch_status: 'success',
+          outcome: 'applied',
           result_summary: 'auto-gen: AAA batteries',
         }),
         row({
           app: 'ynab-enrich-memos',
           transaction_id: 'c',
-          patch_status: 'error',
+          outcome: 'failed',
           error: 'Gmail token refresh failed',
         }),
       ],
@@ -194,14 +194,14 @@ describe('buildDigest', (): void => {
     const withSummary = buildDigest({
       rows: [
         row({
-          patch_status: 'success',
+          outcome: 'applied',
           payee_name: 'Amazon',
           result_summary: 'auto-gen: AAA batteries',
         }),
       ],
     })
     const withoutSummary = buildDigest({
-      rows: [row({ patch_status: 'success', payee_name: 'Amazon', result_summary: null })],
+      rows: [row({ outcome: 'applied', payee_name: 'Amazon', result_summary: null })],
     })
 
     expect(withSummary.body).toContain('Amazon  -$42.10')
@@ -213,7 +213,7 @@ describe('buildDigest', (): void => {
     const digest = buildDigest({
       rows: [
         row({
-          patch_status: 'success',
+          outcome: 'applied',
           payee_name: 'Amazon',
           memo: 'auto-gen: AAA batteries (24-pack)',
           result_summary: 'Household Supplies',
@@ -230,10 +230,10 @@ describe('buildDigest', (): void => {
   it('shows the transaction date on both success and error rows', (): void => {
     const digest = buildDigest({
       rows: [
-        row({ transaction_id: 's', patch_status: 'success', transaction_date: '2026-06-03' }),
+        row({ transaction_id: 's', outcome: 'applied', transaction_date: '2026-06-03' }),
         row({
           transaction_id: 'e',
-          patch_status: 'error',
+          outcome: 'failed',
           error: 'boom',
           transaction_date: '2026-05-28',
         }),
@@ -248,7 +248,7 @@ describe('buildDigest', (): void => {
 
   it('omits the date when a row has no transaction_date', (): void => {
     const digest = buildDigest({
-      rows: [row({ patch_status: 'error', error: 'boom', transaction_date: null })],
+      rows: [row({ outcome: 'failed', error: 'boom', transaction_date: null })],
     })
 
     expect(digest.body).not.toContain('Date:')
@@ -260,7 +260,7 @@ describe('buildDigest', (): void => {
         row({
           app: 'ynab-enrich-memos',
           transaction_id: 'a',
-          patch_status: 'skipped_for_no_match',
+          outcome: 'skipped_for_no_match',
         }),
       ],
     })
@@ -277,7 +277,7 @@ describe('buildDigest', (): void => {
           transaction_id: RUN_ABORTED_SENTINEL,
           payee_name: null,
           amount_dollars: 0,
-          patch_status: 'error',
+          outcome: 'failed',
           error: 'TypeError: Cannot read properties of undefined (reading "foo")',
         }),
       ],
@@ -293,8 +293,8 @@ describe('buildDigest', (): void => {
   it('renders apps in stable alphabetical order', (): void => {
     const digest = buildDigest({
       rows: [
-        row({ app: 'zeta', transaction_id: 'z', patch_status: 'error', error: 'x' }),
-        row({ app: 'alpha', transaction_id: 'a', patch_status: 'error', error: 'y' }),
+        row({ app: 'zeta', transaction_id: 'z', outcome: 'failed', error: 'x' }),
+        row({ app: 'alpha', transaction_id: 'a', outcome: 'failed', error: 'y' }),
       ],
     })
 
@@ -313,7 +313,7 @@ describe('buildDigest', (): void => {
             transaction_id: 'abc123',
             payee_name: 'Amazon',
             amount_dollars: -116.25,
-            patch_status: 'skipped_for_upstream_error',
+            outcome: 'failed_upstream',
             error: 'Google OAuth token refresh → 400',
           }),
         ],
@@ -324,7 +324,7 @@ describe('buildDigest', (): void => {
       expect(digest.html).toContain('abc123')
       expect(digest.html).toContain('Amazon')
       expect(digest.html).toContain('-$116.25')
-      expect(digest.html).toContain('skipped_for_upstream_error')
+      expect(digest.html).toContain('failed_upstream')
       expect(digest.html).toContain('Google OAuth token refresh → 400')
     })
 
@@ -333,7 +333,7 @@ describe('buildDigest', (): void => {
         rows: [
           row({
             payee_name: 'Tom & Jerry <Co>',
-            patch_status: 'error',
+            outcome: 'failed',
             error: '<script>alert("x")</script> & done',
           }),
         ],
@@ -351,7 +351,7 @@ describe('buildDigest', (): void => {
             transaction_id: RUN_ABORTED_SENTINEL,
             payee_name: null,
             amount_dollars: 0,
-            patch_status: 'error',
+            outcome: 'failed',
             error: 'TypeError: boom',
           }),
         ],
@@ -365,8 +365,8 @@ describe('buildDigest', (): void => {
     it('shows a no-errors badge for apps that ran clean', (): void => {
       const digest = buildDigest({
         rows: [
-          row({ app: 'ynab-categorize', transaction_id: 'a', patch_status: 'success' }),
-          row({ app: 'ynab-enrich-memos', transaction_id: 'b', patch_status: 'error', error: 'x' }),
+          row({ app: 'ynab-categorize', transaction_id: 'a', outcome: 'applied' }),
+          row({ app: 'ynab-enrich-memos', transaction_id: 'b', outcome: 'failed', error: 'x' }),
         ],
       })
 
@@ -378,7 +378,7 @@ describe('buildDigest', (): void => {
       const digest = buildDigest({
         rows: [
           row({
-            patch_status: 'success',
+            outcome: 'applied',
             payee_name: 'Whole Foods',
             amount_dollars: -54.2,
             result_summary: 'Groceries',
@@ -398,7 +398,7 @@ describe('buildDigest', (): void => {
             app: 'ynab-enrich-memos',
             transaction_id: 'b',
             payee_name: 'Amazon',
-            patch_status: 'success',
+            outcome: 'applied',
             result_summary: 'auto-gen: AAA batteries',
           }),
         ],
@@ -411,7 +411,7 @@ describe('buildDigest', (): void => {
 
     it('escapes HTML in a result summary', (): void => {
       const digest = buildDigest({
-        rows: [row({ patch_status: 'success', result_summary: 'auto-gen: <b>x</b> & y' })],
+        rows: [row({ outcome: 'applied', result_summary: 'auto-gen: <b>x</b> & y' })],
       })
 
       expect(digest.html).toContain('auto-gen: &lt;b&gt;x&lt;/b&gt; &amp; y')

@@ -159,8 +159,8 @@ describe('runCategorize (e2e)', (): void => {
     const audit = readAuditLines()
     expect(audit).toHaveLength(1)
     expect(audit[0]?.app).toBe('ynab-categorize')
-    expect(audit[0]?.status).toBe('ok')
-    expect(audit[0]?.patch_status).toBe('success')
+    expect(audit[0]?.status).toBe('categorized')
+    expect(audit[0]?.outcome).toBe('applied')
     expect(audit[0]?.chosen_category_id).toBe('cGroceries')
   })
 
@@ -221,11 +221,11 @@ describe('runCategorize (e2e)', (): void => {
     expect(result.skipped).toBe(1)
     const audit = readAuditLines()
     expect(audit).toHaveLength(1)
-    expect(audit[0]?.status).toBe('ok')
-    expect(audit[0]?.patch_status).toBe('skipped_for_dry_run')
+    expect(audit[0]?.status).toBe('categorized')
+    expect(audit[0]?.outcome).toBe('skipped_for_dry_run')
   })
 
-  it('PATCH failure marks audit patch_status error', async (): Promise<void> => {
+  it('PATCH failure marks audit outcome failed', async (): Promise<void> => {
     server.use(
       http.get(`${YNAB_API_BASE_URL}/budgets/${BUDGET_ID}/categories`, () =>
         HttpResponse.json(categoriesResponse),
@@ -251,8 +251,8 @@ describe('runCategorize (e2e)', (): void => {
     expect(result.failed).toBe(1)
 
     const audit = readAuditLines()
-    expect(audit[0]?.status).toBe('ok')
-    expect(audit[0]?.patch_status).toBe('error')
+    expect(audit[0]?.status).toBe('categorized')
+    expect(audit[0]?.outcome).toBe('failed')
     expect(audit[0]?.error).toContain('400')
   })
 
@@ -282,7 +282,7 @@ describe('runCategorize (e2e)', (): void => {
     const aborted = audit.find(e => e.transaction_id === RUN_ABORTED_SENTINEL)
     expect(aborted).toBeDefined()
     expect(aborted?.status).toBe('error')
-    expect(aborted?.patch_status).toBe('error')
+    expect(aborted?.outcome).toBe('failed')
     expect(aborted?.error).toBeTruthy()
   })
 
@@ -307,7 +307,7 @@ describe('runCategorize (e2e)', (): void => {
     const audit = readAuditLines()
     expect(audit).toHaveLength(1)
     expect(audit[0]?.transaction_id).toBe(RUN_ABORTED_SENTINEL)
-    expect(audit[0]?.patch_status).toBe('error')
+    expect(audit[0]?.outcome).toBe('failed')
     expect(audit[0]?.status).toBe('error')
   })
 
@@ -348,7 +348,7 @@ describe('runCategorize (e2e)', (): void => {
     expect(logger.error).toHaveBeenCalledOnce()
   })
 
-  it('categorize failure marks audit status error + patch_status skipped_for_upstream_error', async (): Promise<void> => {
+  it('categorize failure marks audit status error + outcome failed_upstream', async (): Promise<void> => {
     server.use(
       http.get(`${YNAB_API_BASE_URL}/budgets/${BUDGET_ID}/categories`, () =>
         HttpResponse.json(categoriesResponse),
@@ -371,10 +371,10 @@ describe('runCategorize (e2e)', (): void => {
     const audit = readAuditLines()
     expect(audit).toHaveLength(1)
     expect(audit[0]?.status).toBe('error')
-    expect(audit[0]?.patch_status).toBe('skipped_for_upstream_error')
+    expect(audit[0]?.outcome).toBe('failed_upstream')
   })
 
-  it('partial PATCH success: confirmed ids get patch_status success, missing ids get error', async (): Promise<void> => {
+  it('partial PATCH success: confirmed ids get outcome applied, missing ids get failed', async (): Promise<void> => {
     server.use(
       http.get(`${YNAB_API_BASE_URL}/budgets/${BUDGET_ID}/categories`, () =>
         HttpResponse.json(categoriesResponse),
@@ -408,10 +408,10 @@ describe('runCategorize (e2e)', (): void => {
 
     const audit = readAuditLines()
     const byId = new Map(audit.map(e => [e.transaction_id, e]))
-    expect(byId.get('txn-1')?.status).toBe('ok')
-    expect(byId.get('txn-1')?.patch_status).toBe('success')
-    expect(byId.get('txn-2')?.status).toBe('ok')
-    expect(byId.get('txn-2')?.patch_status).toBe('error')
+    expect(byId.get('txn-1')?.status).toBe('categorized')
+    expect(byId.get('txn-1')?.outcome).toBe('applied')
+    expect(byId.get('txn-2')?.status).toBe('categorized')
+    expect(byId.get('txn-2')?.outcome).toBe('failed')
     expect(byId.get('txn-2')?.error).toContain('transaction_ids')
   })
 

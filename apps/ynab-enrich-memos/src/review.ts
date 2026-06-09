@@ -109,8 +109,8 @@ export function auditFilesInRange({
     .map(f => join(auditDir, f.name))
 }
 
-/** Parse the given audit files and keep only the rows where a memo was written (status `ok`). */
-export function readOkRows(filePaths: string[]): EnrichMemosAudit[] {
+/** Parse the given audit files and keep only the rows where a memo was written (`enriched`). */
+export function readEnrichedRows(filePaths: string[]): EnrichMemosAudit[] {
   const rows: EnrichMemosAudit[] = []
   for (const filePath of filePaths) {
     const text = readFileSync(filePath, 'utf8')
@@ -123,7 +123,7 @@ export function readOkRows(filePaths: string[]): EnrichMemosAudit[] {
         continue
       }
       const parsed = enrichMemosAuditSchema.safeParse(raw)
-      if (parsed.success && parsed.data.status === 'ok') rows.push(parsed.data)
+      if (parsed.success && parsed.data.status === 'enriched') rows.push(parsed.data)
     }
   }
 
@@ -133,8 +133,8 @@ export function readOkRows(filePaths: string[]): EnrichMemosAudit[] {
 /**
  * Collapse to one row per transaction, keeping the most recent. This looks redundant — a
  * transaction is normally enriched once — but the audit log is append-only across runs, so the
- * same transaction can have an `ok` row from each run that processed it: a backfill that was
- * re-run, or repeated dry-runs (a dry-run never writes the memo, so the transaction stays
+ * same transaction can have an `enriched` row from each run that processed it: a backfill that
+ * was re-run, or repeated dry-runs (a dry-run never writes the memo, so the transaction stays
  * eligible and gets re-matched on the next run). Without this, such a transaction shows up once
  * per run in the review.
  */
@@ -233,7 +233,7 @@ function main(): void {
   const args = parseArgs(process.argv.slice(2))
   const auditDir = appAuditDir(import.meta.url)
   const files = auditFilesInRange({ auditDir, since: args.since, until: args.until })
-  const rows = dedupeByTransaction(readOkRows(files))
+  const rows = dedupeByTransaction(readEnrichedRows(files))
   const shown = args.sample !== undefined ? sampleRows({ rows, n: args.sample }) : rows
 
   console.log(

@@ -37,7 +37,7 @@ import { isAuthentic } from './trust.js'
 export const enrichMemosAuditSchema = z.object({
   ...baseAuditFields,
   app: z.literal('ynab-enrich-memos'),
-  status: z.enum(['ok', 'no_emails', 'no_receipt', 'error']),
+  status: z.enum(['enriched', 'no_emails', 'no_receipt', 'error']),
   /** Trusted candidate receipt emails handed to the model (after dropping DMARC failures). */
   emails_found: z.number().optional(),
   /** True when the date-window query hit the fetch cap, so more emails may exist than were read. */
@@ -72,8 +72,8 @@ export type RunResult = {
   skipped: number
 }
 
-// Enrich fills in everything but `patch_status`; the persistence stage (or dry-run loop) sets it.
-type AuditCore = Omit<EnrichMemosAudit, 'patch_status'>
+// Enrich fills in everything but `outcome`; the persistence stage (or dry-run loop) sets it.
+type AuditCore = Omit<EnrichMemosAudit, 'outcome'>
 
 // A transaction that produced a memo to PATCH.
 type PatchOutcome = { patch: TransactionPatch; auditCore: AuditCore }
@@ -202,7 +202,7 @@ async function runEnrichInner({
 
   if (opts.dryRun) {
     for (const o of outcomes.successes) {
-      logger.audit({ ...o.auditCore, patch_status: 'skipped_for_dry_run' })
+      logger.audit({ ...o.auditCore, outcome: 'skipped_for_dry_run' })
     }
     logger.info({ msg: 'Dry run — skipping PATCH', extra: { proposed: outcomes.successes.length } })
 
@@ -279,7 +279,7 @@ export async function enrichAll({
         // A benign skip (no candidate email, or no receipt matched): nothing to PATCH and not a
         // failure, so audit it now with skipped_for_no_match — notify's digest won't flag it.
         skipped += 1
-        logger.audit({ ...result.value.auditCore, patch_status: 'skipped_for_no_match' })
+        logger.audit({ ...result.value.auditCore, outcome: 'skipped_for_no_match' })
       }
       continue
     }
@@ -292,7 +292,7 @@ export async function enrichAll({
     logger.error({ msg: `Enrich failed for ${txn.id}`, extra: { error: result.reason.message } })
     logger.audit({
       ...buildAuditEntry({ txn, status: 'error', extra: { error: result.reason.message } }),
-      patch_status: 'skipped_for_upstream_error',
+      outcome: 'failed_upstream',
     })
   }
 
@@ -446,7 +446,7 @@ async function enrichOne({
     patch: { id: txn.id, memo },
     auditCore: buildAuditEntry({
       txn,
-      status: 'ok',
+      status: 'enriched',
       extra: {
         ...lookExtra,
         new_memo: memo,
@@ -498,7 +498,7 @@ export function buildRunAbortedAuditEntry(err: unknown): EnrichMemosAudit {
     payee_name: null,
     memo: null,
     amount_dollars: 0,
-    patch_status: 'error',
+    outcome: 'failed',
     status: 'error',
     new_memo: null,
     error: formatError(err),

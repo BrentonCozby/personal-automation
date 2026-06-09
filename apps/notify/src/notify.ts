@@ -129,7 +129,7 @@ function readJsonlRows({
       transaction_id: parsed.data.transaction_id,
       payee_name: parsed.data.payee_name,
       amount_dollars: parsed.data.amount_dollars,
-      patch_status: parsed.data.patch_status,
+      outcome: parsed.data.outcome,
       memo: parsed.data.memo,
       transaction_date: parsed.data.transaction_date ?? null,
       result_summary: parsed.data.result_summary ?? null,

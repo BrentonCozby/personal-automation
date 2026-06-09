@@ -3,7 +3,7 @@ import {
   MONO_FONT_STACK as MONO,
   SANS_FONT_STACK as SANS,
 } from '@personal-automation/common/html'
-import { type PatchStatus, RUN_ABORTED_SENTINEL } from '@personal-automation/common/logger'
+import { type Outcome, RUN_ABORTED_SENTINEL } from '@personal-automation/common/logger'
 import { SUBJECT_PREFIX, SUMMARY_ONLY_SUCCESS_APPS } from './constants.js'
 
 export type AuditRow = {
@@ -11,7 +11,7 @@ export type AuditRow = {
   transaction_id: string
   payee_name: string | null
   amount_dollars: number
-  patch_status: PatchStatus
+  outcome: Outcome
   error?: string
   /** The transaction's memo — the input ynab-categorize used to pick a category. */
   memo?: string | null
@@ -44,9 +44,9 @@ export function buildDigest({ rows }: { rows: AuditRow[] }): Digest {
       bucket = { errors: [], successes: [] }
       byApp.set(row.app, bucket)
     }
-    if (row.patch_status === 'error' || row.patch_status === 'skipped_for_upstream_error') {
+    if (row.outcome === 'failed' || row.outcome === 'failed_upstream') {
       bucket.errors.push(row)
-    } else if (row.patch_status === 'success') {
+    } else if (row.outcome === 'applied') {
       bucket.successes.push(row)
     }
     // skipped_for_dry_run and skipped_for_no_match are excluded from both groups by design.
@@ -112,7 +112,7 @@ function renderRow({ row }: { row: AuditRow }): string {
     ...(date ? [`    Date:    ${date}`] : []),
     `    Payee:   ${payee}`,
     `    Amount:  ${formatAmount(row.amount_dollars)}`,
-    `    Status:  ${row.patch_status}`,
+    `    Outcome: ${row.outcome}`,
     `    Reason:  ${reason}`,
   ].join('\n')
 }
@@ -244,7 +244,7 @@ function renderHtmlRow({ row }: { row: AuditRow }): string {
 ${date ? fieldRow({ label: 'Date', valueHtml: escapeHtml(date) }) : ''}
 ${fieldRow({ label: 'Payee', valueHtml: escapeHtml(payee) })}
 ${fieldRow({ label: 'Amount', valueHtml: escapeHtml(formatAmount(row.amount_dollars)) })}
-${fieldRow({ label: 'Status', valueHtml: statusText(row.patch_status) })}
+${fieldRow({ label: 'Outcome', valueHtml: statusText(row.outcome) })}
 </table>
 ${reasonBlock({ reason })}
 </div>
@@ -288,12 +288,12 @@ function reasonBlock({ reason }: { reason: string }): string {
 </div>`
 }
 
-// skipped_for_upstream_error is a skip caused by an upstream failure — amber, distinct from a
-// hard error in red. Both are the only statuses that reach an error row.
-function statusText(status: PatchStatus): string {
-  const color = status === 'skipped_for_upstream_error' ? '#b45309' : '#b91c1c'
+// failed_upstream is a failure before the write — amber, distinct from a hard write failure in
+// red. Both are the only outcomes that reach an error row.
+function statusText(outcome: Outcome): string {
+  const color = outcome === 'failed_upstream' ? '#b45309' : '#b91c1c'
 
-  return `<span style="font-family:${MONO}; font-size:13px; color:${color}; word-break:break-word;">${escapeHtml(status)}</span>`
+  return `<span style="font-family:${MONO}; font-size:13px; color:${color}; word-break:break-word;">${escapeHtml(outcome)}</span>`
 }
 
 function pill({ text, tone }: { text: string; tone: 'ok' | 'error' }): string {

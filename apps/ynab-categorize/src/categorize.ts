@@ -31,7 +31,7 @@ import { FLAG_COLOR, FLAG_NAME, PATCH_BATCH_SIZE, PAYEE_FILTER } from './constan
 export const categorizeAuditSchema = z.object({
   ...baseAuditFields,
   app: z.literal('ynab-categorize'),
-  status: z.enum(['ok', 'fallback', 'error']),
+  status: z.enum(['categorized', 'fallback', 'error']),
   chosen_category_id: z.string().nullable(),
   chosen_category_name: z.string().nullable(),
 })
@@ -64,9 +64,9 @@ type CategoriesContext = {
   routingHints: readonly string[]
 }
 
-// Categorize fills in everything but `patch_status` — the persistence stage (or dry-run
+// Categorize fills in everything but `outcome` — the persistence stage (or dry-run
 // loop) decides that and overrides on emit.
-type AuditCore = Omit<CategorizeAudit, 'patch_status'>
+type AuditCore = Omit<CategorizeAudit, 'outcome'>
 type CategorizationOutcome = { patch: TransactionPatch; auditCore: AuditCore }
 
 export async function runCategorize({
@@ -225,7 +225,7 @@ async function runCategorizeInner({
   if (opts.dryRun) {
     // Emit audit immediately in dry-run since no PATCH will happen.
     for (const o of outcomes.successes) {
-      logger.audit({ ...o.auditCore, patch_status: 'skipped_for_dry_run' })
+      logger.audit({ ...o.auditCore, outcome: 'skipped_for_dry_run' })
     }
     logger.info({ msg: 'Dry run — skipping PATCH', extra: { proposed: outcomes.successes.length } })
 
@@ -310,7 +310,7 @@ export async function categorizeAll({
         categoryName: null,
         extra: { status: 'error', error: result.reason.message },
       }),
-      patch_status: 'skipped_for_upstream_error',
+      outcome: 'failed_upstream',
     })
   }
 
@@ -461,7 +461,7 @@ function resolveCategoryId({
     return fallback
   }
 
-  return { id: result.categoryId, status: 'ok' }
+  return { id: result.categoryId, status: 'categorized' }
 }
 
 export function buildRunAbortedAuditEntry(err: unknown): CategorizeAudit {
@@ -472,7 +472,7 @@ export function buildRunAbortedAuditEntry(err: unknown): CategorizeAudit {
     payee_name: null,
     memo: null,
     amount_dollars: 0,
-    patch_status: 'error',
+    outcome: 'failed',
     status: 'error',
     chosen_category_id: null,
     chosen_category_name: null,
@@ -502,7 +502,7 @@ export function buildAuditEntry({
     chosen_category_id: categoryId,
     chosen_category_name: categoryName,
     result_summary: categoryName,
-    status: 'ok',
+    status: 'categorized',
     ...extra,
   }
 }

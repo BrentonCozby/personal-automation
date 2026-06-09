@@ -50,7 +50,7 @@ function baseRow(overrides: Record<string, unknown>): Record<string, unknown> {
     payee_name: 'Amazon',
     memo: null,
     amount_dollars: -42.1,
-    patch_status: 'success',
+    outcome: 'applied',
     ...overrides,
   }
 }
@@ -76,13 +76,13 @@ describe('runNotify', (): void => {
       rows: [
         baseRow({
           transaction_id: 'a',
-          patch_status: 'success',
+          outcome: 'applied',
           payee_name: 'Whole Foods',
           result_summary: 'Groceries',
         }),
         baseRow({
           transaction_id: 'b',
-          patch_status: 'success',
+          outcome: 'applied',
           payee_name: 'Costco',
           result_summary: 'Household Goods',
         }),
@@ -115,8 +115,8 @@ describe('runNotify', (): void => {
       appsDir,
       app: 'ynab-enrich-memos',
       rows: [
-        baseRow({ transaction_id: 'a', patch_status: 'skipped_for_no_match' }),
-        baseRow({ transaction_id: 'b', patch_status: 'skipped_for_dry_run' }),
+        baseRow({ transaction_id: 'a', outcome: 'skipped_for_no_match' }),
+        baseRow({ transaction_id: 'b', outcome: 'skipped_for_dry_run' }),
       ],
     })
 
@@ -131,10 +131,10 @@ describe('runNotify', (): void => {
       appsDir,
       app: 'ynab-categorize',
       rows: [
-        baseRow({ transaction_id: 'good', patch_status: 'success' }),
+        baseRow({ transaction_id: 'good', outcome: 'applied' }),
         baseRow({
           transaction_id: 'bad',
-          patch_status: 'error',
+          outcome: 'failed',
           error: 'rate_limit_error: 429 from anthropic',
         }),
       ],
@@ -181,10 +181,10 @@ describe('runNotify', (): void => {
     const auditDir = join(appsDir, 'ynab-categorize', 'audit')
     mkdirSync(auditDir, { recursive: true })
     const content = [
-      JSON.stringify(baseRow({ transaction_id: 'good-1', patch_status: 'success' })),
+      JSON.stringify(baseRow({ transaction_id: 'good-1', outcome: 'applied' })),
       '{not valid json',
       JSON.stringify({ missing_required_fields: true }),
-      JSON.stringify(baseRow({ transaction_id: 'good-2', patch_status: 'error', error: 'boom' })),
+      JSON.stringify(baseRow({ transaction_id: 'good-2', outcome: 'failed', error: 'boom' })),
       '',
     ].join('\n')
     writeFileSync(join(auditDir, `ynab-categorize-${TODAY}.jsonl`), content)
@@ -219,7 +219,7 @@ describe('runNotify', (): void => {
     writeJsonl({
       appsDir,
       app: 'ynab-categorize',
-      rows: [baseRow({ transaction_id: 'old', patch_status: 'error', error: 'old-boom' })],
+      rows: [baseRow({ transaction_id: 'old', outcome: 'failed', error: 'old-boom' })],
       date: '2026-05-27',
     })
     // App with today's file.
@@ -229,7 +229,7 @@ describe('runNotify', (): void => {
       rows: [
         baseRow({
           transaction_id: 'fresh',
-          patch_status: 'error',
+          outcome: 'failed',
           error: 'fresh-boom',
         }),
       ],
@@ -266,7 +266,7 @@ describe('runNotify', (): void => {
       rows: [
         baseRow({
           transaction_id: 'self',
-          patch_status: 'error',
+          outcome: 'failed',
           error: 'should-not-loop',
         }),
       ],

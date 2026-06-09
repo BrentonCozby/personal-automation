@@ -1,19 +1,19 @@
 import { chunks } from '@personal-automation/common/chunks'
 import { YnabApiError } from '@personal-automation/common/errors'
-import type { BaseAudit, Logger, PatchStatus } from '@personal-automation/common/logger'
+import type { BaseAudit, Logger, Outcome } from '@personal-automation/common/logger'
 import type { YnabClient } from './client.js'
 import type { TransactionPatch } from './types.js'
 
 /**
- * A patch to apply plus the audit row to emit for it, minus `patch_status` — patchInBatches sets
- * the status from the PATCH outcome. `TCore` is the app's own audit shape with `patch_status`
- * omitted (e.g. `Omit<CategorizeAudit, 'patch_status'>`).
+ * A patch to apply plus the audit row to emit for it, minus `outcome` — patchInBatches sets
+ * the status from the PATCH outcome. `TCore` is the app's own audit shape with `outcome`
+ * omitted (e.g. `Omit<CategorizeAudit, 'outcome'>`).
  */
 export type PatchOutcome<TCore> = { patch: TransactionPatch; auditCore: TCore }
 
 /**
  * PATCHes outcomes in batches and writes one audit row per transaction reflecting what happened:
- * `success` for ids YNAB confirms, `error` for a failed batch or for ids missing from the
+ * `applied` for ids YNAB confirms, `failed` for a failed batch or for ids missing from the
  * response. Shared by the YNAB apps so the batching + per-row audit logic lives once.
  */
 export async function patchInBatches<TAudit extends BaseAudit>({
@@ -22,7 +22,7 @@ export async function patchInBatches<TAudit extends BaseAudit>({
   logger,
   batchSize,
 }: {
-  outcomes: PatchOutcome<Omit<TAudit, 'patch_status'>>[]
+  outcomes: PatchOutcome<Omit<TAudit, 'outcome'>>[]
   ynab: YnabClient
   logger: Logger<TAudit>
   batchSize: number
@@ -42,7 +42,7 @@ export async function patchInBatches<TAudit extends BaseAudit>({
       failed += batch.length
       logger.error({ msg: 'PATCH batch failed', extra: { size: batch.length, error: err.message } })
       for (const o of batch) {
-        logger.audit(withStatus(o.auditCore, { patch_status: 'error', error: err.message }))
+        logger.audit(withOutcome(o.auditCore, { outcome: 'failed', error: err.message }))
       }
       continue
     }
@@ -52,13 +52,13 @@ export async function patchInBatches<TAudit extends BaseAudit>({
     for (const o of batch) {
       if (updated.has(o.patch.id)) {
         succeeded += 1
-        logger.audit(withStatus(o.auditCore, { patch_status: 'success' }))
+        logger.audit(withOutcome(o.auditCore, { outcome: 'applied' }))
       } else {
         failed += 1
         missing += 1
         logger.audit(
-          withStatus(o.auditCore, {
-            patch_status: 'error',
+          withOutcome(o.auditCore, {
+            outcome: 'failed',
             error: 'not in YNAB response transaction_ids',
           }),
         )
@@ -75,12 +75,12 @@ export async function patchInBatches<TAudit extends BaseAudit>({
   return { succeeded, failed }
 }
 
-// Rebuild the full audit row from the patch_status-less core plus the resolved status. The
-// constraint guarantees `Omit<TAudit, 'patch_status'> & { patch_status }` is exactly `TAudit`,
+// Rebuild the full audit row from the outcome-less core plus the resolved outcome. The
+// constraint guarantees `Omit<TAudit, 'outcome'> & { outcome }` is exactly `TAudit`,
 // but TS can't prove that for a generic T, so assert. (Standard generic-Omit limitation.)
-function withStatus<TAudit extends BaseAudit>(
-  core: Omit<TAudit, 'patch_status'>,
-  fields: { patch_status: PatchStatus; error?: string },
+function withOutcome<TAudit extends BaseAudit>(
+  core: Omit<TAudit, 'outcome'>,
+  fields: { outcome: Outcome; error?: string },
 ): TAudit {
   return { ...core, ...fields } as TAudit
 }

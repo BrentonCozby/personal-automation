@@ -173,8 +173,8 @@ describe('runEnrich (e2e)', (): void => {
     const audit = readAuditLines()
     expect(audit).toHaveLength(1)
     expect(audit[0]?.app).toBe('ynab-enrich-memos')
-    expect(audit[0]?.status).toBe('ok')
-    expect(audit[0]?.patch_status).toBe('success')
+    expect(audit[0]?.status).toBe('enriched')
+    expect(audit[0]?.outcome).toBe('applied')
     expect(audit[0]?.new_memo).toBe(`auto-gen: ${SUMMARY}`)
     expect(audit[0]?.emails_found).toBe(1)
     expect(audit[0]?.order_total).toBe(21.48)
@@ -211,7 +211,7 @@ describe('runEnrich (e2e)', (): void => {
 
     expect(result).toEqual({ succeeded: 1, failed: 0, skipped: 0 })
     const audit = readAuditLines()
-    expect(audit[0]?.status).toBe('ok')
+    expect(audit[0]?.status).toBe('enriched')
     expect(audit[0]?.new_memo).toBe(`auto-gen: ${SUMMARY}`)
     expect(audit[0]?.order_total).toBe(21.48)
     expect(audit[0]?.matched_email_url).toBeUndefined()
@@ -249,7 +249,7 @@ describe('runEnrich (e2e)', (): void => {
     expect(result).toEqual({ succeeded: 0, failed: 0, skipped: 1 })
     const audit = readAuditLines()
     expect(audit[0]?.status).toBe('no_emails')
-    expect(audit[0]?.patch_status).toBe('skipped_for_no_match')
+    expect(audit[0]?.outcome).toBe('skipped_for_no_match')
   })
 
   it('emails found but no receipt matches: audits no_receipt, no PATCH', async (): Promise<void> => {
@@ -277,7 +277,7 @@ describe('runEnrich (e2e)', (): void => {
     expect(result).toEqual({ succeeded: 0, failed: 0, skipped: 1 })
     const audit = readAuditLines()
     expect(audit[0]?.status).toBe('no_receipt')
-    expect(audit[0]?.patch_status).toBe('skipped_for_no_match')
+    expect(audit[0]?.outcome).toBe('skipped_for_no_match')
     expect(audit[0]?.emails_found).toBe(1)
   })
 
@@ -308,7 +308,7 @@ describe('runEnrich (e2e)', (): void => {
     expect(result).toEqual({ succeeded: 0, failed: 0, skipped: 1 })
     const audit = readAuditLines()
     expect(audit[0]?.status).toBe('no_receipt')
-    expect(audit[0]?.patch_status).toBe('skipped_for_no_match')
+    expect(audit[0]?.outcome).toBe('skipped_for_no_match')
     expect(audit[0]?.new_memo).toBeNull()
   })
 
@@ -340,8 +340,8 @@ describe('runEnrich (e2e)', (): void => {
     expect(patchCalled).toBe(false)
     expect(result.succeeded).toBe(1)
     const audit = readAuditLines()
-    expect(audit[0]?.status).toBe('ok')
-    expect(audit[0]?.patch_status).toBe('skipped_for_dry_run')
+    expect(audit[0]?.status).toBe('enriched')
+    expect(audit[0]?.outcome).toBe('skipped_for_dry_run')
     expect(audit[0]?.new_memo).toBe(`auto-gen: ${SUMMARY}`)
   })
 
@@ -395,12 +395,12 @@ describe('runEnrich (e2e)', (): void => {
     expect(result).toEqual({ succeeded: 0, failed: 0, skipped: 1 })
     const audit = readAuditLines()
     expect(audit[0]?.status).toBe('no_emails')
-    expect(audit[0]?.patch_status).toBe('skipped_for_no_match')
+    expect(audit[0]?.outcome).toBe('skipped_for_no_match')
     expect(audit[0]?.untrusted_dropped).toBe(1)
     expect(audit[0]?.emails_found).toBe(0)
   })
 
-  it('a Gmail failure is isolated: status error, patch_status skipped_for_upstream_error', async (): Promise<void> => {
+  it('a Gmail failure is isolated: status error, outcome failed_upstream', async (): Promise<void> => {
     server.use(
       transactionsHandler([makeTxn()]),
       oauthHandler(),
@@ -418,7 +418,7 @@ describe('runEnrich (e2e)', (): void => {
     expect(result).toEqual({ succeeded: 0, failed: 1, skipped: 0 })
     const audit = readAuditLines()
     expect(audit[0]?.status).toBe('error')
-    expect(audit[0]?.patch_status).toBe('skipped_for_upstream_error')
+    expect(audit[0]?.outcome).toBe('failed_upstream')
     expect(audit[0]?.error).toContain('400')
   })
 
@@ -440,7 +440,7 @@ describe('runEnrich (e2e)', (): void => {
     expect(audit).toHaveLength(1)
     expect(audit[0]?.transaction_id).toBe(RUN_ABORTED_SENTINEL)
     expect(audit[0]?.status).toBe('error')
-    expect(audit[0]?.patch_status).toBe('error')
+    expect(audit[0]?.outcome).toBe('failed')
     expect(audit[0]?.error).toBeTruthy()
   })
 })

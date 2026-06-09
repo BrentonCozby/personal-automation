@@ -8,7 +8,7 @@ import {
   dedupeByTransaction,
   formatReview,
   parseArgs,
-  readOkRows,
+  readEnrichedRows,
   sampleRows,
 } from './review.js'
 
@@ -21,8 +21,8 @@ function okRow(overrides: Partial<EnrichMemosAudit> = {}): EnrichMemosAudit {
     memo: null,
     amount_dollars: -21.48,
     transaction_date: '2026-06-08',
-    status: 'ok',
-    patch_status: 'success',
+    status: 'enriched',
+    outcome: 'applied',
     new_memo: 'auto-gen: USB-C cable ($21.48) — Total $21.48',
     order_total: 21.48,
     matched_email_url: 'https://mail.google.com/mail/u/0/#all/m1',
@@ -54,7 +54,7 @@ describe('parseArgs', (): void => {
   })
 })
 
-describe('auditFilesInRange + readOkRows', (): void => {
+describe('auditFilesInRange + readEnrichedRows', (): void => {
   let dir: string
 
   beforeEach((): void => {
@@ -88,7 +88,7 @@ describe('auditFilesInRange + readOkRows', (): void => {
     ).toEqual([])
   })
 
-  it('keeps only ok rows and skips blank or unparseable lines', (): void => {
+  it('keeps only enriched rows and skips blank or unparseable lines', (): void => {
     const path = join(dir, 'ynab-enrich-memos-2026-06-08.jsonl')
     const lines = [
       JSON.stringify(okRow({ transaction_id: 'ok-1' })),
@@ -98,7 +98,7 @@ describe('auditFilesInRange + readOkRows', (): void => {
         okRow({
           transaction_id: 'skip-1',
           status: 'no_receipt',
-          patch_status: 'skipped_for_no_match',
+          outcome: 'skipped_for_no_match',
           new_memo: null,
         }),
       ),
@@ -106,7 +106,7 @@ describe('auditFilesInRange + readOkRows', (): void => {
     ]
     writeFileSync(path, lines.join('\n'))
 
-    const rows = readOkRows([path])
+    const rows = readEnrichedRows([path])
 
     expect(rows.map(r => r.transaction_id)).toEqual(['ok-1', 'ok-2'])
   })
