@@ -5,7 +5,7 @@ A catch-all monorepo for my personal automation — a pnpm workspace of small sc
 - **`apps/ynab-categorize`** — daily CLI that auto-categorizes Amazon transactions using the Anthropic API (Claude Haiku by default).
 - **`apps/ynab-enrich-memos`** — reads Amazon receipt emails, parses the product list, and PATCHes it into the `memo` of matching YNAB transactions so the categorizer has real item names to work from. Runs before `ynab-categorize` in the daily run.
 - **`apps/notify`** — emails an error digest after the daily run when any app's audit log shows errors.
-- **`apps/stalled-tasks`** — emails a scheduled digest reviewing open Apple Reminders: classifies why each has stalled and surfaces the few worth acting on with one next action each (v2 design in [apps/stalled-tasks/plan.md](apps/stalled-tasks/plan.md)).
+- **`apps/stalled-tasks`** — emails a scheduled digest reviewing open Obsidian todos: classifies why each has stalled and surfaces the few worth acting on with one next action each (v2 design in [apps/stalled-tasks/plan.md](apps/stalled-tasks/plan.md)).
 - **`packages/anthropic`** — shared Claude API client (`messages.parse` + `zodOutputFormat`).
 - **`packages/ynab`** — shared YNAB API client (zod-validated) + schemas + types + milliunits helpers.
 - **`packages/gmail`** — Gmail API client (OAuth + send, optional multipart HTML), zod-validated.
@@ -92,14 +92,9 @@ Runs before `ynab-categorize` so the categorizer reasons from real item names in
 
 A digest that reviews open tasks, classifies why each has stalled, and emails the few worth acting on with one next action each. It runs on its own launchd schedule — the days/times in `STALLED_TASKS_SCHEDULE` (e.g. `["Sunday 08:00", "Wednesday 08:00"]`), so twice or three times a week is just more entries. It reviews the lists named in `TASK_LISTS` (`[]` = all). A task with a **due date** is judged by it — overdue surfaces, a future due date counts as scheduled and is skipped — and **recurring** tasks are treated the same way (judged by when their next occurrence is due), so anchor them with a date.
 
-The task backend is chosen by `TASK_PROVIDER`: tasks are read through a `TaskSource` (`src/tasks/types.ts`), and `createTaskSource` (`src/tasks/source.ts`) is the single switch point between providers. Implemented providers are `apple` (`src/tasks/apple/`) and `obsidian` (`src/tasks/obsidian/`); `google` (Google Tasks) is a planned drop-in. Switching is a config change, not a code change.
+The task backend is chosen by `TASK_PROVIDER`: tasks are read through a `TaskSource` (`src/tasks/types.ts`), and `createTaskSource` (`src/tasks/source.ts`) is the single switch point between providers. The implemented provider is `obsidian` (`src/tasks/obsidian/`); `google` (Google Tasks) is an un-implemented placeholder kept to show the seam stays open. Switching is a config change, not a code change.
 
 The `obsidian` provider reads Markdown todos from a vault on disk (`OBSIDIAN_VAULT_PATH`). With `TASK_LISTS=[]` it reads `todos.md` at the vault root; otherwise `TASK_LISTS` names files or folders (relative to the vault) and folders are walked for their `*.md`. It parses [Obsidian Tasks](https://publish.obsidian.md/tasks/) lines — only open `- [ ]` checkboxes count (done/cancelled/in-progress are skipped), `➕` sets the creation date that drives staleness for undated tasks, `📅` the due date, and recurring (`🔁`) tasks are kept and judged by their due date (the rule is stripped from the title). The read is read-only and doesn't pull, so it sees the last synced state on disk — keep the vault synced separately (Obsidian Sync or the Obsidian Git plugin). It works on any OS.
-
-The `apple` provider reads Reminders locally through a Swift/EventKit bridge (`src/tasks/apple/reminders.swift`), compiled on first run into a standalone, ad-hoc-signed binary (`reminders-bridge`). It only works on macOS. That compile step is a TCC requirement, not an optimization: a non-platform signed binary is its own permission "responsible process", so the Reminders grant attaches to it and holds under launchd. Running `swift reminders.swift` instead would attribute access to the Node runtime that spawned it — which Volta's `execve` makes impossible to grant reliably. It needs:
-
-- **Xcode Command Line Tools** (`xcode-select --install`) — provides `swiftc`.
-- **Reminders access**: the bridge requests it on first run, so macOS shows a consent prompt — click **Allow** (it appears as `reminders-bridge` under System Settings → Privacy & Security → Reminders). Without access the run fails with a clear error rather than emailing "nothing's stalled". Editing `reminders.swift` rebuilds the binary with a new identity, so you'll re-grant once after a change.
 
 `STALLED_TASKS_ANTHROPIC_MODEL` is a separate knob from `YNAB_CATEGORIZER_ANTHROPIC_MODEL`. Classifying *why* a task is stuck and naming its next physical step is harder judgment than picking a category id, so it starts on a Sonnet-tier model rather than Haiku. Each run logs its classifications to `apps/stalled-tasks/runs/` for tuning.
 
@@ -116,7 +111,7 @@ Each is its own agent because launchd binds one agent to one program on one sche
 All post a macOS notification on a non-zero exit.
 
 ```bash
-./launchd/setup.sh   # generates the plists, builds the Reminders bridge, primes its access grant
+./launchd/setup.sh   # generates the plists (daily, stalled-tasks, vault-backup)
 cp launchd/com.personal-automation.daily.plist ~/Library/LaunchAgents/
 cp launchd/com.personal-automation.stalled-tasks.plist ~/Library/LaunchAgents/
 cp launchd/com.personal-automation.vault-backup.plist ~/Library/LaunchAgents/
@@ -127,7 +122,7 @@ launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.personal-automation.
 
 Run `./launchd/run-vault-backup.sh` once by hand before relying on the schedule — it confirms the `git push` credential (the https token in your keychain) is reachable from a launchd context.
 
-`setup.sh` also builds the `stalled-tasks` Reminders bridge and triggers its one-time access prompt — **approve it** so the scheduled run reads silently. That grant is tied to the binary's path, so **re-run `setup.sh` if you move the project** on disk. Re-run it (and reload the digest agent — `setup.sh` prints the commands) whenever you change `STALLED_TASKS_SCHEDULE`.
+Re-run `setup.sh` (and reload the digest agent — it prints the commands) whenever you change `STALLED_TASKS_SCHEDULE`, since that regenerates the digest plist from the schedule.
 
 Optional log rotation (weekly, keeps 4 gzipped archives):
 

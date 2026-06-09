@@ -35,7 +35,7 @@ function makeConfig(overrides: Partial<Config> = {}): Config {
     toEmail: 'me@example.com',
     digestMaxItems: 5,
     staleThresholdDays: 30,
-    taskProvider: 'apple',
+    taskProvider: 'obsidian',
     taskLists: [],
     model: 'claude-sonnet-4-6',
     anthropicApiKey: 'test-anthropic-key',

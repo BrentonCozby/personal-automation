@@ -2,12 +2,6 @@ import { AppError } from '@personal-automation/common/errors'
 import { expect, it } from 'vitest'
 import { createTaskSource } from './source.js'
 
-it('returns a working source for the apple provider', () => {
-  const source = createTaskSource({ provider: 'apple', lists: [] })
-
-  expect(typeof source.list).toBe('function')
-})
-
 it('returns a working source for the obsidian provider when a vault path is given', () => {
   const source = createTaskSource({ provider: 'obsidian', lists: [], vaultPath: '/tmp/vault' })
 

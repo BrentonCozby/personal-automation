@@ -17,9 +17,11 @@ factory functions, env rules) are binding.
 >   appends to `todos.md` via `obsidian://adv-uri?...&mode=append`, and Obsidian Sync
 >   propagates it — no GitHub token, no GitHub-API Shortcut.
 >
-> `docs/obsidian-capture.md` is the current, accurate setup guide. The active task
-> provider is still `apple`; flip to `obsidian` (`TASK_PROVIDER=obsidian`,
-> `TASK_LISTS=[]`) when ready. Tasks 2–4 below are superseded by that doc.
+> `docs/obsidian-capture.md` is the current, accurate setup guide. `TASK_PROVIDER=obsidian`
+> is now live, and the **Apple provider has been removed** (`src/tasks/apple/` + the Swift
+> bridge are gone; the only providers are `obsidian` and the un-implemented `google`
+> placeholder). Tasks 2–4 below are superseded by that doc, and Task 6's Apple-removal step
+> is done.
 
 ---
 
@@ -59,9 +61,9 @@ not a rewrite.
 - `apps/stalled-tasks/src/tasks/` — the provider seam:
   - `types.ts` — neutral `Task` / `TaskSource`
   - `source.ts` — `createTaskSource({ provider, lists, vaultPath })` + `TASK_PROVIDERS`
-    (`apple` | `google` | `obsidian`); `google` throws not-implemented
-  - `apple/` — the EventKit bridge (still the active provider)
-  - `obsidian/` — the Markdown vault source (implemented; see Task 5)
+    (`google` | `obsidian`); `google` throws not-implemented
+  - `obsidian/` — the Markdown vault source (the live provider; see Task 5)
+  - (`apple/` — the EventKit bridge — has since been removed; see the STATUS note)
   - selected by `TASK_PROVIDER` + `TASK_LISTS` (+ `OBSIDIAN_VAULT_PATH` for obsidian)
 - `docs/obsidian-capture.md` — the current user setup guide (Obsidian Sync + the
   Advanced URI capture Shortcut + the launchd git backup). Reference it; don't
@@ -218,10 +220,11 @@ correct digest from the real vault on a dry run
 (`pnpm --filter @personal-automation/stalled-tasks test:stalled-tasks`).
 
 ### 6. (Later) De-Apple the rest — see `docs/linux-migration.md`
-Out of scope for the source swap, but tracked there: launchd → cron/systemd or a
+`tasks/apple/` (+ the Swift bridge) is **removed** (2026-06-08). What's still
+macOS-coupled and tracked in `linux-migration.md`: launchd → cron/systemd or a
 scheduled GitHub Action; `osascript` failure notification → email/ntfy/Pushover;
-ephemeral-filesystem handling for audit/runs on a cloud host. Once Obsidian works,
-`tasks/apple/` + `launchd/` can be removed.
+ephemeral-filesystem handling for audit/runs on a cloud host. `launchd/` can go
+whenever the run moves off the Mac.
 
 ---
 

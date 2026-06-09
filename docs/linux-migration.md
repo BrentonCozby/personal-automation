@@ -5,15 +5,14 @@ run moves off the Mac. The **task source** is being handled separately (Obsidian
 see `handoff-obsidian-migration.md`). This doc is everything *else* that ties the
 project to a Mac.
 
-Nothing here is implemented yet, on purpose: there's no target host yet, and the
-Obsidian source (the prerequisite for running anywhere but the Mac) isn't built.
-This is the plan to execute *during* the actual move, in roughly this order:
+Done so far: the Obsidian `TaskSource` is live and the **Apple path is removed**
+(`apps/stalled-tasks/src/tasks/apple/` + the Swift bridge are gone), so the run no
+longer needs EventKit/Swift. What's left is the rest of the macOS coupling, to
+execute *during* the actual move (there's no target host yet):
 
-1. Land the Obsidian `TaskSource` (per the hand-off doc) so the run no longer
-   needs EventKit/Swift.
-2. Replace scheduling + notifications for the target host (below).
-3. Handle the ephemeral-filesystem implications.
-4. Delete the Apple path.
+1. Replace scheduling + notifications for the target host (below).
+2. Handle the ephemeral-filesystem implications.
+3. Retire `launchd/`.
 
 ## What's still Apple/macOS-coupled
 
@@ -23,7 +22,7 @@ This is the plan to execute *during* the actual move, in roughly this order:
 | Failure alerts | `launchd/run.sh`, `launchd/run-stalled-tasks.sh` | `osascript display notification` |
 | Log rotation | `launchd/newsyslog.*.conf.template` | newsyslog (BSD/macOS) |
 | Filesystem assumptions | `run.sh` (`find -mtime` cleanup), `apps/*/audit/`, `runs/`, `$TMPDIR` lockfiles | assume one persistent host |
-| Task source | `apps/stalled-tasks/src/tasks/apple/` (+ bridge) | EventKit/Swift; **being replaced by Obsidian** |
+| ~~Task source~~ | ~~`apps/stalled-tasks/src/tasks/apple/`~~ | **Done** — removed; the Obsidian source runs on any OS |
 
 ## Plan per area
 
@@ -61,12 +60,11 @@ On a container/CI runner, anything written to disk vanishes after the run:
   CI run they're unnecessary; if concurrency is still possible, use a different
   guard (e.g. Actions `concurrency:`).
 
-### Decommission Apple
-Once the Obsidian source runs on the new host and scheduling + notifications are
-replaced, `apps/stalled-tasks/src/tasks/apple/` (+ the Swift bridge) and all of
-`launchd/` become dead weight and can be deleted wholesale. The provider seam
-means no business logic changes — just drop `'apple'` from `TASK_PROVIDERS` and
-the selector `case`. Keep it only if you still want a macOS-local option.
+### Decommission Apple — done (2026-06-08)
+`apps/stalled-tasks/src/tasks/apple/` (+ the Swift bridge) is removed: `'apple'` is
+dropped from `TASK_PROVIDERS` and the selector `case`, with no business-logic changes
+(the provider seam absorbed it). `launchd/` is the remaining macOS-only piece and
+retires when the run moves to the new host's scheduler.
 
 ## Footnote: why not Google Tasks
 Google Tasks was the original target but was dropped in favor of Obsidian. The
