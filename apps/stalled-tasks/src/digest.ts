@@ -13,7 +13,7 @@ import type { DueStatus } from './staleness.js'
  */
 export type DigestItem = {
   title: string
-  /** The Reminders list the task lives on — shown so shared-list tasks (e.g. Family) are obvious. */
+  /** The list (file/folder) the task lives on — shown so shared-list tasks (e.g. Family) are obvious. */
   list: string
   classification: Classification
   reasoning: string
@@ -69,8 +69,8 @@ export function buildDigest({
 
 // habit → footer, not the action list. fine = clear, no blocker → not worth nagging, EXCEPT
 // when it's high priority (a safety issue or hard deadline): clear doesn't mean unimportant, so
-// those still surface. future-due → Reminders' own alert has it; don't double-handle. Of the
-// rest, only flag the genuinely stale: overdue, untouched past the threshold, or unknown age.
+// those still surface. future-due → scheduled, not stalled; skip it. Of the rest, only flag the
+// genuinely stale: overdue, untouched past the threshold, or unknown age.
 function isCandidate({
   item,
   staleThresholdDays,
@@ -160,7 +160,7 @@ function renderHabits(habits: DigestItem[]): string {
   if (habits.length === 0) return ''
   const lines = habits.map(h => `  • ${h.title} · ${h.list}  (anchor to a routine)`)
 
-  return `Not really tasks — consider moving these out of Reminders:\n${lines.join('\n')}`
+  return `Not really tasks — consider moving these off your todo list:\n${lines.join('\n')}`
 }
 
 // --- HTML rendering (multipart alternative; the plain text above is the fallback) ---
@@ -236,5 +236,5 @@ function htmlHabits(habits: DigestItem[]): string {
     )
     .join('')
 
-  return `<div style="margin-top:22px;padding-top:14px;border-top:1px solid #ececec;font-size:13px;color:#5f6368;"><div style="margin-bottom:6px;">Not really tasks — consider moving these out of Reminders:</div><ul style="margin:0;padding-left:18px;">${items}</ul></div>`
+  return `<div style="margin-top:22px;padding-top:14px;border-top:1px solid #ececec;font-size:13px;color:#5f6368;"><div style="margin-bottom:6px;">Not really tasks — consider moving these off your todo list:</div><ul style="margin:0;padding-left:18px;">${items}</ul></div>`
 }

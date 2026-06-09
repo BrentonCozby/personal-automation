@@ -12,7 +12,7 @@ function task(overrides: Partial<Task> = {}): Task {
     created: null,
     lastModified: null,
     due: null,
-    list: 'Reminders',
+    list: 'todos',
     ...overrides,
   }
 }

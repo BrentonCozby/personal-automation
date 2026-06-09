@@ -13,7 +13,7 @@ export const weekdayValues = [
 export type Weekday = (typeof weekdayValues)[number]
 
 export type ScheduleSlot = {
-  /** Canonical weekday name, for display. */
+  /** Full weekday name, for display. */
   day: Weekday
   /** launchd Weekday number (0 = Sunday … 6 = Saturday). */
   weekday: number

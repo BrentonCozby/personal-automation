@@ -18,9 +18,9 @@ export function staleDays({ task, now }: { task: Task; now: Date }): number | nu
 }
 
 /**
- * A future due date means Reminders' own alert has the task handled (scheduled, not stalled).
- * A past due date on a still-open task is a strong stalled signal — the alert fired and was
- * dismissed. A due date at or before `now` counts as past so a due-today task isn't dropped.
+ * A future due date means the task is scheduled, not stalled — leave it until it comes due. A
+ * past due date on a still-open task is a strong stalled signal. A due date at or before `now`
+ * counts as past so a due-today task isn't dropped.
  */
 export function dueStatus({ due, now }: { due: Date | null; now: Date }): DueStatus {
   if (!due) return 'none'

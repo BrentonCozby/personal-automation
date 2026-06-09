@@ -5,7 +5,7 @@ A catch-all monorepo for my personal automation — a pnpm workspace of small sc
 - **`apps/ynab-categorize`** — daily CLI that auto-categorizes Amazon transactions using the Anthropic API (Claude Haiku by default).
 - **`apps/ynab-enrich-memos`** — reads Amazon receipt emails, parses the product list, and PATCHes it into the `memo` of matching YNAB transactions so the categorizer has real item names to work from. Runs before `ynab-categorize` in the daily run.
 - **`apps/notify`** — emails an error digest after the daily run when any app's audit log shows errors.
-- **`apps/stalled-tasks`** — emails a scheduled digest reviewing open Obsidian todos: classifies why each has stalled and surfaces the few worth acting on with one next action each (v2 design in [apps/stalled-tasks/plan.md](apps/stalled-tasks/plan.md)).
+- **`apps/stalled-tasks`** — emails a scheduled digest reviewing open Obsidian todos: classifies why each has stalled and surfaces the few worth acting on with one next action each.
 - **`packages/anthropic`** — shared Claude API client (`messages.parse` + `zodOutputFormat`).
 - **`packages/ynab`** — shared YNAB API client (zod-validated) + schemas + types + milliunits helpers.
 - **`packages/gmail`** — Gmail API client (OAuth + send, optional multipart HTML), zod-validated.

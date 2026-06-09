@@ -5,7 +5,6 @@
 export const SUBJECT_PREFIX = 'Task Review'
 
 /**
- * Tuning records go here (NOT audit/) so notify's `apps/<app>/audit/` glob never reads them —
- * see the plan's notify-interaction note.
+ * Tuning records go here (NOT audit/) so notify's `apps/<app>/audit/` glob never reads them.
  */
 export const RUNS_DIR_NAME = 'runs'

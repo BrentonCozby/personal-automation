@@ -1,6 +1,5 @@
-// The provider-neutral shape the rest of the app depends on, isolated from any one backend so
-// a GoogleTaskSource is a drop-in replacement for the AppleTaskSource. No provider's terms
-// (EventKit, Google Tasks) leak past here.
+// The provider-neutral shape the rest of the app depends on, isolated from any one backend so a
+// new source (e.g. a Google Tasks one) is a drop-in replacement. No backend's terms leak past here.
 export type Task = {
   id: string
   title: string

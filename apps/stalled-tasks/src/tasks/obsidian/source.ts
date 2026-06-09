@@ -129,9 +129,8 @@ async function statOrThrow({ path, entry }: { path: string; entry: string }): Pr
 /**
  * Pure: maps one Markdown file's open-task lines to Task[]. Keeps every open `[ ]` checkbox —
  * including recurring ones (the `🔁` rule is stripped from the title, and the task is judged by
- * its due date like any other) — and skips anything that isn't an open checkbox. Unit-testable
- * like the Apple source's `parseBridgeOutput`. `created`/`due` come from the `➕`/`📅` markers,
- * parsed as LOCAL dates —
+ * its due date like any other) — and skips anything that isn't an open checkbox. Pure so it's
+ * unit-testable on its own. `created`/`due` come from the `➕`/`📅` markers, parsed as LOCAL dates —
  * a bare YYYY-MM-DD via `new Date(str)` would be UTC midnight, i.e. the previous day in any
  * negative-offset zone, which would skew the staleness clock that `created` drives. Lines indented
  * under a task (that aren't themselves checkboxes) become its `notes`.

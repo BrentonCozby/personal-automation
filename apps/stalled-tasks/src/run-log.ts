@@ -4,8 +4,7 @@ import { fileURLToPath } from 'node:url'
 import { RUNS_DIR_NAME } from './constants.js'
 
 // Resolved relative to this module (app dir), not CWD, so the records always land in
-// apps/stalled-tasks/runs/ — the location the plan fixes them at, outside notify's
-// apps/*/audit/* glob.
+// apps/stalled-tasks/runs/ — outside notify's apps/*/audit/* glob.
 const DEFAULT_RUNS_DIR = fileURLToPath(new URL(`../${RUNS_DIR_NAME}/`, import.meta.url))
 
 export type RunLogEntry = {

@@ -1,9 +1,8 @@
-# Getting off Apple: the Linux/cloud move
+# Moving off macOS: the Linux/cloud move
 
-Status: planning notes — the remaining macOS couplings to remove once the daily
-run moves off the Mac. The **task source** is being handled separately (Obsidian;
-see `handoff-obsidian-migration.md`). This doc is everything *else* that ties the
-project to a Mac.
+Status: planning notes — the macOS couplings to remove if/when the daily run
+moves off the Mac. The task source already moved to Obsidian (it runs on any OS);
+this doc is everything *else* still tied to a Mac.
 
 Done so far: the Obsidian `TaskSource` is live and the **Apple path is removed**
 (`apps/stalled-tasks/src/tasks/apple/` + the Swift bridge are gone), so the run no
@@ -14,7 +13,7 @@ execute *during* the actual move (there's no target host yet):
 2. Handle the ephemeral-filesystem implications.
 3. Retire `launchd/`.
 
-## What's still Apple/macOS-coupled
+## What's still macOS-coupled
 
 | Area | Where | Why it's Mac-only |
 |------|-------|-------------------|
@@ -22,7 +21,6 @@ execute *during* the actual move (there's no target host yet):
 | Failure alerts | `launchd/run.sh`, `launchd/run-stalled-tasks.sh` | `osascript display notification` |
 | Log rotation | `launchd/newsyslog.*.conf.template` | newsyslog (BSD/macOS) |
 | Filesystem assumptions | `run.sh` (`find -mtime` cleanup), `apps/*/audit/`, `runs/`, `$TMPDIR` lockfiles | assume one persistent host |
-| ~~Task source~~ | ~~`apps/stalled-tasks/src/tasks/apple/`~~ | **Done** — removed; the Obsidian source runs on any OS |
 
 ## Plan per area
 
@@ -59,12 +57,6 @@ On a container/CI runner, anything written to disk vanishes after the run:
 - `$TMPDIR` PID lockfiles (`*.lock`) — assume one long-lived host. On a single-shot
   CI run they're unnecessary; if concurrency is still possible, use a different
   guard (e.g. Actions `concurrency:`).
-
-### Decommission Apple — done (2026-06-08)
-`apps/stalled-tasks/src/tasks/apple/` (+ the Swift bridge) is removed: `'apple'` is
-dropped from `TASK_PROVIDERS` and the selector `case`, with no business-logic changes
-(the provider seam absorbed it). `launchd/` is the remaining macOS-only piece and
-retires when the run moves to the new host's scheduler.
 
 ## Footnote: why not Google Tasks
 Google Tasks was the original target but was dropped in favor of Obsidian. The

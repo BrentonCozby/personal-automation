@@ -4,7 +4,7 @@ import { buildDigest, type Digest, type DigestItem } from './digest.js'
 function item(overrides: Partial<DigestItem> = {}): DigestItem {
   return {
     title: 'a task',
-    list: 'Reminders',
+    list: 'todos',
     classification: 'aversion',
     reasoning: 'because reasons',
     suggestedNextAction: 'do the next thing',
@@ -53,8 +53,8 @@ it('routes habits to the footer, not the action list or the stalled count', () =
 
   expect(digest.flaggedCount).toBe(1)
   expect(digest.totalStalled).toBe(1)
-  expect(digest.body).toContain('Not really tasks — consider moving these out of Reminders:')
-  expect(digest.body).toContain('• meditate daily · Reminders  (anchor to a routine)')
+  expect(digest.body).toContain('Not really tasks — consider moving these off your todo list:')
+  expect(digest.body).toContain('• meditate daily · todos  (anchor to a routine)')
 })
 
 it('drops tasks with a future due date (scheduled, not stalled)', () => {
@@ -147,7 +147,7 @@ it('leads with a Start here line built from the top-ranked actionable item', () 
   ])
 
   expect(digest.body).toContain('Start here →  call the dentist')
-  expect(digest.body).toContain('(top · Reminders)')
+  expect(digest.body).toContain('(top · todos)')
 })
 
 it('skips an actionless top item when choosing the Start here pick', () => {
@@ -187,12 +187,12 @@ it('renders an item block with a clean title line and priority folded into the S
   ])
 
   // Title + list stand on the header line — no trailing priority tag.
-  expect(digest.body).toContain('fix the gate · Reminders\n═')
+  expect(digest.body).toContain('fix the gate · todos\n═')
   expect(digest.body).toContain('Stuck:    [high] aversion — vague verb hides a project')
   expect(digest.body).toContain('Do next:  buy the hinge')
 })
 
-it('labels each task with its Reminders list so shared-list tasks are obvious', () => {
+it('labels each task with its list so shared-list tasks are obvious', () => {
   const digest = build([item({ title: 'Create will before India trip', list: 'Family' })])
 
   expect(digest.body).toContain('Create will before India trip · Family')

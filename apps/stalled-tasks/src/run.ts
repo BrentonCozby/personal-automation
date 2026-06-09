@@ -185,8 +185,8 @@ export async function runStalledTasks({
 }
 
 // Joins each analysis back to its task by index (the model echoes the task's input position).
-// Index matching is robust to the model paraphrasing the title; an out-of-range or duplicate
-// index is counted and dropped rather than mis-joined.
+// Matching by index still works when the model paraphrases the title; an out-of-range or
+// duplicate index is counted and dropped rather than mis-joined.
 function joinAnalyses({ analyses, enriched }: { analyses: TaskAnalysis[]; enriched: Enriched[] }): {
   items: DigestItem[]
   unmatched: number

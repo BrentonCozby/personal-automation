@@ -8,7 +8,7 @@ export const priorityValues = ['low', 'medium', 'high'] as const
 
 export const taskAnalysisSchema = z.object({
   // The task's position in the input list. The model echoes it so analyses join back to tasks
-  // by index — robust to the model paraphrasing the title (which would break a title match).
+  // by index — which still works when the model paraphrases the title (a title match wouldn't).
   index: z.number().int(),
   title: z.string(),
   classification: z.enum(classificationValues),

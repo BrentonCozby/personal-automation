@@ -210,7 +210,7 @@ it('sends the digest via Gmail on a real (msw) send path', async () => {
   expect(Buffer.from(b64, 'base64').toString('utf8')).toBe('Task Review — 1 flagged')
 })
 
-it('returns no_open_tasks (and never calls the model) when there are no reminders', async () => {
+it('returns no_open_tasks (and never calls the model) when there are no tasks', async () => {
   const result = await runStalledTasks({
     config: makeConfig(),
     opts: { dryRun: false },
@@ -240,11 +240,11 @@ it('sends no email when nothing is actionable', async () => {
   expect(result).toEqual({ kind: 'no_actionable', totalStalled: 0 })
 })
 
-it('propagates a Reminders-access failure instead of sending an empty digest', async () => {
+it('propagates a source-access failure instead of sending an empty digest', async () => {
   const source: TaskSource = {
     list: () =>
       Promise.reject(
-        new AppError({ message: 'Could not read Apple Reminders: access not granted.' }),
+        new AppError({ message: 'Could not read the task source: access not granted.' }),
       ),
   }
 
