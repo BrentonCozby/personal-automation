@@ -20,6 +20,12 @@ const RECURRENCE = /🔁/u
 // in-progress `[/]`, or any other status character won't match, so they're left out of the digest.
 const OPEN_TASK_LINE = /^\s*[-*+]\s+\[ \]\s+(.*)$/u
 
+// Any checkbox line (open or not). Used to stop notes collection: a more-indented checkbox is a
+// separate (sub)task, not a parent's note.
+const ANY_CHECKBOX_LINE = /^\s*[-*+]\s+\[.\]/u
+// Strips a line's leading indentation and an optional list-bullet marker, leaving the note text.
+const NOTE_BULLET_PREFIX = /^\s*(?:[-*+]\s+)?/
+
 // Every Obsidian Tasks metadata marker that can trail the text, stripped so the digest shows a
 // clean title. Date markers carry a YYYY-MM-DD; id/dependsOn/onCompletion carry one token; the
 // priority markers stand alone. We only act on created/due/recurrence above — the rest are removed
@@ -124,7 +130,8 @@ async function statOrThrow({ path, entry }: { path: string; entry: string }): Pr
  * anything that isn't an open `[ ]` checkbox. Unit-testable like the Apple source's
  * `parseBridgeOutput`. `created`/`due` come from the `➕`/`📅` markers, parsed as LOCAL dates —
  * a bare YYYY-MM-DD via `new Date(str)` would be UTC midnight, i.e. the previous day in any
- * negative-offset zone, which would skew the staleness clock that `created` drives.
+ * negative-offset zone, which would skew the staleness clock that `created` drives. Lines indented
+ * under a task (that aren't themselves checkboxes) become its `notes`.
  */
 export function parseTodoMarkdown({
   content,
@@ -138,7 +145,8 @@ export function parseTodoMarkdown({
   const tasks: Task[] = []
   const lines = content.split(/\r?\n/)
   for (let i = 0; i < lines.length; i++) {
-    const match = lines[i]?.match(OPEN_TASK_LINE)
+    const line = lines[i] ?? ''
+    const match = line.match(OPEN_TASK_LINE)
     if (!match) continue
     const text = match[1] ?? ''
     if (RECURRENCE.test(text)) continue
@@ -148,7 +156,9 @@ export function parseTodoMarkdown({
       // Unique within one read; nothing joins on it across runs, so line position is enough.
       id: `${relativePath}:${i + 1}`,
       title,
-      notes: null,
+      // Indented sub-content under the task becomes its notes, fed to the model as authoritative
+      // context (e.g. "the part is already in the cabinet" → don't suggest buying it).
+      notes: collectNotes({ lines, taskIndex: i, taskIndent: indentOf(line) }),
       created: parseLocalDate(text.match(CREATED_DATE)?.[1]),
       lastModified: null,
       due: parseLocalDate(text.match(DUE_DATE)?.[1]),
@@ -157,6 +167,33 @@ export function parseTodoMarkdown({
   }
 
   return tasks
+}
+
+function indentOf(line: string): number {
+  return line.match(/^\s*/)?.[0].length ?? 0
+}
+
+// Collects the lines immediately under a task — more indented than it, not blank, not a checkbox
+// (a deeper checkbox is a separate subtask) — as its notes, with the bullet/indent stripped.
+function collectNotes({
+  lines,
+  taskIndex,
+  taskIndent,
+}: {
+  lines: string[]
+  taskIndex: number
+  taskIndent: number
+}): string | null {
+  const noteLines: string[] = []
+  for (let j = taskIndex + 1; j < lines.length; j++) {
+    const next = lines[j] ?? ''
+    if (next.trim() === '') break
+    if (indentOf(next) <= taskIndent) break
+    if (ANY_CHECKBOX_LINE.test(next)) break
+    noteLines.push(next.replace(NOTE_BULLET_PREFIX, '').trimEnd())
+  }
+
+  return noteLines.length > 0 ? noteLines.join('\n') : null
 }
 
 function cleanTitle(text: string): string {

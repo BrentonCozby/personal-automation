@@ -108,6 +108,33 @@ it('handles CRLF line endings', () => {
   expect(tasks.map(t => t.title)).toEqual(['one', 'two'])
 })
 
+it('captures an indented sub-bullet as the task notes', () => {
+  const [task] = parse(
+    ['- [ ] secure furniture ➕ 2025-12-08', '    - anchors are in the cabinet'].join('\n'),
+  )
+
+  expect(task?.notes).toBe('anchors are in the cabinet')
+})
+
+it('captures multi-line notes, stripping bullets and indentation', () => {
+  const [task] = parse(['- [ ] plan trip', '  - book hotel', '  confirm dates'].join('\n'))
+
+  expect(task?.notes).toBe('book hotel\nconfirm dates')
+})
+
+it('treats an indented checkbox as its own task, not the parent notes', () => {
+  const tasks = parse(['- [ ] parent', '    - [ ] child'].join('\n'))
+
+  expect(tasks.map(t => t.title)).toEqual(['parent', 'child'])
+  expect(tasks[0]?.notes).toBeNull()
+})
+
+it('does not pull a following sibling task into notes', () => {
+  const [first] = parse(['- [ ] a', '- [ ] b'].join('\n'))
+
+  expect(first?.notes).toBeNull()
+})
+
 let vault: string
 
 beforeEach(async () => {
