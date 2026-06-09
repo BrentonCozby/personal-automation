@@ -4,7 +4,7 @@ import {
   SANS_FONT_STACK as SANS,
 } from '@personal-automation/common/html'
 import { type PatchStatus, RUN_ABORTED_SENTINEL } from '@personal-automation/common/logger'
-import { SUBJECT_PREFIX } from './constants.js'
+import { SUBJECT_PREFIX, SUMMARY_ONLY_SUCCESS_APPS } from './constants.js'
 
 export type AuditRow = {
   app: string
@@ -82,16 +82,18 @@ function renderSection({ app, bucket }: { app: string; bucket: AppBucket }): str
 
   const blocks: string[] = []
   if (errorCount > 0) blocks.push(bucket.errors.map(row => renderRow({ row })).join('\n\n'))
-  if (successCount > 0) {
+  if (successCount > 0 && !SUMMARY_ONLY_SUCCESS_APPS.has(app)) {
     const lines = bucket.successes.map(row => renderSuccessRow({ row }))
 
     blocks.push(['  Successes:', ...lines].join('\n'))
   }
   // Surfaces the app even when nothing happened, so the digest reads as "everything that
   // ran, here's what happened" rather than only the broken parts.
-  if (blocks.length === 0) blocks.push('  (nothing to report)')
+  if (errorCount === 0 && successCount === 0) blocks.push('  (nothing to report)')
 
-  return `${header}\n${rule}\n\n${blocks.join('\n\n')}`
+  // For a summary-only app with successes and no errors, the header count is the whole report,
+  // so there are no blocks — drop the trailing rule spacing rather than leave blank lines.
+  return blocks.length > 0 ? `${header}\n${rule}\n\n${blocks.join('\n\n')}` : `${header}\n${rule}`
 }
 
 function renderRow({ row }: { row: AuditRow }): string {
@@ -200,7 +202,7 @@ function renderHtmlSection({ app, bucket }: { app: string; bucket: AppBucket }):
   const errors = bucket.errors.map(row => renderHtmlRow({ row })).join('')
 
   let successes = ''
-  if (successCount > 0) {
+  if (successCount > 0 && !SUMMARY_ONLY_SUCCESS_APPS.has(app)) {
     const items = bucket.successes.map(row => renderHtmlSuccess({ row })).join('')
     const label =
       errorCount > 0 ? `<div style="${MINI_LABEL} margin-top:18px;">Successes</div>` : ''

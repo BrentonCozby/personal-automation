@@ -137,6 +137,59 @@ describe('buildDigest', (): void => {
     expect(digest.body).toContain('ynab-enrich-memos — 1 error, 0 successes')
   })
 
+  it('keeps the success count but drops per-transaction success rows for summary-only apps', (): void => {
+    const digest = buildDigest({
+      rows: [
+        row({
+          app: 'ynab-categorize',
+          transaction_id: 'a',
+          payee_name: 'Whole Foods',
+          patch_status: 'success',
+          result_summary: 'Groceries',
+        }),
+        row({
+          app: 'ynab-enrich-memos',
+          transaction_id: 'b',
+          payee_name: 'Amazon',
+          patch_status: 'success',
+          result_summary: 'auto-gen: AAA batteries',
+        }),
+      ],
+    })
+
+    // The header still reports the count so the section reads as "it ran".
+    expect(digest.body).toContain('ynab-enrich-memos — 0 errors, 1 success')
+    // …but the enrich-memos success detail (its result summary) is gone.
+    expect(digest.body).not.toContain('auto-gen: AAA batteries')
+    // ynab-categorize successes are unaffected.
+    expect(digest.body).toContain('Whole Foods')
+    expect(digest.body).toContain('→  Groceries')
+  })
+
+  it('still shows enrich-memos error rows in full', (): void => {
+    const digest = buildDigest({
+      rows: [
+        row({
+          app: 'ynab-enrich-memos',
+          transaction_id: 'b',
+          payee_name: 'Amazon',
+          patch_status: 'success',
+          result_summary: 'auto-gen: AAA batteries',
+        }),
+        row({
+          app: 'ynab-enrich-memos',
+          transaction_id: 'c',
+          patch_status: 'error',
+          error: 'Gmail token refresh failed',
+        }),
+      ],
+    })
+
+    expect(digest.body).toContain('ynab-enrich-memos — 1 error, 1 success')
+    expect(digest.body).toContain('Reason:  Gmail token refresh failed')
+    expect(digest.body).not.toContain('auto-gen: AAA batteries')
+  })
+
   it('shows the result summary on success rows and falls back to (applied) when absent', (): void => {
     const withSummary = buildDigest({
       rows: [
@@ -336,6 +389,24 @@ describe('buildDigest', (): void => {
       expect(digest.html).toContain('Whole Foods')
       expect(digest.html).toContain('-$54.20')
       expect(digest.html).toContain('Groceries')
+    })
+
+    it('omits per-transaction success cards for summary-only apps but keeps the count', (): void => {
+      const digest = buildDigest({
+        rows: [
+          row({
+            app: 'ynab-enrich-memos',
+            transaction_id: 'b',
+            payee_name: 'Amazon',
+            patch_status: 'success',
+            result_summary: 'auto-gen: AAA batteries',
+          }),
+        ],
+      })
+
+      expect(digest.html).toContain('1 success')
+      expect(digest.html).not.toContain('auto-gen: AAA batteries')
+      expect(digest.html).not.toContain('Nothing to report')
     })
 
     it('escapes HTML in a result summary', (): void => {
