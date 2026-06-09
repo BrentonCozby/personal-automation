@@ -79,7 +79,7 @@ export function buildAnalysisPrompt({
 }): string {
   const data = tasks.map((task, index) => toPromptObject(task, index))
 
-  return `You are my task reviewer. I have ADHD-pattern executive-function challenges, so open tasks pile up and stall for different reasons. For each open Apple Reminder below, judge WHY it has stalled and give me one concrete next action I can start now.
+  return `You are my task reviewer. I have ADHD-pattern executive-function challenges, so open tasks pile up and stall for different reasons. For each open todo below, judge WHY it has stalled and give me one concrete next action I can start now.
 
 Today is ${today}.
 
