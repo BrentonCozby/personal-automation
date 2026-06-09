@@ -7,7 +7,8 @@
     "build": "tsc -b",
     "start": "node dist/index.js",
     "ynab-enrich-memos": "tsx src/index.ts",
-    "test:ynab-enrich-memos": "tsx src/index.ts --dry-run"
+    "test:ynab-enrich-memos": "tsx src/index.ts --dry-run",
+    "review": "tsx src/review.ts"
   },
   "dependencies": {
     "@personal-automation/anthropic": "workspace:*",

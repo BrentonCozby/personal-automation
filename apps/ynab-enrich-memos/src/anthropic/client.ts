@@ -16,6 +16,8 @@ export type ReceiptResult = {
   summary: string | null
   /** The matched order's total, for verifying against the charge amount. Null when not found. */
   orderTotal: number | null
+  /** Index of the matched candidate email (into the list handed to the prompt), or null. */
+  matchedEmailIndex: number | null
   latencyMs: number
   inputTokens?: number
   outputTokens?: number
@@ -46,8 +48,9 @@ export function createEnrichClient({
     const found = parsed?.receipt_found === true
     const summary = found ? parsed.item_summary?.trim() || null : null
     const orderTotal = found ? (parsed.order_total ?? null) : null
+    const matchedEmailIndex = found ? (parsed.matched_email_index ?? null) : null
 
-    return { summary, orderTotal, latencyMs, inputTokens, outputTokens }
+    return { summary, orderTotal, matchedEmailIndex, latencyMs, inputTokens, outputTokens }
   }
 
   return { extractReceipt }

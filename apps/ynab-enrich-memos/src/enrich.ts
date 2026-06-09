@@ -46,6 +46,14 @@ export const enrichMemosAuditSchema = z.object({
   untrusted_dropped: z.number().optional(),
   /** The memo written (prefix included), or null when nothing was written. */
   new_memo: z.string().nullable().optional(),
+  /** The matched order's total (dollars), verified equal to the charge. Present on `ok` rows. */
+  order_total: z.number().optional(),
+  /** Gmail deep-link to the matched receipt email, for spot-checking the source. */
+  matched_email_url: z.string().optional(),
+  /** Subject of the matched receipt email — compact context the model read. */
+  matched_email_subject: z.string().nullable().optional(),
+  /** Date header of the matched receipt email, as Gmail provided it. */
+  matched_email_date: z.string().nullable().optional(),
 })
 export type EnrichMemosAudit = z.infer<typeof enrichMemosAuditSchema>
 
@@ -422,6 +430,17 @@ async function enrichOne({
 
   const memo = buildMemo(result.summary)
 
+  // Link the audit row back to the email the model summarized. The model returns the candidate's
+  // index; guard it (a null or out-of-range index just drops the link, never fails the run).
+  const idx = result.matchedEmailIndex
+  const matched = idx !== null && idx >= 0 && idx < messages.length ? messages[idx] : undefined
+  if (!matched) {
+    logger.warn({
+      msg: 'Model returned no usable matched-email index; storing memo without a source link',
+      extra: { txn: txn.id, matched_email_index: idx, candidates: messages.length },
+    })
+  }
+
   return {
     kind: 'patch',
     patch: { id: txn.id, memo },
@@ -432,11 +451,24 @@ async function enrichOne({
         ...lookExtra,
         new_memo: memo,
         result_summary: memo,
+        order_total: result.orderTotal,
+        ...(matched && {
+          matched_email_url: gmailMessageUrl(matched.id),
+          matched_email_subject: matched.subject,
+          matched_email_date: matched.date,
+        }),
         latency_ms: result.latencyMs,
         ...(result.inputTokens !== undefined && { prompt_tokens: result.inputTokens }),
       },
     }),
   }
+}
+
+// Web deep-link to a Gmail message by its API id. `u/0` is the first account signed into the
+// browser (fine for a single-account setup); `#all/<id>` opens the message from All Mail
+// whatever label it lives under.
+function gmailMessageUrl(id: string): string {
+  return `https://mail.google.com/mail/u/0/#all/${id}`
 }
 
 export function isEligible({

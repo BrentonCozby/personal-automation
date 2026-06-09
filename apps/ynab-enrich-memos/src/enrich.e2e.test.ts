@@ -108,6 +108,7 @@ function gmailReceiptHandlers(): RequestHandler[] {
           headers: [
             { name: 'Subject', value: 'Your Amazon.com order' },
             { name: 'From', value: 'auto-confirm@amazon.com' },
+            { name: 'Date', value: 'Mon, 19 May 2026 10:00:00 -0700' },
             {
               name: 'Authentication-Results',
               value:
@@ -142,7 +143,12 @@ describe('runEnrich (e2e)', (): void => {
       ...gmailReceiptHandlers(),
       http.post(ANTHROPIC_MESSAGES_URL, () =>
         HttpResponse.json(
-          anthropicResponse({ receipt_found: true, item_summary: SUMMARY, order_total: 21.48 }),
+          anthropicResponse({
+            receipt_found: true,
+            item_summary: SUMMARY,
+            order_total: 21.48,
+            matched_email_index: 0,
+          }),
         ),
       ),
       http.patch(`${YNAB_API_BASE_URL}/budgets/${BUDGET_ID}/transactions`, async ({ request }) => {
@@ -171,6 +177,45 @@ describe('runEnrich (e2e)', (): void => {
     expect(audit[0]?.patch_status).toBe('success')
     expect(audit[0]?.new_memo).toBe(`auto-gen: ${SUMMARY}`)
     expect(audit[0]?.emails_found).toBe(1)
+    expect(audit[0]?.order_total).toBe(21.48)
+    expect(audit[0]?.matched_email_url).toBe('https://mail.google.com/mail/u/0/#all/m1')
+    expect(audit[0]?.matched_email_subject).toBe('Your Amazon.com order')
+    expect(audit[0]?.matched_email_date).toBe('Mon, 19 May 2026 10:00:00 -0700')
+  })
+
+  it('still writes the memo (without a source link) when the model returns an out-of-range index', async (): Promise<void> => {
+    server.use(
+      transactionsHandler([makeTxn()]),
+      oauthHandler(),
+      ...gmailReceiptHandlers(),
+      http.post(ANTHROPIC_MESSAGES_URL, () =>
+        HttpResponse.json(
+          // Only one candidate (index 0), but the model reports index 5 — guard drops the link.
+          anthropicResponse({
+            receipt_found: true,
+            item_summary: SUMMARY,
+            order_total: 21.48,
+            matched_email_index: 5,
+          }),
+        ),
+      ),
+      http.patch(`${YNAB_API_BASE_URL}/budgets/${BUDGET_ID}/transactions`, () =>
+        HttpResponse.json({ data: { transaction_ids: ['txn-1'] } }),
+      ),
+    )
+
+    const result = await runEnrich({
+      config: makeConfig(),
+      opts: { dryRun: false, verbose: false },
+    })
+
+    expect(result).toEqual({ succeeded: 1, failed: 0, skipped: 0 })
+    const audit = readAuditLines()
+    expect(audit[0]?.status).toBe('ok')
+    expect(audit[0]?.new_memo).toBe(`auto-gen: ${SUMMARY}`)
+    expect(audit[0]?.order_total).toBe(21.48)
+    expect(audit[0]?.matched_email_url).toBeUndefined()
+    expect(audit[0]?.matched_email_subject).toBeUndefined()
   })
 
   it('no matching email: leaves the memo, audits no_emails, never calls the model', async (): Promise<void> => {
@@ -185,7 +230,12 @@ describe('runEnrich (e2e)', (): void => {
         llmCalled = true
 
         return HttpResponse.json(
-          anthropicResponse({ receipt_found: false, item_summary: null, order_total: null }),
+          anthropicResponse({
+            receipt_found: false,
+            item_summary: null,
+            order_total: null,
+            matched_email_index: null,
+          }),
         )
       }),
     )
@@ -209,7 +259,12 @@ describe('runEnrich (e2e)', (): void => {
       ...gmailReceiptHandlers(),
       http.post(ANTHROPIC_MESSAGES_URL, () =>
         HttpResponse.json(
-          anthropicResponse({ receipt_found: false, item_summary: null, order_total: null }),
+          anthropicResponse({
+            receipt_found: false,
+            item_summary: null,
+            order_total: null,
+            matched_email_index: null,
+          }),
         ),
       ),
     )
@@ -238,6 +293,7 @@ describe('runEnrich (e2e)', (): void => {
             receipt_found: true,
             item_summary: 'Some unrelated order — Total $99.99',
             order_total: 99.99,
+            matched_email_index: 0,
           }),
         ),
       ),
@@ -264,7 +320,12 @@ describe('runEnrich (e2e)', (): void => {
       ...gmailReceiptHandlers(),
       http.post(ANTHROPIC_MESSAGES_URL, () =>
         HttpResponse.json(
-          anthropicResponse({ receipt_found: true, item_summary: SUMMARY, order_total: 21.48 }),
+          anthropicResponse({
+            receipt_found: true,
+            item_summary: SUMMARY,
+            order_total: 21.48,
+            matched_email_index: 0,
+          }),
         ),
       ),
       http.patch(`${YNAB_API_BASE_URL}/budgets/${BUDGET_ID}/transactions`, () => {

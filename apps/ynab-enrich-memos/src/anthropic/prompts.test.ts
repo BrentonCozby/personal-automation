@@ -23,6 +23,9 @@ describe('buildEnrichPrompt', (): void => {
     // The amount-match rule embeds the charge and forbids settling for the closest receipt.
     expect(prompt).toContain('equals the charge amount of $21.48')
     expect(prompt).toContain('a wrong match is worse than none')
+    // Each email is numbered, and the model is told to report which index it matched.
+    expect(prompt).toContain('"index": 0')
+    expect(prompt).toContain('matched_email_index')
   })
 
   it('neutralizes attempts to close the <emails> block or inject newlines', (): void => {

@@ -17,9 +17,9 @@ export type EnrichPromptInput = {
   emails: ReceiptEmail[]
 }
 
-// Builds the user message handed to Claude. The output shape (`receipt_found` + `item_summary`)
-// is enforced by output_config.format in the client, so the prompt describes the judgment and
-// the summary format, not the JSON structure.
+// Builds the user message handed to Claude. The output shape (`receipt_found`, `item_summary`,
+// `order_total`, `matched_email_index`) is enforced by output_config.format in the client, so
+// the prompt describes the judgment and the summary format, not the JSON structure.
 export function buildEnrichPrompt({ transactionDate, amount, emails }: EnrichPromptInput): string {
   const data = emails.map((email, index) => toPromptEmail(email, index))
 
@@ -36,8 +36,9 @@ Summarize the matching order's items as a single line, for example:
   USB-C cable ($9.99), AA batteries ($4.50) — Total $14.49
 
 Rules:
-- If no email's order total equals the charge amount, set receipt_found to false, item_summary to null, and order_total to null. Finding no match is correct and expected — a wrong match is worse than none.
+- If no email's order total equals the charge amount, set receipt_found to false, item_summary to null, order_total to null, and matched_email_index to null. Finding no match is correct and expected — a wrong match is worse than none.
 - order_total: the matched order's total as a number (e.g. 14.49). It must equal the charge amount.
+- matched_email_index: the "index" value (shown on each email below) of the ONE email you matched. It must point to the email whose order total you used.
 - Use the product names as written in the email, shortened to the essential name. Include each item's price when shown, and the order total.
 - Do not invent items, prices, or totals. Summarize only what the matching email actually shows.
 - Keep item_summary on one line, under 480 characters.
