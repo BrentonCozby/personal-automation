@@ -150,8 +150,8 @@ it('dry-run builds the digest, sends no email, and records every task to the run
 })
 
 it('joins on index even when the model paraphrases the title entirely', async () => {
-  // The echoed title bears no resemblance to the reminder; index 0 still pairs them, and the
-  // digest renders the reminder's own title (not the model's paraphrase).
+  // The echoed title bears no resemblance to the task; index 0 still pairs them, and the
+  // digest renders the task's own title (not the model's paraphrase).
   mockAnthropic([
     analysis({
       index: 0,
