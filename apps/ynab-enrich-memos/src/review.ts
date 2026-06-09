@@ -130,6 +130,25 @@ export function readOkRows(filePaths: string[]): EnrichMemosAudit[] {
   return rows
 }
 
+/**
+ * Collapse to one row per transaction, keeping the most recent. This looks redundant — a
+ * transaction is normally enriched once — but the audit log is append-only across runs, so the
+ * same transaction can have an `ok` row from each run that processed it: a backfill that was
+ * re-run, or repeated dry-runs (a dry-run never writes the memo, so the transaction stays
+ * eligible and gets re-matched on the next run). Without this, such a transaction shows up once
+ * per run in the review.
+ */
+export function dedupeByTransaction(rows: EnrichMemosAudit[]): EnrichMemosAudit[] {
+  const latest = new Map<string, EnrichMemosAudit>()
+  for (const row of rows) {
+    const prev = latest.get(row.transaction_id)
+    // ISO-8601 UTC timestamps sort lexicographically, so a string compare picks the newer row.
+    if (!prev || row.timestamp > prev.timestamp) latest.set(row.transaction_id, row)
+  }
+
+  return [...latest.values()]
+}
+
 function shuffle<T>(items: T[], random: () => number): T[] {
   const copy = [...items]
   for (let i = copy.length - 1; i > 0; i--) {
@@ -214,7 +233,7 @@ function main(): void {
   const args = parseArgs(process.argv.slice(2))
   const auditDir = appAuditDir(import.meta.url)
   const files = auditFilesInRange({ auditDir, since: args.since, until: args.until })
-  const rows = readOkRows(files)
+  const rows = dedupeByTransaction(readOkRows(files))
   const shown = args.sample !== undefined ? sampleRows({ rows, n: args.sample }) : rows
 
   console.log(

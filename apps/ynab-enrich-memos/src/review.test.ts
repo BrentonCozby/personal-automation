@@ -3,7 +3,14 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import type { EnrichMemosAudit } from './enrich.js'
-import { auditFilesInRange, formatReview, parseArgs, readOkRows, sampleRows } from './review.js'
+import {
+  auditFilesInRange,
+  dedupeByTransaction,
+  formatReview,
+  parseArgs,
+  readOkRows,
+  sampleRows,
+} from './review.js'
 
 function okRow(overrides: Partial<EnrichMemosAudit> = {}): EnrichMemosAudit {
   return {
@@ -102,6 +109,19 @@ describe('auditFilesInRange + readOkRows', (): void => {
     const rows = readOkRows([path])
 
     expect(rows.map(r => r.transaction_id)).toEqual(['ok-1', 'ok-2'])
+  })
+})
+
+describe('dedupeByTransaction', (): void => {
+  it('keeps the most recent row per transaction id and leaves distinct ones alone', (): void => {
+    const deduped = dedupeByTransaction([
+      okRow({ transaction_id: 'a', timestamp: '2026-06-02T03:22:00.000Z', new_memo: 'old' }),
+      okRow({ transaction_id: 'a', timestamp: '2026-06-02T03:52:00.000Z', new_memo: 'new' }),
+      okRow({ transaction_id: 'b', timestamp: '2026-06-02T03:22:00.000Z' }),
+    ])
+
+    expect(deduped).toHaveLength(2)
+    expect(deduped.find(r => r.transaction_id === 'a')?.new_memo).toBe('new')
   })
 })
 
