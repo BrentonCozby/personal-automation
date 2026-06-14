@@ -42,6 +42,16 @@ export function createGmailAuth({
       })
       if (!res.ok) {
         const text = await res.text()
+        // invalid_grant means the refresh token is dead — usually a Google password change
+        // (it revokes Gmail-scope tokens), a manual revoke, or 6 months idle. Re-auth is the
+        // only fix, so make the message say so: it lands in the launchd failure notification.
+        if (text.includes('invalid_grant')) {
+          throw new AppError({
+            message:
+              'Gmail refresh token rejected (invalid_grant) — expired or revoked, usually after a Google password change. Re-auth: pnpm --filter @personal-automation/gmail bootstrap',
+            retryable: false,
+          })
+        }
         throw new AppError({
           message: `Google OAuth token refresh → ${res.status}: ${text}`,
           retryable: isRetryableHttpStatus(res.status),

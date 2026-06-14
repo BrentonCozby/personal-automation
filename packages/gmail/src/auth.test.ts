@@ -118,11 +118,32 @@ describe('createGmailAuth.getAccessToken', (): void => {
       http.post(GOOGLE_OAUTH_TOKEN_URL, () => {
         calls++
 
-        return HttpResponse.text('invalid_grant', { status: 400 })
+        return HttpResponse.text('invalid_client', { status: 400 })
       }),
     )
 
     await expect(makeAuth().getAccessToken()).rejects.toThrow(/Google OAuth token refresh → 400/)
+    expect(calls).toBe(1)
+  })
+
+  it('throws an actionable re-auth error on invalid_grant (non-retryable)', async (): Promise<void> => {
+    let calls = 0
+    server.use(
+      http.post(GOOGLE_OAUTH_TOKEN_URL, () => {
+        calls++
+
+        return HttpResponse.text(
+          '{"error":"invalid_grant","error_description":"Token has been expired or revoked."}',
+          { status: 400 },
+        )
+      }),
+    )
+
+    const err = await makeAuth()
+      .getAccessToken()
+      .catch((e: unknown) => e)
+    expect((err as Error).message).toMatch(/invalid_grant/)
+    expect((err as Error).message).toMatch(/bootstrap/)
     expect(calls).toBe(1)
   })
 
