@@ -45,7 +45,7 @@ exit_code=$?
 
 if [ "$exit_code" -ne 0 ]; then
   last_err="$(tail -3 "$err_log" | tr '\n' ' ' | sed 's/"/\\"/g')"
-  notify_fail "${last_err:-git push failed; see launchd-vault-backup.err.log}"
+  notify_fail "${last_err:-git push failed; see launchd/logs/vault-backup.err.log}"
 fi
 
 exit "$exit_code"

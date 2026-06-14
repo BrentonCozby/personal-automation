@@ -158,16 +158,16 @@ launchctl print "gui/$(id -u)/com.personal-automation.stalled-tasks"
 
 ### Run logs (launchd stdout/stderr)
 
-The daily run and the digest each write a stdout + stderr log in the project root:
+The daily run and the digest each write a stdout + stderr log under `launchd/logs/`:
 
 ```bash
 # Daily run (ynab-enrich-memos → ynab-categorize → notify)
-tail -n 50 launchd-daily.out.log
-tail -n 50 launchd-daily.err.log
+tail -n 50 launchd/logs/daily.out.log
+tail -n 50 launchd/logs/daily.err.log
 
 # stalled-tasks digest
-tail -n 50 launchd-stalled-tasks.out.log
-tail -n 50 launchd-stalled-tasks.err.log
+tail -n 50 launchd/logs/stalled-tasks.out.log
+tail -n 50 launchd/logs/stalled-tasks.err.log
 ```
 
 A non-empty `*.err.log` isn't always a failure — pnpm and progress spinners write to stderr. Check the agent's last exit code (above) for the real verdict.

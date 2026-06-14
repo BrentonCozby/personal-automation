@@ -17,7 +17,7 @@ exit_code=$?
 if [ "$exit_code" -ne 0 ]; then
   last_err="$(tail -3 "$err_log" | tr '\n' ' ' | sed 's/"/\\"/g')"
   /usr/bin/osascript \
-    -e "display notification \"${last_err:-See $PROJECT_DIR/launchd-stalled-tasks.err.log}\" with title \"Stalled Tasks digest FAILED (exit $exit_code)\" sound name \"Basso\""
+    -e "display notification \"${last_err:-See $PROJECT_DIR/launchd/logs/stalled-tasks.err.log}\" with title \"Stalled Tasks digest FAILED (exit $exit_code)\" sound name \"Basso\""
 fi
 
 exit "$exit_code"

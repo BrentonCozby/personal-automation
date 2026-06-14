@@ -13,6 +13,9 @@ set -euo pipefail
 PROJECT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 USERNAME="$(whoami)"
 
+# launchd won't create the StandardOutPath/StandardErrorPath directory — make it up front.
+mkdir -p "$PROJECT_DIR/launchd/logs"
+
 substitute() {
   local template="$1"
   local output="$2"
@@ -53,6 +56,6 @@ Changed STALLED_TASKS_SCHEDULE later? Re-run this script, then:
   cp $PROJECT_DIR/launchd/com.personal-automation.stalled-tasks.plist ~/Library/LaunchAgents/
   launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.personal-automation.stalled-tasks.plist
 
-Optional log rotation (rotates the launchd-daily.* and launchd-stalled-tasks.* logs weekly, keeps 4):
+Optional log rotation (rotates the logs in launchd/logs/ weekly, keeps 4):
   sudo cp $PROJECT_DIR/launchd/newsyslog.personal-automation.conf /etc/newsyslog.d/
 EOF

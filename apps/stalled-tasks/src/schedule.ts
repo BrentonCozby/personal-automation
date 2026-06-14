@@ -103,9 +103,9 @@ ${intervals}
     </array>
 
     <key>StandardOutPath</key>
-    <string>${projectDir}/launchd-stalled-tasks.out.log</string>
+    <string>${projectDir}/launchd/logs/stalled-tasks.out.log</string>
     <key>StandardErrorPath</key>
-    <string>${projectDir}/launchd-stalled-tasks.err.log</string>
+    <string>${projectDir}/launchd/logs/stalled-tasks.err.log</string>
 
     <key>RunAtLoad</key>
     <false/>

@@ -21,9 +21,9 @@
     </dict>
 
     <key>StandardOutPath</key>
-    <string>{{PROJECT_DIR}}/launchd-vault-backup.out.log</string>
+    <string>{{PROJECT_DIR}}/launchd/logs/vault-backup.out.log</string>
     <key>StandardErrorPath</key>
-    <string>{{PROJECT_DIR}}/launchd-vault-backup.err.log</string>
+    <string>{{PROJECT_DIR}}/launchd/logs/vault-backup.err.log</string>
 
     <key>RunAtLoad</key>
     <false/>
