@@ -9,14 +9,15 @@ system of record that the `stalled-tasks` automation reads.
 - **Live sync — Obsidian Sync.** Desktop ↔ iPhone, first-party, conflict-light.
   This is the source of truth; the automation reads the Mac's synced copy on disk.
 - **Capture — iOS Shortcut via the Advanced URI plugin.** One tap appends a line
-  to `todos.md`; Obsidian Sync propagates it everywhere.
+  to `Todos/todos.md`; Obsidian Sync propagates it everywhere.
 - **Backup — weekly `git push` via launchd.** A one-way snapshot to a private
   GitHub repo for offsite backup. *Not* the live sync path, so it never conflicts.
-- **Consumption — `stalled-tasks`.** Reads `todos.md` with `TASK_PROVIDER=obsidian`.
+- **Consumption — `stalled-tasks`.** Reads `Todos/todos.md` with `TASK_PROVIDER=obsidian`
+  and `TASK_LISTS=["Todos/todos.md"]`.
 
 **Key facts:**
 
-- **Capture file:** `todos.md` at the vault root — every capture appends one line.
+- **Capture file:** `Todos/todos.md` (in the `Todos/` folder) — every capture appends one line.
 - **Line format:** `- [ ] <text> ➕ <YYYY-MM-DD>` (Obsidian Tasks syntax; the `➕`
   created-date drives staleness).
 - **Vault name differs per device.** With Obsidian Sync each device names its local
@@ -34,7 +35,7 @@ Obsidian Sync handles desktop ↔ phone; there's nothing to build. Two rules:
   vault fight. Keep the Git plugin dormant (all auto-intervals `0`) or disabled;
   git is backup-only (Part 3).
 - **Note your phone's vault name** for the Shortcut. Easiest way: in Obsidian
-  mobile, open `todos.md` → ⋯ menu → **Copy Advanced URI**, and read the `vault=`
+  mobile, open `Todos/todos.md` → ⋯ menu → **Copy Advanced URI**, and read the `vault=`
   value (here it's `iphone`).
 
 ---
@@ -60,7 +61,7 @@ in order:
    (encodes the spaces, `[ ]`, and `➕` that would otherwise break the URL)
 6. **Open URLs**:
    ```
-   obsidian://adv-uri?vault=iphone&filepath=todos.md&mode=append&data=[URL Encoded Text]
+   obsidian://adv-uri?vault=iphone&filepath=Todos/todos.md&mode=append&data=[URL Encoded Text]
    ```
    where `[URL Encoded Text]` is the variable from step 5 (a chip, not literal text).
 
@@ -68,13 +69,17 @@ in order:
 icon where the Reminders app was. (Control Center / Lock Screen also work; the
 Action Button may already be taken.)
 
-Result: **1 tap → type → return** → the line appends to `todos.md` and syncs. Obsidian
+Result: **1 tap → type → return** → the line appends to `Todos/todos.md` and syncs. Obsidian
 flashes open briefly to do the write (keep it warm to minimize that).
 
 **About the URL:**
 - `vault=iphone` — the **phone's** local vault name (see Part 1). Spaces → `%20`.
 - `adv-uri` — this plugin version's scheme (alias of `advanced-uri`). Match whatever
   "Copy Advanced URI" emits.
+- `filepath=Todos/todos.md` — vault-relative path; the `Todos/` folder is part of it.
+  The literal `/` is fine in the URL. If `filepath` points at a missing path, Advanced
+  URI silently creates it — so a stale `filepath=todos.md` would write a phantom file at
+  the vault root instead of erroring.
 - `mode=append` — adds to the end of the file; additive, doesn't overwrite.
 
 ---
