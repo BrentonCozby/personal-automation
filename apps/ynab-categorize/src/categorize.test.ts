@@ -39,27 +39,40 @@ const makeCat = (overrides: Partial<Category> = {}): Category => ({
 
 describe('isEligible', (): void => {
   const allowed = new Set(['acct-1'])
+  const uncategorizedId = 'uncat-1'
 
   it('accepts a normal Amazon transaction in an allowed account', (): void => {
-    expect(isEligible({ txn: makeTxn(), allowedAccountIds: allowed })).toBe(true)
+    expect(isEligible({ txn: makeTxn(), allowedAccountIds: allowed, uncategorizedId })).toBe(true)
   })
 
   it('rejects transactions in disallowed accounts', (): void => {
-    expect(isEligible({ txn: makeTxn({ account_id: 'other' }), allowedAccountIds: allowed })).toBe(
-      false,
-    )
+    expect(
+      isEligible({
+        txn: makeTxn({ account_id: 'other' }),
+        allowedAccountIds: allowed,
+        uncategorizedId,
+      }),
+    ).toBe(false)
   })
 
   it('rejects non-Amazon payees', (): void => {
-    expect(isEligible({ txn: makeTxn({ payee_name: 'Costco' }), allowedAccountIds: allowed })).toBe(
-      false,
-    )
+    expect(
+      isEligible({
+        txn: makeTxn({ payee_name: 'Costco' }),
+        allowedAccountIds: allowed,
+        uncategorizedId,
+      }),
+    ).toBe(false)
   })
 
   it('rejects null payee', (): void => {
-    expect(isEligible({ txn: makeTxn({ payee_name: null }), allowedAccountIds: allowed })).toBe(
-      false,
-    )
+    expect(
+      isEligible({
+        txn: makeTxn({ payee_name: null }),
+        allowedAccountIds: allowed,
+        uncategorizedId,
+      }),
+    ).toBe(false)
   })
 
   it('rejects transfers (transfer_account_id set)', (): void => {
@@ -67,6 +80,7 @@ describe('isEligible', (): void => {
       isEligible({
         txn: makeTxn({ transfer_account_id: 'acct-2' }),
         allowedAccountIds: allowed,
+        uncategorizedId,
       }),
     ).toBe(false)
   })
@@ -76,20 +90,49 @@ describe('isEligible', (): void => {
       isEligible({
         txn: makeTxn({ transfer_transaction_id: 'txn-x' }),
         allowedAccountIds: allowed,
+        uncategorizedId,
       }),
     ).toBe(false)
   })
 
-  it('rejects transactions already flagged', (): void => {
+  it('skips a flagged transaction that already has a real category', (): void => {
     expect(
-      isEligible({ txn: makeTxn({ flag_name: 'auto-categorized' }), allowedAccountIds: allowed }),
+      isEligible({
+        txn: makeTxn({ flag_name: 'auto-categorized', category_id: 'cat-real' }),
+        allowedAccountIds: allowed,
+        uncategorizedId,
+      }),
     ).toBe(false)
   })
 
+  it('reopens a flagged transaction still sitting in Uncategorized', (): void => {
+    expect(
+      isEligible({
+        txn: makeTxn({ flag_name: 'auto-categorized', category_id: uncategorizedId }),
+        allowedAccountIds: allowed,
+        uncategorizedId,
+      }),
+    ).toBe(true)
+  })
+
+  it('reopens a flagged transaction with no category yet', (): void => {
+    expect(
+      isEligible({
+        txn: makeTxn({ flag_name: 'auto-categorized', category_id: null }),
+        allowedAccountIds: allowed,
+        uncategorizedId,
+      }),
+    ).toBe(true)
+  })
+
   it('accepts transactions flagged with a different name', (): void => {
-    expect(isEligible({ txn: makeTxn({ flag_name: 'manual' }), allowedAccountIds: allowed })).toBe(
-      true,
-    )
+    expect(
+      isEligible({
+        txn: makeTxn({ flag_name: 'manual' }),
+        allowedAccountIds: allowed,
+        uncategorizedId,
+      }),
+    ).toBe(true)
   })
 })
 

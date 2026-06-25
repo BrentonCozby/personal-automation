@@ -176,7 +176,7 @@ async function runCategorizeInner({
   logger.info({ msg: 'Categories available to LLM', extra: { count: promptCategories.length } })
 
   const eligible = transactions.filter(txn =>
-    isEligible({ txn, allowedAccountIds: config.allowedAccountIds }),
+    isEligible({ txn, allowedAccountIds: config.allowedAccountIds, uncategorizedId }),
   )
   logger.info({
     msg: 'Eligible transactions',
@@ -417,15 +417,22 @@ export function filterCategoriesForPrompt({
 export function isEligible({
   txn,
   allowedAccountIds,
+  uncategorizedId,
 }: {
   txn: Transaction
   allowedAccountIds: Set<string>
+  uncategorizedId: string
 }): boolean {
   if (!allowedAccountIds.has(txn.account_id)) return false
   if (txn.payee_name !== PAYEE_FILTER) return false
   if (txn.transfer_account_id) return false
   if (txn.transfer_transaction_id) return false
-  if (txn.flag_name === FLAG_NAME) return false
+  // Skip only charges we've already filed under a real category. A flagged charge still sitting in
+  // Uncategorized stays eligible: enrich may add a memo after our first pass (it runs before us but
+  // can only match a receipt once one arrives), and a later memo should earn a real category rather
+  // than stay stuck on the flag. An empty category_id counts as Uncategorized.
+  const hasRealCategory = txn.category_id != null && txn.category_id !== uncategorizedId
+  if (txn.flag_name === FLAG_NAME && hasRealCategory) return false
 
   return true
 }

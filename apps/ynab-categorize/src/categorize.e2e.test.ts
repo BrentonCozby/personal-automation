@@ -415,7 +415,7 @@ describe('runCategorize (e2e)', (): void => {
     expect(byId.get('txn-2')?.error).toContain('transaction_ids')
   })
 
-  it('skips already-flagged transactions', async (): Promise<void> => {
+  it('skips a flagged transaction that already has a real category', async (): Promise<void> => {
     let llmCalled = false
     server.use(
       http.get(`${YNAB_API_BASE_URL}/budgets/${BUDGET_ID}/categories`, () =>
@@ -426,7 +426,13 @@ describe('runCategorize (e2e)', (): void => {
         () =>
           HttpResponse.json({
             data: {
-              transactions: [makeTxn({ flag_name: 'auto-categorized', flag_color: 'yellow' })],
+              transactions: [
+                makeTxn({
+                  flag_name: 'auto-categorized',
+                  flag_color: 'yellow',
+                  category_id: 'cGroceries',
+                }),
+              ],
             },
           }),
       ),
