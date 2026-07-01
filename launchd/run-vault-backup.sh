@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# launchd wrapper: weekly one-way backup of the Obsidian vault to its git remote.
+# launchd wrapper: daily one-way backup of the Obsidian vault to its git remote.
 #
 # Obsidian Sync is the live cross-device sync; this only snapshots the vault to GitHub for an
 # offsite backup. Nothing else writes to the remote, so the push is a clean fast-forward — no

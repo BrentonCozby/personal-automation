@@ -5,7 +5,7 @@
 #
 # Generated files:
 #   com.personal-automation.daily.plist         — daily scheduled job (runs run.sh at 12:00)
-#   com.personal-automation.vault-backup.plist  — weekly Obsidian vault git backup (Sun 09:00)
+#   com.personal-automation.vault-backup.plist  — daily Obsidian vault git backup (09:00)
 #   newsyslog.personal-automation.conf          — optional log rotation config
 
 set -euo pipefail
