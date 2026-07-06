@@ -10,7 +10,7 @@ system of record that the `stalled-tasks` automation reads.
   This is the source of truth; the automation reads the Mac's synced copy on disk.
 - **Capture — iOS Shortcut via the Advanced URI plugin.** One tap appends a line
   to `Todos/todos.md`; Obsidian Sync propagates it everywhere.
-- **Backup — weekly `git push` via launchd.** A one-way snapshot to a private
+- **Backup — daily `git push` via launchd.** A one-way snapshot to a private
   GitHub repo for offsite backup. *Not* the live sync path, so it never conflicts.
 - **Consumption — `stalled-tasks`.** Reads `Todos/todos.md` with `TASK_PROVIDER=obsidian`
   and `TASK_LISTS=["Todos/todos.md"]`.
@@ -84,11 +84,11 @@ flashes open briefly to do the write (keep it warm to minimize that).
 
 ---
 
-## Part 3 — Backup (weekly git push via launchd)
+## Part 3 — Backup (daily git push via launchd)
 
-The vault is backed up weekly to a **private** GitHub repo
+The vault is backed up daily to a **private** GitHub repo
 (`github.com/BrentonCozby/obsidian-vault`) by the `com.personal-automation.vault-backup`
-launchd agent (`launchd/run-vault-backup.sh`, Sundays 09:00). It's a one-way
+launchd agent (`launchd/run-vault-backup.sh`, daily 09:00). It's a one-way
 `git push` of the Mac's synced copy, so it never touches the live Obsidian Sync
 path. Activation (generate the plist, bootstrap the agent, run once by hand to
 confirm the push credential) is in the repo README's **Production** section.

@@ -104,7 +104,7 @@ Three launchd agents:
 
 - `com.personal-automation.daily` runs `launchd/run.sh` daily at 12:00 — each app in the `APPS` array in sequence (`ynab-enrich-memos` then `ynab-categorize`), then `notify`.
 - `com.personal-automation.stalled-tasks` runs the digest on its `STALLED_TASKS_SCHEDULE` days/times.
-- `com.personal-automation.vault-backup` runs `launchd/run-vault-backup.sh` weekly (Sunday 09:00) — a one-way `git push` of the Obsidian vault to its remote for offsite backup. Obsidian Sync is the live cross-device sync; this only snapshots to git, so it never conflicts. The vault path comes from `OBSIDIAN_VAULT_PATH` in `apps/stalled-tasks/.env`.
+- `com.personal-automation.vault-backup` runs `launchd/run-vault-backup.sh` daily (09:00) — a one-way `git push` of the Obsidian vault to its remote for offsite backup. Obsidian Sync is the live cross-device sync; this only snapshots to git, so it never conflicts. The vault path comes from `OBSIDIAN_VAULT_PATH` in `apps/stalled-tasks/.env`.
 
 Each is its own agent because launchd binds one agent to one program on one schedule: a plist's `StartCalendarInterval` can list many times, but they all run the same script. The agents are siblings grouped by schedule — `com.personal-automation` is just the shared namespace, not a job. An app gets its own agent only when it needs its own schedule — otherwise it's another entry in `run.sh`. Keeping them apart also means each gets its own logs and its own failure notification.
 
