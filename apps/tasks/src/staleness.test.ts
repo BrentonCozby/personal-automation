@@ -18,6 +18,23 @@ function task(overrides: Partial<Task> = {}): Task {
 }
 
 describe('staleDays', () => {
+  // Dividing raw milliseconds loses the hour a spring-forward takes, so a span of exactly the
+  // threshold reports one day short and every check fires a day late.
+  it('counts a span containing a daylight-saving change in calendar days', () => {
+    const originalTz = process.env['TZ']
+    process.env['TZ'] = 'America/Los_Angeles'
+    try {
+      const result = staleDays({
+        task: task({ created: new Date(2026, 1, 20) }),
+        now: new Date(2026, 2, 22),
+      })
+
+      expect(result).toBe(30)
+    } finally {
+      process.env['TZ'] = originalTz
+    }
+  })
+
   it('counts days since creation, ignoring last-modified', () => {
     const result = staleDays({
       task: task({

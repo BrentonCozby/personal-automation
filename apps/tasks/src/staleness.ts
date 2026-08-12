@@ -1,6 +1,5 @@
+import { calendarDaysBetween } from './state/days.js'
 import type { Task } from './tasks/types.js'
-
-const MS_PER_DAY = 86_400_000
 
 export type DueStatus = 'past' | 'future' | 'none'
 
@@ -14,7 +13,7 @@ export function staleDays({ task, now }: { task: Task; now: Date }): number | nu
   const ref = task.created ?? task.lastModified
   if (!ref) return null
 
-  return Math.max(0, Math.floor((now.getTime() - ref.getTime()) / MS_PER_DAY))
+  return Math.max(0, calendarDaysBetween({ from: ref, to: now }))
 }
 
 /**
