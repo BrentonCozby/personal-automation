@@ -3,10 +3,11 @@ import { readdir, readFile, stat } from 'node:fs/promises'
 import { basename, join, relative } from 'node:path'
 import { AppError } from '@personal-automation/common/errors'
 import type { Task, TaskSource } from '../types.js'
+import { stripStateTags } from './tags.js'
 
 // With no configured lists, the source reads only this inbox file at the vault root. Reading the
 // whole vault would sweep in incidental `- [ ]` checkboxes from notes/templates that aren't todos.
-const DEFAULT_TODOS_FILE = 'todos.md'
+export const DEFAULT_TODOS_FILE = 'todos.md'
 
 // Obsidian Tasks "created" / "due" markers. The date that follows each is a bare YYYY-MM-DD.
 const CREATED_DATE = /➕\s*(\d{4}-\d{2}-\d{2})/u
@@ -197,8 +198,10 @@ function collectNotes({
   return noteLines.length > 0 ? noteLines.join('\n') : null
 }
 
+// State tags come out; every other tag stays, because an ordinary tag is part of what the task
+// says and a state tag is only this app's bookkeeping.
 function cleanTitle(text: string): string {
-  return text
+  return stripStateTags(text)
     .replace(RECURRENCE_RULE, '')
     .replace(DATE_METADATA, '')
     .replace(TOKEN_METADATA, '')

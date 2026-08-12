@@ -1,0 +1,71 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`renders a plan that would change nothing 1`] = `
+"Migration plan
+──────────────────────────────────────────────────────────
+Read 43 files in the vault.
+
+No task needs a new tag. Nothing to change.
+
+Leaving 559 as they are:
+  already tagged  559   a second pass changes nothing
+
+Nothing moves to #active. Those are yours to pick, up to the cap.
+
+This was a dry run. The vault is untouched.
+Run it again with --apply to write it. Quit Obsidian first, so Sync
+cannot edit a file midway through the pass."
+`;
+
+exports[`renders the applied report 1`] = `
+"Migration applied
+──────────────────────────────────────────────────────────
+Read 1 file in the vault.
+
+Tagged 19 tasks:
+  #someday  19   open, and nothing more is read into it
+
+Leaving 68 as they are:
+  already tagged     2   a second pass changes nothing
+  already finished  56   the checkbox already says so
+  recurring         10   the Tasks plugin already runs these on their own dates
+
+Nothing moves to #active. Those are yours to pick, up to the cap.
+
+What changed:
+Todos/todos.md
+  3   - [ ] condition leather shoes ➕ 2025-06-07
+    → - [ ] condition leather shoes #someday ➕ 2025-06-07
+  9   - [ ] heath ceramics second hand ➕ 2025-05-23
+    → - [ ] heath ceramics second hand #someday ➕ 2025-05-23
+
+To undo the whole pass:
+  git checkout -- Todos/todos.md"
+`;
+
+exports[`renders the dry-run report 1`] = `
+"Migration plan
+──────────────────────────────────────────────────────────
+Read 1 file in the vault.
+
+Would tag 19 tasks:
+  #someday  19   open, and nothing more is read into it
+
+Leaving 68 as they are:
+  already tagged     2   a second pass changes nothing
+  already finished  56   the checkbox already says so
+  recurring         10   the Tasks plugin already runs these on their own dates
+
+Nothing moves to #active. Those are yours to pick, up to the cap.
+
+What would change:
+Todos/todos.md
+  3   - [ ] condition leather shoes ➕ 2025-06-07
+    → - [ ] condition leather shoes #someday ➕ 2025-06-07
+  9   - [ ] heath ceramics second hand ➕ 2025-05-23
+    → - [ ] heath ceramics second hand #someday ➕ 2025-05-23
+
+This was a dry run. The vault is untouched.
+Run it again with --apply to write it. Quit Obsidian first, so Sync
+cannot edit a file midway through the pass."
+`;

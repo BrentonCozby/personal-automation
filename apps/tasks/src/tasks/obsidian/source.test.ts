@@ -91,6 +91,20 @@ it('strips id / dependsOn / onCompletion markers from the title', () => {
   expect(task?.title).toBe('ship release')
 })
 
+// A state tag is bookkeeping, not part of what the task says. Leaving it in would put "#someday"
+// in the digest email and in the text the model reads.
+it('strips the state tag from the title', () => {
+  const [task] = parse('- [ ] heath ceramics second hand #someday ➕ 2025-05-23')
+
+  expect(task?.title).toBe('heath ceramics second hand')
+})
+
+it('keeps an unrelated tag while stripping the state tag', () => {
+  const [task] = parse('- [ ] file taxes #finance #active')
+
+  expect(task?.title).toBe('file taxes #finance')
+})
+
 it('ids are relativePath:lineNumber, counting non-task lines', () => {
   const tasks = parseTodoMarkdown({
     content: ['# Todos', '', '- [ ] first', 'some prose', '- [ ] second'].join('\n'),
