@@ -10,7 +10,7 @@ import pino from 'pino'
 import { afterEach, beforeEach, expect, it } from 'vitest'
 import type { TaskAnalysis } from './anthropic/schemas.js'
 import type { Config } from './config.js'
-import { runStalledTasks } from './run.js'
+import { runDigest } from './run.js'
 import type { RunLogEntry } from './run-log.js'
 import type { Task, TaskSource } from './tasks/types.js'
 
@@ -37,7 +37,7 @@ function makeConfig(overrides: Partial<Config> = {}): Config {
     staleThresholdDays: 30,
     taskProvider: 'obsidian',
     taskLists: [],
-    model: 'claude-sonnet-4-6',
+    model: 'claude-sonnet-5',
     anthropicApiKey: 'test-anthropic-key',
     gmailClientId: 'cid',
     gmailClientSecret: 'secret',
@@ -82,7 +82,7 @@ function anthropicResponse(analyses: TaskAnalysis[]): Record<string, unknown> {
     type: 'message',
     role: 'assistant',
     content: [{ type: 'text', text: JSON.stringify({ tasks: analyses }) }],
-    model: 'claude-sonnet-4-6',
+    model: 'claude-sonnet-5',
     stop_reason: 'end_turn',
     stop_sequence: null,
     usage: { input_tokens: 200, output_tokens: 80 },
@@ -117,7 +117,7 @@ it('dry-run builds the digest, sends no email, and records every task to the run
     }),
   ])
 
-  const result = await runStalledTasks({
+  const result = await runDigest({
     config: makeConfig(),
     opts: { dryRun: true },
     now: NOW,
@@ -161,7 +161,7 @@ it('joins on index even when the model paraphrases the title entirely', async ()
     }),
   ])
 
-  const result = await runStalledTasks({
+  const result = await runDigest({
     config: makeConfig(),
     opts: { dryRun: true },
     now: NOW,
@@ -191,7 +191,7 @@ it('sends the digest via Gmail on a real (msw) send path', async () => {
     }),
   )
 
-  const result = await runStalledTasks({
+  const result = await runDigest({
     config: makeConfig(),
     opts: { dryRun: false },
     now: NOW,
@@ -211,7 +211,7 @@ it('sends the digest via Gmail on a real (msw) send path', async () => {
 })
 
 it('returns no_open_tasks (and never calls the model) when there are no tasks', async () => {
-  const result = await runStalledTasks({
+  const result = await runDigest({
     config: makeConfig(),
     opts: { dryRun: false },
     now: NOW,
@@ -227,7 +227,7 @@ it('returns no_open_tasks (and never calls the model) when there are no tasks', 
 it('sends no email when nothing is actionable', async () => {
   mockAnthropic([analysis({ title: 'book india flights', classification: 'fine' })])
 
-  const result = await runStalledTasks({
+  const result = await runDigest({
     config: makeConfig(),
     opts: { dryRun: false },
     now: NOW,
@@ -249,7 +249,7 @@ it('propagates a source-access failure instead of sending an empty digest', asyn
   }
 
   await expect(
-    runStalledTasks({
+    runDigest({
       config: makeConfig(),
       opts: { dryRun: false },
       now: NOW,

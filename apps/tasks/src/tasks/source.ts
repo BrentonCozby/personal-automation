@@ -33,7 +33,7 @@ export function createTaskSource({
     case 'google':
       throw new AppError({
         message:
-          'TASK_PROVIDER=google is not implemented yet. Implement createGoogleTaskSource under apps/stalled-tasks/src/tasks/google/ and wire it here, or set TASK_PROVIDER=obsidian.',
+          'TASK_PROVIDER=google is not implemented yet. Implement createGoogleTaskSource under apps/tasks/src/tasks/google/ and wire it here, or set TASK_PROVIDER=obsidian.',
       })
     default: {
       const _exhaustive: never = provider

@@ -12,7 +12,7 @@ export default defineConfig({
         '**/*.test.ts',
         '**/schemas.ts',
         'apps/*/src/index.ts',
-        'apps/stalled-tasks/src/generate-launchd-plist.ts',
+        'apps/tasks/src/generate-launchd-plist.ts',
         'packages/gmail/src/bootstrap.ts',
       ],
       thresholds: {

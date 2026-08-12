@@ -48,7 +48,7 @@ it('forwards the model, max_tokens, and prompt to the Messages API', async (): P
       return HttpResponse.json(anthropicResponse('{"ok":true}'))
     }),
   )
-  const client = createAnthropicClient({ apiKey: 'test-key', model: 'claude-sonnet-4-6' })
+  const client = createAnthropicClient({ apiKey: 'test-key', model: 'claude-sonnet-5' })
 
   await client.parse({ prompt: 'hello', schema: z.object({ ok: z.boolean() }), maxTokens: 128 })
 
@@ -59,7 +59,32 @@ it('forwards the model, max_tokens, and prompt to the Messages API', async (): P
       messages: z.array(z.object({ role: z.string(), content: z.string() })),
     })
     .parse(captured)
-  expect(body.model).toBe('claude-sonnet-4-6')
+  expect(body.model).toBe('claude-sonnet-5')
   expect(body.max_tokens).toBe(128)
   expect(body.messages).toEqual([{ role: 'user', content: 'hello' }])
+})
+
+// Sonnet 5 and later think unless told not to, and the thinking shares the max_tokens ceiling with
+// the answer. A caller whose budget is sized for the answer alone has to be able to turn it off.
+it('asks for no thinking only when the caller says so', async (): Promise<void> => {
+  const bodies: unknown[] = []
+  server.use(
+    http.post(MESSAGES_URL, async ({ request }) => {
+      bodies.push(await request.json())
+
+      return HttpResponse.json(anthropicResponse('{"ok":true}'))
+    }),
+  )
+  const call = { prompt: 'hello', schema: z.object({ ok: z.boolean() }), maxTokens: 128 }
+
+  await createAnthropicClient({ apiKey: 'test-key', model: 'claude-sonnet-5' }).parse(call)
+  await createAnthropicClient({
+    apiKey: 'test-key',
+    model: 'claude-sonnet-5',
+    isThinkingDisabled: true,
+  }).parse(call)
+
+  const bodySchema = z.object({ thinking: z.object({ type: z.string() }).optional() })
+  expect(bodySchema.parse(bodies[0]).thinking).toBeUndefined()
+  expect(bodySchema.parse(bodies[1]).thinking).toEqual({ type: 'disabled' })
 })

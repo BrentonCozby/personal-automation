@@ -13,7 +13,7 @@
 
 {{PROJECT_DIR}}/launchd/logs/daily.out.log           {{USERNAME}}:staff  644  4  1024  $W0  Z
 {{PROJECT_DIR}}/launchd/logs/daily.err.log           {{USERNAME}}:staff  644  4  1024  $W0  Z
-{{PROJECT_DIR}}/launchd/logs/stalled-tasks.out.log   {{USERNAME}}:staff  644  4  1024  $W0  Z
-{{PROJECT_DIR}}/launchd/logs/stalled-tasks.err.log   {{USERNAME}}:staff  644  4  1024  $W0  Z
+{{PROJECT_DIR}}/launchd/logs/tasks-digest.out.log   {{USERNAME}}:staff  644  4  1024  $W0  Z
+{{PROJECT_DIR}}/launchd/logs/tasks-digest.err.log   {{USERNAME}}:staff  644  4  1024  $W0  Z
 {{PROJECT_DIR}}/launchd/logs/vault-backup.out.log    {{USERNAME}}:staff  644  4  1024  $W0  Z
 {{PROJECT_DIR}}/launchd/logs/vault-backup.err.log    {{USERNAME}}:staff  644  4  1024  $W0  Z

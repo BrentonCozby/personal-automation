@@ -1,6 +1,6 @@
 import { AppError } from '@personal-automation/common/errors'
 import { describe, expect, it } from 'vitest'
-import { buildStalledTasksPlist, parseSchedule } from './schedule.js'
+import { buildTasksDigestPlist, parseSchedule } from './schedule.js'
 
 describe('parseSchedule', () => {
   it('parses full day names into launchd weekday numbers + time', () => {
@@ -38,15 +38,15 @@ describe('parseSchedule', () => {
   })
 })
 
-describe('buildStalledTasksPlist', () => {
+describe('buildTasksDigestPlist', () => {
   it('emits one StartCalendarInterval dict per slot with the project path', () => {
-    const xml = buildStalledTasksPlist({
+    const xml = buildTasksDigestPlist({
       projectDir: '/Users/me/Code/personal-automation',
       schedule: parseSchedule(['Sunday 08:00', 'Wednesday 18:30']),
     })
 
-    expect(xml).toContain('<string>com.personal-automation.stalled-tasks</string>')
-    expect(xml).toContain('/Users/me/Code/personal-automation/launchd/run-stalled-tasks.sh')
+    expect(xml).toContain('<string>com.personal-automation.tasks</string>')
+    expect(xml).toContain('/Users/me/Code/personal-automation/launchd/run-tasks-digest.sh')
     // Sunday 08:00
     expect(xml).toContain('<key>Weekday</key><integer>0</integer>')
     expect(xml).toContain('<key>Hour</key><integer>8</integer>')

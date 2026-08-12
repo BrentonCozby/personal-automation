@@ -69,7 +69,7 @@ treats it as un-categorized and runs on it next.
 
 The original plan asked the model for a single line or a `__NO_RECEIPT__` string sentinel.
 Because the shared client uses structured outputs (`output_config.format`), the response is a
-typed object instead — matching how ynab-categorize and stalled-tasks already work:
+typed object instead — matching how ynab-categorize and tasks already work:
 
 ```ts
 { receipt_found: boolean; item_summary: string | null; order_total: number | null }

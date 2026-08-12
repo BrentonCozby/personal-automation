@@ -2,7 +2,7 @@
 
 How todos are captured from the iPhone in one tap, synced across devices, and
 backed up — replacing Apple Reminders as the capture surface. The vault is the
-system of record that the `stalled-tasks` automation reads.
+system of record that the `tasks` automation reads.
 
 **Architecture:**
 
@@ -12,7 +12,7 @@ system of record that the `stalled-tasks` automation reads.
   to `Todos/todos.md`; Obsidian Sync propagates it everywhere.
 - **Backup — daily `git push` via launchd.** A one-way snapshot to a private
   GitHub repo for offsite backup. *Not* the live sync path, so it never conflicts.
-- **Consumption — `stalled-tasks`.** Reads `Todos/todos.md` with `TASK_PROVIDER=obsidian`
+- **Consumption — `tasks`.** Reads `Todos/todos.md` with `TASK_PROVIDER=obsidian`
   and `TASK_LISTS=["Todos/todos.md"]`.
 
 **Key facts:**
@@ -98,14 +98,14 @@ confirm the push credential) is in the repo README's **Production** section.
 
 ---
 
-## Part 4 — Consumption (`stalled-tasks`)
+## Part 4 — Consumption (`tasks`)
 
-`stalled-tasks` reads the vault on disk via `TASK_PROVIDER=obsidian` +
+`tasks` reads the vault on disk via `TASK_PROVIDER=obsidian` +
 `OBSIDIAN_VAULT_PATH` (the Mac's synced copy — no git needed for reading). It parses
 open `- [ ]` lines: `➕` → created (drives staleness for undated tasks), `📅` → due,
 and recurring (`🔁`) tasks are kept and judged by their due date. See the README's
-**stalled-tasks** section and
-`apps/stalled-tasks/src/tasks/obsidian/`.
+**tasks** section and
+`apps/tasks/src/tasks/obsidian/`.
 
 ---
 

@@ -3,11 +3,7 @@ import { createProgress } from '@personal-automation/common/progress'
 import { createGmailAuth } from '@personal-automation/gmail/auth'
 import { createGmailClient, type GmailClient } from '@personal-automation/gmail/client'
 import pino from 'pino'
-import {
-  type AnalyzeResult,
-  createAnalyzer,
-  type StalledTasksAnalyzer,
-} from './anthropic/client.js'
+import { type AnalyzeResult, createAnalyzer, type TasksAnalyzer } from './anthropic/client.js'
 import { buildAnalysisPrompt, type PromptTask } from './anthropic/prompts.js'
 import type { TaskAnalysis } from './anthropic/schemas.js'
 import type { Config } from './config.js'
@@ -33,7 +29,7 @@ type Enriched = {
   dueStatus: DueStatus
 }
 
-export async function runStalledTasks({
+export async function runDigest({
   config,
   opts,
   now = new Date(),
@@ -51,7 +47,7 @@ export async function runStalledTasks({
   opts: RunOptions
   now?: Date
   source?: TaskSource
-  analyzer?: StalledTasksAnalyzer
+  analyzer?: TasksAnalyzer
   gmail?: GmailClient
   runsDir?: string
   logger?: pino.Logger

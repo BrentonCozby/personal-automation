@@ -5,7 +5,7 @@ moves off the Mac. The task source already moved to Obsidian (it runs on any OS)
 this doc is everything *else* still tied to a Mac.
 
 Done so far: the Obsidian `TaskSource` is live and the **Apple path is removed**
-(`apps/stalled-tasks/src/tasks/apple/` + the Swift bridge are gone), so the run no
+(`apps/tasks/src/tasks/apple/` + the Swift bridge are gone), so the run no
 longer needs EventKit/Swift. What's left is the rest of the macOS coupling, to
 execute *during* the actual move (there's no target host yet):
 
@@ -17,8 +17,8 @@ execute *during* the actual move (there's no target host yet):
 
 | Area | Where | Why it's Mac-only |
 |------|-------|-------------------|
-| Scheduling | `launchd/` + `apps/stalled-tasks/src/schedule.ts` + `generate-launchd-plist.ts` | launchd, plists, `StartCalendarInterval` |
-| Failure alerts | `launchd/run.sh`, `launchd/run-stalled-tasks.sh` | `osascript display notification` |
+| Scheduling | `launchd/` + `apps/tasks/src/schedule.ts` + `generate-launchd-plist.ts` | launchd, plists, `StartCalendarInterval` |
+| Failure alerts | `launchd/run.sh`, `launchd/run-tasks-digest.sh` | `osascript display notification` |
 | Log rotation | `launchd/newsyslog.*.conf.template` | newsyslog (BSD/macOS) |
 | Filesystem assumptions | `run.sh` (`find -mtime` cleanup), `apps/*/audit/`, `runs/`, `$TMPDIR` lockfiles | assume one persistent host |
 
@@ -27,7 +27,7 @@ execute *during* the actual move (there's no target host yet):
 ### Scheduling → scheduled GitHub Actions (recommended)
 This repo already lives on GitHub and runs CI + Claude on the web, so a
 **scheduled workflow** is the lowest-friction cross-platform scheduler: a `cron:`
-trigger, secrets in GitHub Actions, no host to own. `STALLED_TASKS_SCHEDULE`
+trigger, secrets in GitHub Actions, no host to own. `TASKS_SCHEDULE`
 (`["Sunday 08:00", …]`) translates to cron expressions; the daily `APPS` loop in
 `run.sh` becomes workflow steps. Alternatives if a long-lived box is preferred:
 cron or systemd timers. Either way, `schedule.ts` / `generate-launchd-plist.ts`

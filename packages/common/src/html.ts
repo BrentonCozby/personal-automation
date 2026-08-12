@@ -1,4 +1,4 @@
-// Building blocks shared by the apps that render HTML email digests (notify, stalled-tasks).
+// Building blocks shared by the apps that render HTML email digests (notify, tasks).
 // Email clients strip <style>/<head> and can't load web fonts, so digests inline everything and
 // lean on system font stacks.
 

@@ -22,14 +22,14 @@ export type ScheduleSlot = {
 }
 
 /**
- * Parses `STALLED_TASKS_SCHEDULE` entries like "Sunday 08:00" (day case-insensitive, 24h HH:MM)
+ * Parses `TASKS_SCHEDULE` entries like "Sunday 08:00" (day case-insensitive, 24h HH:MM)
  * into launchd calendar slots. Throws a clear AppError on a malformed entry so a typo fails at
  * setup time rather than silently producing the wrong schedule.
  */
 export function parseSchedule(entries: readonly string[]): ScheduleSlot[] {
   if (entries.length === 0) {
     throw new AppError({
-      message: 'STALLED_TASKS_SCHEDULE is empty — add at least one "Day HH:MM" entry.',
+      message: 'TASKS_SCHEDULE is empty — add at least one "Day HH:MM" entry.',
     })
   }
 
@@ -68,7 +68,7 @@ const PLIST_DOCTYPE =
  * array of {Weekday, Hour, Minute} triggers — one per schedule slot — so the digest fires on
  * exactly the days and times configured, independent of the daily YNAB run.
  */
-export function buildStalledTasksPlist({
+export function buildTasksDigestPlist({
   projectDir,
   schedule,
 }: {
@@ -90,11 +90,11 @@ ${PLIST_DOCTYPE}
 <plist version="1.0">
 <dict>
     <key>Label</key>
-    <string>com.personal-automation.stalled-tasks</string>
+    <string>com.personal-automation.tasks</string>
 
     <key>ProgramArguments</key>
     <array>
-        <string>${projectDir}/launchd/run-stalled-tasks.sh</string>
+        <string>${projectDir}/launchd/run-tasks-digest.sh</string>
     </array>
 
     <key>StartCalendarInterval</key>
@@ -103,9 +103,9 @@ ${intervals}
     </array>
 
     <key>StandardOutPath</key>
-    <string>${projectDir}/launchd/logs/stalled-tasks.out.log</string>
+    <string>${projectDir}/launchd/logs/tasks-digest.out.log</string>
     <key>StandardErrorPath</key>
-    <string>${projectDir}/launchd/logs/stalled-tasks.err.log</string>
+    <string>${projectDir}/launchd/logs/tasks-digest.err.log</string>
 
     <key>RunAtLoad</key>
     <false/>

@@ -1,12 +1,12 @@
 {
-  "name": "@personal-automation/stalled-tasks",
+  "name": "@personal-automation/tasks",
   "version": "0.1.0",
   "type": "module",
   "private": true,
   "scripts": {
     "build": "tsc -b",
-    "stalled-tasks": "tsx src/index.ts",
-    "test:stalled-tasks": "tsx src/index.ts --dry-run",
+    "tasks": "tsx src/index.ts",
+    "test:tasks": "tsx src/index.ts digest --dry-run",
     "generate-launchd-plist": "tsx src/generate-launchd-plist.ts"
   },
   "dependencies": {

@@ -25,7 +25,7 @@ export type AnalyzeResult = {
   outputTokens: number
 }
 
-export type StalledTasksAnalyzer = {
+export type TasksAnalyzer = {
   analyze: (params: { prompt: string; taskCount: number }) => Promise<AnalyzeResult>
 }
 
@@ -35,8 +35,10 @@ export function createAnalyzer({
 }: {
   apiKey: string
   model: string
-}): StalledTasksAnalyzer {
-  const client: AnthropicClient = createClient({ apiKey, model })
+}): TasksAnalyzer {
+  // The budget below is sized for the JSON alone, so thinking has to stay off: it shares the same
+  // ceiling, and a truncated answer fails the schema parse rather than degrading.
+  const client: AnthropicClient = createClient({ apiKey, model, isThinkingDisabled: true })
 
   async function analyze({
     prompt,

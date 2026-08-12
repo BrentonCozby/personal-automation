@@ -2,9 +2,9 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fatal, runWithLock } from '@personal-automation/common/cli'
 import { loadConfig } from './config.js'
-import { type RunResult, runStalledTasks } from './run.js'
+import { type RunResult, runDigest } from './run.js'
 
-const LOCK_PATH = join(tmpdir(), 'stalled-tasks.lock')
+const LOCK_PATH = join(tmpdir(), 'tasks.lock')
 
 type Args = { dryRun: boolean }
 
@@ -65,7 +65,7 @@ async function main(): Promise<void> {
     lockPath: LOCK_PATH,
     run: async () => {
       const config = loadConfig()
-      const result = await runStalledTasks({ config, opts: args })
+      const result = await runDigest({ config, opts: args })
       logResult(result)
     },
   })

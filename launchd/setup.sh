@@ -37,24 +37,24 @@ substitute \
   "$PROJECT_DIR/launchd/newsyslog.personal-automation.conf.template" \
   "$PROJECT_DIR/launchd/newsyslog.personal-automation.conf"
 
-# Generate the digest's dedicated launchd agent from STALLED_TASKS_SCHEDULE (its days/times).
-echo "Generating the stalled-tasks digest schedule…"
-(cd "$PROJECT_DIR" && pnpm --filter @personal-automation/stalled-tasks generate-launchd-plist)
+# Generate the digest's dedicated launchd agent from TASKS_SCHEDULE (its days/times).
+echo "Generating the tasks digest schedule…"
+(cd "$PROJECT_DIR" && pnpm --filter @personal-automation/tasks generate-launchd-plist)
 
 cat <<EOF
 
 Next (load all three agents — the daily run, the digest, and the vault backup):
   cp $PROJECT_DIR/launchd/com.personal-automation.daily.plist ~/Library/LaunchAgents/
-  cp $PROJECT_DIR/launchd/com.personal-automation.stalled-tasks.plist ~/Library/LaunchAgents/
+  cp $PROJECT_DIR/launchd/com.personal-automation.tasks.plist ~/Library/LaunchAgents/
   cp $PROJECT_DIR/launchd/com.personal-automation.vault-backup.plist ~/Library/LaunchAgents/
   launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.personal-automation.daily.plist
-  launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.personal-automation.stalled-tasks.plist
+  launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.personal-automation.tasks.plist
   launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.personal-automation.vault-backup.plist
 
-Changed STALLED_TASKS_SCHEDULE later? Re-run this script, then:
-  launchctl bootout gui/$(id -u)/com.personal-automation.stalled-tasks
-  cp $PROJECT_DIR/launchd/com.personal-automation.stalled-tasks.plist ~/Library/LaunchAgents/
-  launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.personal-automation.stalled-tasks.plist
+Changed TASKS_SCHEDULE later? Re-run this script, then:
+  launchctl bootout gui/$(id -u)/com.personal-automation.tasks
+  cp $PROJECT_DIR/launchd/com.personal-automation.tasks.plist ~/Library/LaunchAgents/
+  launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.personal-automation.tasks.plist
 
 Optional log rotation (rotates the logs in launchd/logs/ weekly, keeps 4):
   sudo cp $PROJECT_DIR/launchd/newsyslog.personal-automation.conf /etc/newsyslog.d/

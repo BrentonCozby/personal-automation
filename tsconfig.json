@@ -8,6 +8,6 @@
     { "path": "./apps/ynab-categorize" },
     { "path": "./apps/ynab-enrich-memos" },
     { "path": "./apps/notify" },
-    { "path": "./apps/stalled-tasks" }
+    { "path": "./apps/tasks" }
   ]
 }

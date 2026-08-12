@@ -25,13 +25,13 @@ apps/
   ynab-categorize/     # daily Amazon-categorizer CLI
   ynab-enrich-memos/   # writes Amazon receipt items into transaction memos; runs before ynab-categorize
   notify/              # emails a digest after the daily run on audit-log errors
-  stalled-tasks/       # scheduled digest of stalled tasks via a pluggable TaskSource (own launchd agent)
+  tasks/       # scheduled digest of stalled tasks via a pluggable TaskSource (own launchd agent)
 packages/
   anthropic/           # Claude API client (messages.parse + zodOutputFormat)
   ynab/                # YNAB client, schemas, types, milliunits
   gmail/               # Gmail API client (OAuth, send w/ optional multipart HTML, read/search)
   common/              # errors, retry, lock, logger, progress, json, chunks, date
-launchd/               # macOS scheduling: run.sh, run-stalled-tasks.sh, run-vault-backup.sh, setup.sh, plist templates, newsyslog conf
+launchd/               # macOS scheduling: run.sh, run-tasks-digest.sh, run-vault-backup.sh, setup.sh, plist templates, newsyslog conf
 ```
 
 - **Cross-package imports** use the package name + subpath: `import { withRetry } from '@personal-automation/common/retry'`. Each package's `exports` map in its `package.json` declares the public API. Internal package files import via relative paths (`./errors.js`).
@@ -43,7 +43,7 @@ launchd/               # macOS scheduling: run.sh, run-stalled-tasks.sh, run-vau
 
 - **External services**: shared ones are a package (`packages/ynab/`, `packages/gmail/`, `packages/anthropic/` for the Claude API client); app-specific ones live in `apps/<app>/src/<service>/` (e.g. each app's thin `anthropic/` wrapper over the shared client). Inside: `client.ts` (factory), `schemas.ts` (zod), `types.ts` (derived). Anything specific stays in that folder.
 - **Constants**: code-shape constants (flag name/color, payee filter, batch sizes) live in `apps/ynab-categorize/src/constants.ts`. The single YNAB-wide constant `YNAB_API_BASE_URL` lives in `packages/ynab/src/constants.ts`. These aren't env-tunable.
-- **Env vars**: split across `.env` files, all gitignored. Shared secrets and ids live in the monorepo-root `.env` (`YNAB_TOKEN`, `YNAB_BUDGET_ID`, `ALLOWED_ACCOUNT_IDS`, `ANTHROPIC_API_KEY`, `GMAIL_OAUTH_*`); each app's own tuning, recipients, and per-app model live in `apps/<app>/.env` (e.g. `LOOKBACK_DAYS`/`EXCLUDED_CATEGORY_GROUPS` for ynab-categorize, `ENRICH_LOOKBACK_DAYS`/`GMAIL_RECEIPT_WINDOW_DAYS`/`GMAIL_FROM_FILTER` for ynab-enrich-memos, `TASK_PROVIDER`/`TASK_LISTS`/`OBSIDIAN_VAULT_PATH`/`STALLED_TASKS_*` for stalled-tasks); apps never read another app's `.env`. An app's `config.ts` calls `loadAppEnv(import.meta.url)` (from `@personal-automation/common/env`), which loads the root `.env` then the app's `.env` on top; package-level scripts with no app `.env` use `loadRootEnv`. No `.default()` calls in `config.ts` — loaders throw if any required var is missing. A `.env.example` sits next to every `.env` (root + per-app) with generic placeholders so nothing personal lives in tracked files.
+- **Env vars**: split across `.env` files, all gitignored. Shared secrets and ids live in the monorepo-root `.env` (`YNAB_TOKEN`, `YNAB_BUDGET_ID`, `ALLOWED_ACCOUNT_IDS`, `ANTHROPIC_API_KEY`, `GMAIL_OAUTH_*`); each app's own tuning, recipients, and per-app model live in `apps/<app>/.env` (e.g. `LOOKBACK_DAYS`/`EXCLUDED_CATEGORY_GROUPS` for ynab-categorize, `ENRICH_LOOKBACK_DAYS`/`GMAIL_RECEIPT_WINDOW_DAYS`/`GMAIL_FROM_FILTER` for ynab-enrich-memos, `TASK_PROVIDER`/`TASK_LISTS`/`OBSIDIAN_VAULT_PATH`/`TASKS_*` for tasks); apps never read another app's `.env`. An app's `config.ts` calls `loadAppEnv(import.meta.url)` (from `@personal-automation/common/env`), which loads the root `.env` then the app's `.env` on top; package-level scripts with no app `.env` use `loadRootEnv`. No `.default()` calls in `config.ts` — loaders throw if any required var is missing. A `.env.example` sits next to every `.env` (root + per-app) with generic placeholders so nothing personal lives in tracked files.
 - **Errors**: extend `AppError` from `@personal-automation/common/errors`. Set `retryable: true` for transient failures so `withRetry` picks them up. Don't add new error subclasses unless callers actually need to branch on them.
 - **Logging**: structured via pino, wrapped in `createLogger` so call sites are `logger.info({ msg, extra })`. The audit log (JSONL) is a separate concern from pino — written via `logger.audit(entry)`.
 - **Audit-log layout**: the writer (`createLogger`) and the reader (`notify`) share one convention from `@personal-automation/common/audit-path` so they can't drift — each app writes `apps/<app>/audit/<app>-<date>.jsonl`. An app's `config.ts` sets `auditDir` via `appAuditDir(import.meta.url)` (module-relative, not CWD); `notify` reads the same path via `AUDIT_DIR_NAME` + `auditFileName`.
@@ -51,8 +51,8 @@ launchd/               # macOS scheduling: run.sh, run-stalled-tasks.sh, run-vau
 ## Workflow
 
 - Local runs: no app has a root-level shortcut — run any app via `pnpm --filter @personal-automation/<app> <script>` (e.g. `pnpm --filter @personal-automation/ynab-categorize test:ynab-categorize` for a dry run).
-- Daily run: launchd invokes `launchd/run.sh`, which loops over the `APPS` array. The plist is generated by `./launchd/setup.sh` from a committed template; the actual plist is gitignored. `stalled-tasks` is not in `APPS` — it has its own agent on `STALLED_TASKS_SCHEDULE`.
-- Apps that can run concurrently guard with a PID lockfile in `$TMPDIR` (e.g. `ynab-categorize.lock`, `stalled-tasks.lock`). Failed runs leave a stale lock which the next run claims automatically.
+- Daily run: launchd invokes `launchd/run.sh`, which loops over the `APPS` array. The plist is generated by `./launchd/setup.sh` from a committed template; the actual plist is gitignored. `tasks` is not in `APPS` — it has its own agent on `TASKS_SCHEDULE`.
+- Apps that can run concurrently guard with a PID lockfile in `$TMPDIR` (e.g. `ynab-categorize.lock`, `tasks.lock`). Failed runs leave a stale lock which the next run claims automatically.
 - Failures trigger a macOS notification via `launchd/run.sh`. Don't replace that wrapper with a direct `pnpm` invocation — you'd lose the notification.
 
 ## Things to never do
