@@ -126,16 +126,21 @@ and fall-back boundaries.
 
 ## Thresholds
 
-All three live in `apps/tasks/src/config.ts` and nowhere else.
+They all live in `apps/tasks/src/config.ts` and nowhere else.
 
 | Setting | Default | Used by |
 | --- | --- | --- |
 | `TASKS_WIP_CAP` | 3 | Promotion. |
 | `TASKS_STALL_DAYS` | 7 | The computed stalled state, which is what the review reports. |
 | `TASKS_HORIZON_DAYS` | 28 | Decay threshold and scheduling ceiling, read from this one value. |
+| `TASKS_DONE_WINDOW_DAYS` | 7 | How far back the done list reaches, counting today. |
 
 The decay threshold and the scheduling ceiling are the same number because they are the same claim
 about how far ahead you can honestly see. A date past the horizon is routed to `#someday`.
+
+The done window is deliberately its own number rather than a reuse of the stall window. They are
+different claims: one is how long silence on a commitment is tolerable, the other is how far back a
+record of what you did stays worth reading.
 
 ## Scope
 
@@ -219,19 +224,45 @@ A task is reported when it is `#active`, has no touch inside the stall window, a
 still ahead of it. The date rule and the stall rule cannot fight each other, because scheduling is
 itself a touch: naming a day both resets the window and puts the date in the future.
 
-**The review sends nothing in two cases.** No task is `#active`, or nothing has gone quiet. Both are
-silence by design. A message saying you have committed to nothing is exactly the deficit feeling this
-model exists to prevent, and a message saying everything is moving is a notification about the
-absence of a problem. A weekly report that always arrives has to find something to say, and what it
-finds is fault.
+Quiet tasks are listed **closest to done first**, the same order the cap reports, and the email names
+the proxy. Longest-untouched-first was tried and reversed: it points at the task hardest to restart,
+when finishing one thing beats resuming everything. Nothing else about the order is a ranking, and
+nothing asks the model for one.
+
+**There is no ask to make in two cases.** No task is `#active`, or nothing has gone quiet. A message
+saying you have committed to nothing is exactly the deficit feeling this model exists to prevent, and
+a message saying everything is moving is a notification about the absence of a problem. A report that
+always arrives has to find something to say, and what it finds is fault.
 
 Each reported task gets three ways out, and the email prints all three: do the next physical step
 (the model names it), give the task a date, or drop it. Not promotion, which would make no sense for
 a task already on the active list.
 
 Only the quiet tasks are sent to the model, so at most `TASKS_WIP_CAP` tasks are analysed instead of
-every open task in the vault. Nothing is ranked: a list that short is read in full, so the model is
-asked for no priority and gets none to inflate.
+every open task in the vault.
+
+### The done list
+
+The other half of the review is the record of what the last `TASKS_DONE_WINDOW_DAYS` days produced:
+what was finished, what was dropped, and how many of the tasks being carried moved at all.
+
+**It sends on its own.** A review with nothing quiet in it still goes out when something was finished
+or dropped, and it costs no model call to build. This is the one thing the whole model would be
+missing without it: a to-do list can only ever show you the shortfall, so the counterweight has to be
+able to arrive on a week when nothing is wrong. Tying it to a quiet task would mean the record of your
+wins only ever appeared next to a complaint, and a clean week would show nothing at all.
+
+Silence therefore needs both halves to be empty: nothing quiet, and nothing closed inside the window.
+
+Dropping is reported as a result rather than a gap, because choosing what not to carry is the
+mechanism the cap runs on. A count of zero is left out rather than printed as a zero, since a row of
+noughts is a scorecard, and there are no streaks, no percentages, and no count of `#someday`.
+
+It is read straight from the `✅` and `❌` dates on the line, so a task ticked or cancelled by hand in
+Obsidian counts exactly like one closed by `abandon`, and no extra state has to be kept anywhere. A
+task can appear in two consecutive reviews when the windows overlap. That is accepted: seeing a win
+twice costs nothing, and the alternative is a stored last-reviewed date that the vault can already
+answer for itself.
 
 The review is also what keeps the touch clock current between edits, since it reconciles the clock
 like every other command. Reviewing a task is not touching it, so the clock goes back unchanged
@@ -290,15 +321,16 @@ The title parser strips state tags, so they never reach the digest or the task's
 
 ## Ordering by closest to done
 
-Promotion at cap names the current `#active` items ordered by most recently touched first, with
-soonest due date breaking ties.
+Two places use one order: promotion at the cap names the current `#active` items, and the review
+lists the quiet ones. Both put the most recently touched first, with the soonest due date breaking
+ties.
 
 There is no completion data to work from. The vault contains no subtasks anywhere, so no completion
 fraction exists, and no task carries an effort estimate. Momentum is the only signal the data
 actually holds: the task you touched yesterday is the one you are part way through. Asking the model
 for an estimate would put a call taking tens of seconds inside an interactive command.
 
-The error copy names the proxy so the ordering is never mysterious.
+Both places name the proxy in what they print, so the ordering is never mysterious.
 
 ## Overrides
 

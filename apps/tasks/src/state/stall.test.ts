@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { isStalled, orderByLongestUntouched, untouchedDays } from './stall.js'
+import { isStalled, untouchedDays } from './stall.js'
 import type { CapCandidate } from './wip.js'
 
 // Stalling is counted in local calendar days, so the zone has to be pinned rather than inherited.
@@ -101,48 +101,5 @@ describe('isStalled', () => {
     const task = candidate({ lastTouched: undefined })
 
     expect(isStalled({ task, stallDays: 7, now: NOW })).toBe(false)
-  })
-})
-
-describe('orderByLongestUntouched', () => {
-  it('puts the longest untouched first', () => {
-    const ordered = orderByLongestUntouched([
-      candidate({ title: 'recent', lastTouched: new Date(2026, 7, 18) }),
-      candidate({ title: 'quietest', lastTouched: new Date(2026, 6, 2) }),
-    ])
-
-    expect(ordered.map(task => task.title)).toEqual(['quietest', 'recent'])
-  })
-
-  // Every task shares one timestamp after a cold start, so the tie is the common case rather than
-  // an edge one.
-  it('breaks a tie on the soonest due date, undated last', () => {
-    const lastTouched = new Date(2026, 7, 13)
-    const ordered = orderByLongestUntouched([
-      candidate({ title: 'undated', due: null, lastTouched }),
-      candidate({ title: 'later', due: new Date(2026, 8, 1), lastTouched }),
-      candidate({ title: 'sooner', due: new Date(2026, 7, 22), lastTouched }),
-    ])
-
-    expect(ordered.map(task => task.title)).toEqual(['sooner', 'later', 'undated'])
-  })
-
-  it('sorts a task the clock has never seen last', () => {
-    const ordered = orderByLongestUntouched([
-      candidate({ title: 'unseen', lastTouched: undefined }),
-      candidate({ title: 'seen', lastTouched: new Date(2026, 7, 18) }),
-    ])
-
-    expect(ordered.map(task => task.title)).toEqual(['seen', 'unseen'])
-  })
-
-  it('leaves the input array alone', () => {
-    const tasks = [
-      candidate({ title: 'recent', lastTouched: new Date(2026, 7, 18) }),
-      candidate({ title: 'quietest', lastTouched: new Date(2026, 6, 2) }),
-    ]
-    orderByLongestUntouched(tasks)
-
-    expect(tasks.map(task => task.title)).toEqual(['recent', 'quietest'])
   })
 })

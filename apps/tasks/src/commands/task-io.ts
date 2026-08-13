@@ -67,25 +67,32 @@ export async function withTaskClock<T>({
   clockPath: string
   now: Date
   act: (args: {
+    /** Every task in scope, whatever its checkbox says. The done list is read from the closed ones. */
+    tasks: ScannedTask[]
     open: ScannedTask[]
     clock: TouchClock
   }) => Promise<{ result: T; clock: TouchClock }>
 }): Promise<T> {
-  const open = await readOpenTasks({ vaultPath, scopes })
+  const tasks = await readTasks({ vaultPath, scopes })
+  const open = openOf(tasks)
   const clock = reconcileTouchClock({
     stored: await readTouchClock(clockPath),
     tasks: open.map(task => ({ key: keyOf(task), fingerprint: fingerprintOf(task.raw) })),
     now,
   })
 
-  const acted = await act({ open, clock })
+  const acted = await act({ tasks, open, clock })
   await writeTouchClock({ path: clockPath, clock: acted.clock })
 
   return acted.result
 }
 
-/** Every open task in scope that has a title to be named by. */
-export async function readOpenTasks({
+/**
+ * Every task in scope that has a title, whatever its checkbox says. A line holding nothing but
+ * markers has no title to match on or to be identified by, so it is not a task anything here can
+ * name.
+ */
+export async function readTasks({
   vaultPath,
   scopes,
 }: {
@@ -101,9 +108,23 @@ export async function readOpenTasks({
     }),
   )
 
-  // A finished task is out of reach of every command, and a line holding nothing but markers has
-  // no title to match on or to be identified by.
-  return perFile.flat().filter(task => task.status === 'open' && task.title !== '')
+  return perFile.flat().filter(task => task.title !== '')
+}
+
+/** The live ones. A closed task is out of reach of every command and holds no place against the cap. */
+export function openOf(tasks: readonly ScannedTask[]): ScannedTask[] {
+  return tasks.filter(task => task.status === 'open')
+}
+
+/** Every open task in scope that has a title to be named by. */
+export async function readOpenTasks({
+  vaultPath,
+  scopes,
+}: {
+  vaultPath: string
+  scopes: readonly string[]
+}): Promise<ScannedTask[]> {
+  return openOf(await readTasks({ vaultPath, scopes }))
 }
 
 // Case-insensitive substring, except that an exact title wins outright. Without that, a task whose

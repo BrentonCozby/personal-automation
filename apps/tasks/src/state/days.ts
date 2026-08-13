@@ -42,8 +42,8 @@ export type DueStatus = 'past' | 'future' | 'none'
 /**
  * A future due date means the task is scheduled rather than stuck: the Tasks plugin surfaces it on
  * the day, so nothing here has to. A date at or before `now` counts as past, which is what keeps a
- * task due today in the day's list — due dates are local midnight, so today's is always behind the
- * clock by the time anything reads it.
+ * task due today in the day's list, since due dates are local midnight and today's is therefore
+ * always behind the clock by the time anything reads it.
  */
 export function dueStatus({ due, now }: { due: Date | null; now: Date }): DueStatus {
   if (!due) return 'none'

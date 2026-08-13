@@ -48,25 +48,27 @@ Commands:
   --help, -h          Show this help`)
 }
 
+function silentMessage(result: Extract<RunResult, { kind: 'silent' }>): string {
+  if (result.reason === 'no_active') return 'Nothing is #active, so there is nothing to review.'
+  if (result.activeCount === 1) return 'The one task you are carrying was touched recently.'
+
+  return `All ${result.activeCount} of the tasks you are carrying were touched recently.`
+}
+
 function logDigestResult(result: RunResult): void {
   switch (result.kind) {
-    case 'no_active':
-      console.log('Nothing is #active, so there is nothing to review. No email.')
-      break
-    case 'nothing_stalled':
-      console.log(
-        result.activeCount === 1
-          ? 'The one task you are carrying was touched recently. No email.'
-          : `All ${result.activeCount} of the tasks you are carrying were touched recently. No email.`,
-      )
+    case 'silent':
+      console.log(`${silentMessage(result)} Nothing finished or dropped either. No email.`)
       break
     case 'dry_run':
       console.log(`\n${result.subject}\n\n${result.body}\n`)
-      console.log(`[dry run] ${result.quietCount} of ${result.activeCount} gone quiet — not sent.`)
+      console.log(
+        `[dry run] ${result.quietCount} of ${result.activeCount} gone quiet, ${result.doneCount} closed. Not sent.`,
+      )
       break
     case 'sent':
       console.log(
-        `Sent the review — ${result.quietCount} gone quiet (message_id=${result.messageId}).`,
+        `Sent the review: ${result.quietCount} gone quiet, ${result.doneCount} closed (message_id=${result.messageId}).`,
       )
       break
     default: {

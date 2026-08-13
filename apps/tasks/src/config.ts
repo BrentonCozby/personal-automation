@@ -5,15 +5,16 @@ loadAppEnv(import.meta.url)
 
 // TASKS_SCHEDULE (the days/times the digest runs) isn't here: it's consumed only by the
 // launchd plist generator at setup time, not at app runtime. launchd fires the digest on the
-// scheduled days/times, so the app has no day-gate of its own — when invoked, it reviews.
+// scheduled days/times, so the app has no day-gate of its own: when invoked, it reviews.
 const schema = z.object({
   TASKS_TO_EMAIL: z.email(),
-  // The three thresholds of the state model. They live here and nowhere else, so no part of the
+  // The thresholds of the state model. They live here and nowhere else, so no part of the
   // app can hold its own idea of how many days or how many commitments are too many. Coerced
   // because process.env values are always strings.
   TASKS_WIP_CAP: z.coerce.number().pipe(z.int().positive()),
   TASKS_STALL_DAYS: z.coerce.number().pipe(z.int().positive()),
   TASKS_HORIZON_DAYS: z.coerce.number().pipe(z.int().positive()),
+  TASKS_DONE_WINDOW_DAYS: z.coerce.number().pipe(z.int().positive()),
   TASK_LISTS: jsonValue.pipe(z.array(z.string())),
   OBSIDIAN_VAULT_PATH: z.string().min(1),
   TASKS_ANTHROPIC_MODEL: z.string().min(1),
@@ -34,6 +35,12 @@ export type Config = {
    * the same number because they are the same claim: a date past it is routed to `#someday`.
    */
   horizonDays: number
+  /**
+   * How many days of finished and dropped tasks the done list covers, counting today. A separate
+   * claim from the stall window: one is how long silence is tolerable, this is how far back a record
+   * of what you did stays interesting.
+   */
+  doneWindowDays: number
   /** Files or folders in the vault that hold tasks; empty = just `todos.md` at the vault root. */
   taskLists: string[]
   /** The vault folder every command reads and writes. */
@@ -53,6 +60,7 @@ export function loadConfig(): Config {
     wipCap: parsed.TASKS_WIP_CAP,
     stallDays: parsed.TASKS_STALL_DAYS,
     horizonDays: parsed.TASKS_HORIZON_DAYS,
+    doneWindowDays: parsed.TASKS_DONE_WINDOW_DAYS,
     taskLists: parsed.TASK_LISTS,
     obsidianVaultPath: parsed.OBSIDIAN_VAULT_PATH,
     model: parsed.TASKS_ANTHROPIC_MODEL,

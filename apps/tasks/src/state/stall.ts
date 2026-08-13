@@ -45,28 +45,6 @@ export function isStalled({
   return quiet !== undefined && quiet >= stallDays
 }
 
-/**
- * Stalled tasks ordered longest untouched first, with the soonest due date breaking ties and an
- * undated task last.
- *
- * The tie is the ordinary case rather than an edge one: a rebuilt clock stamps every task with the
- * same timestamp, so a whole week's digest can share one day count.
- */
-export function orderByLongestUntouched<T extends CapCandidate>(tasks: readonly T[]): T[] {
-  return [...tasks].sort((left, right) => {
-    const touched = touchTime(left.lastTouched) - touchTime(right.lastTouched)
-    if (touched !== 0) return touched
-
-    return dueTime(left.due) - dueTime(right.due)
-  })
-}
-
-// A task the clock has never seen sorts last, the same way it does in the cap's ordering.
-function touchTime(value: Date | undefined): number {
-  return value ? value.getTime() : Number.POSITIVE_INFINITY
-}
-
-// No due date is not the same as due today, so an undated task sorts after every dated one.
-function dueTime(value: Date | null): number {
-  return value ? value.getTime() : Number.POSITIVE_INFINITY
-}
+// Quiet tasks are ordered by `orderByClosestToDone` in wip.ts, the same order the cap reports. There
+// is deliberately no longest-untouched-first ordering: pointing at the quietest task points at the
+// one hardest to restart, and finishing something beats resuming everything.

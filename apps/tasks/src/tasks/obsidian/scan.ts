@@ -3,9 +3,12 @@ import type { TaskState, TaskStatus } from '../../state/types.js'
 import { parseTaskLine } from './lines.js'
 import { stripStateTags } from './tags.js'
 
-// Obsidian Tasks "created" / "due" markers. The date that follows each is a bare YYYY-MM-DD.
+// Obsidian Tasks "created" / "due" / "done" / "cancelled" markers. The date that follows each is a
+// bare YYYY-MM-DD.
 const CREATED_DATE = /➕\s*(\d{4}-\d{2}-\d{2})/u
 const DUE_DATE = /📅\s*(\d{4}-\d{2}-\d{2})/u
+const DONE_DATE = /✅\s*(\d{4}-\d{2}-\d{2})/u
+const CANCELLED_DATE = /❌\s*(\d{4}-\d{2}-\d{2})/u
 // A recurrence rule (`🔁 every week on Sunday`) runs from the marker to the next Tasks emoji or
 // the line end. Stripped from the title; the task is still judged by its due date like any other.
 const RECURRENCE_RULE = /🔁[^➕📅⏳🛫✅❌🔺⏫🔼🔽⏬🆔⛔🏁]*/u
@@ -59,6 +62,12 @@ export type ScannedTask = {
   notes: string | null
   created: Date | null
   due: Date | null
+  /**
+   * The day the box was closed: the `✅` date on a finished task or the `❌` date on a dropped one.
+   * Null on every open task, and on a closed one carrying no date. The only thing the vault records
+   * about finishing or dropping, so the done list is read from it.
+   */
+  closed: Date | null
 }
 
 /**
@@ -93,6 +102,11 @@ export function scanFileTasks({ path, content }: { path: string; content: string
       notes,
       created: parseLocalDate(parsed.text.match(CREATED_DATE)?.[1]),
       due: parseLocalDate(parsed.text.match(DUE_DATE)?.[1]),
+      // The checkbox says which of the two a task is, so the date only has to say when. A line
+      // carrying both is only reachable by hand, and finishing is the more meaningful of the two.
+      closed: parseLocalDate(
+        parsed.text.match(DONE_DATE)?.[1] ?? parsed.text.match(CANCELLED_DATE)?.[1],
+      ),
     })
   }
 

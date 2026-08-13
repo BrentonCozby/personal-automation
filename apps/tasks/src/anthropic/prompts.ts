@@ -57,7 +57,7 @@ const RULES = `Rules:
 - suggested_next_action is one small physical step phrased as an imperative. Use null only for conditional or fine where no single step applies.
 - Each task carries untouched_days (calendar days since I last edited or acted on it) and due_date_passed. Use them as context for why it went quiet; do not rank the tasks, and do not tell me to hurry.
 - Read the whole list for dependencies: if task A can't move until task B is done, classify A as "blocked" and name B in its reasoning.
-- Register: your reasoning is printed to me as you wrote it, so never use the words overdue, failing, behind, or should have, and never imply I have failed. State what is in the way, plainly.`
+- Register: your reasoning and next action are printed to me exactly as you wrote them, so never use the words overdue, failing, behind, or should have, and never imply I have failed. State what is in the way, plainly. Write no em dashes: use a colon, a comma, or a full stop.`
 
 export function buildAnalysisPrompt({
   tasks,

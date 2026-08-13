@@ -5,7 +5,7 @@ A catch-all monorepo for my personal automation — a pnpm workspace of small sc
 - **`apps/ynab-categorize`** — daily CLI that auto-categorizes Amazon transactions using the Anthropic API (Claude Haiku by default).
 - **`apps/ynab-enrich-memos`** — reads Amazon receipt emails, parses the product list, and PATCHes it into the `memo` of matching YNAB transactions so the categorizer has real item names to work from. Runs before `ynab-categorize` in the daily run.
 - **`apps/notify`** — emails an error digest after the daily run when any app's audit log shows errors.
-- **`apps/tasks`** — emails a scheduled digest reviewing open Obsidian todos: classifies why each has stalled and surfaces the few worth acting on with one next action each.
+- **`apps/tasks`** — a state model over Obsidian todos, with a scheduled review that emails the committed tasks that have gone quiet (one next action each) plus a record of what was finished and dropped.
 - **`packages/anthropic`** — shared Claude API client (`messages.parse` + `zodOutputFormat`).
 - **`packages/ynab`** — shared YNAB API client (zod-validated) + schemas + types + milliunits helpers.
 - **`packages/gmail`** — Gmail API client (OAuth + send, optional multipart HTML), zod-validated.
@@ -39,7 +39,7 @@ Config is split: shared secrets and ids live in the root `.env`, and each app's 
 - **root `.env`** — `ANTHROPIC_API_KEY` (from [console.anthropic.com](https://console.anthropic.com), separate from Claude Pro), `YNAB_TOKEN` + `YNAB_BUDGET_ID`, `ALLOWED_ACCOUNT_IDS` (shared by both YNAB apps), and the `GMAIL_OAUTH_*` credentials apps send mail through. Mint `GMAIL_OAUTH_REFRESH_TOKEN` with `pnpm --filter @personal-automation/gmail bootstrap`, and re-run that after any Google password change — it revokes the token.
 - **`apps/ynab-categorize/.env`** — `LOOKBACK_DAYS`, `AUDIT_DIR`, `EXCLUDED_CATEGORY_GROUPS`, `CATEGORY_ROUTING_HINTS`, `YNAB_CATEGORIZER_ANTHROPIC_MODEL`.
 - **`apps/ynab-enrich-memos/.env`** — `AUDIT_DIR`, `ENRICH_LOOKBACK_DAYS`, `GMAIL_RECEIPT_WINDOW_DAYS`, `GMAIL_FROM_FILTER`, `ENRICH_MEMOS_ANTHROPIC_MODEL`.
-- **`apps/tasks/.env`** — `OBSIDIAN_VAULT_PATH`, `TASK_LISTS`, `TASKS_SCHEDULE`, `TASKS_TO_EMAIL`, `TASKS_ANTHROPIC_MODEL`, and the state-model thresholds (`TASKS_WIP_CAP`, `TASKS_STALL_DAYS`, `TASKS_HORIZON_DAYS`).
+- **`apps/tasks/.env`** — `OBSIDIAN_VAULT_PATH`, `TASK_LISTS`, `TASKS_SCHEDULE`, `TASKS_TO_EMAIL`, `TASKS_ANTHROPIC_MODEL`, and the state-model thresholds (`TASKS_WIP_CAP`, `TASKS_STALL_DAYS`, `TASKS_HORIZON_DAYS`, `TASKS_DONE_WINDOW_DAYS`).
 - **`apps/notify/.env`** — `NOTIFY_TO_EMAIL`.
 
 Requires Node 26+ and pnpm 11+.
@@ -95,11 +95,13 @@ Runs before `ynab-categorize` so the categorizer reasons from real item names in
 
 ## tasks
 
-A twice-weekly review of the few tasks you have committed to, which emails only the ones that have gone quiet, with one next action each. It runs on its own launchd schedule — the days/times in `TASKS_SCHEDULE` (e.g. `["Sunday 08:00", "Wednesday 08:00"]`), so twice or three times a week is just more entries.
+A twice-weekly review of the few tasks you have committed to. It emails the ones that have gone quiet, with one next action each, and the record of what you finished and dropped. It runs on its own launchd schedule: the days/times in `TASKS_SCHEDULE` (e.g. `["Sunday 08:00", "Wednesday 08:00"]`), so twice or three times a week is just more entries.
 
 The app carries a state model: each task is tagged `#someday` or `#active` in the vault, and `#active` is capped at `TASKS_WIP_CAP`. `tasks migrate` gives every untagged task its first tag (dry by default, `--apply` writes). Three commands then act on one task at a time, each taking any part of its title: `promote` moves it to `#active` (refusing at the cap unless you pass `--over-cap`), `schedule <date>` puts a `📅` date on it (`YYYY-MM-DD` or `+Nd`, and a date past `TASKS_HORIZON_DAYS` sends it to `#someday` rather than pretending it is planned), and `abandon` drops it by cancelling its checkbox. Finishing and dropping are recorded by the checkbox rather than a tag, so a task you tick or cancel in Obsidian counts the same as one closed here. Since Obsidian has no per-task last-modified anywhere, a fingerprint of each task's text is kept in `apps/tasks/runs/touch-clock.json` so an edit can be read as a touch; the file is disposable and rebuilds itself. See `docs/task-state-model.md`.
 
-The digest reviews `#active` tasks only. One counts as gone quiet when nothing has touched it for `TASKS_STALL_DAYS` and it carries no date still ahead of it — a date means it is scheduled, and the Tasks plugin surfaces it on the day. Only those tasks reach the model, which says why each went quiet and names its next physical step; the email prints that step plus the `schedule` and `abandon` commands for it. Two cases send nothing at all: no task is `#active`, or nothing has gone quiet. Neither is worth an email.
+The review covers `#active` tasks only. One counts as gone quiet when nothing has touched it for `TASKS_STALL_DAYS` and it carries no date still ahead of it: a date means it is scheduled, and the Tasks plugin surfaces it on the day. Only those tasks reach the model, which says why each went quiet and names its next physical step; the email prints that step plus the `schedule` and `abandon` commands for it, listed closest-to-done first rather than quietest first, because finishing one thing beats resuming everything.
+
+The email's other half is the done list: what was finished and dropped in the last `TASKS_DONE_WINDOW_DAYS` days, read straight from the `✅`/`❌` dates, plus how many of the tasks you are carrying moved at all. It sends on its own, with no model call, on a week when nothing has gone quiet, because a to-do list can only ever show the shortfall. Dropping something on purpose is reported as a result, not a gap. The review is silent only when both halves are empty: nothing quiet, and nothing closed inside the window.
 
 Every command reads the same vault on disk (`OBSIDIAN_VAULT_PATH`) through one scanner. With `TASK_LISTS=[]` it reads `todos.md` at the vault root; otherwise `TASK_LISTS` names files or folders (relative to the vault) and folders are walked for their `*.md`. It parses [Obsidian Tasks](https://publish.obsidian.md/tasks/) lines — open `- [ ]` and in-progress `- [/]` checkboxes count as live (done and cancelled are skipped), `📅` sets the due date, and recurring (`🔁`) tasks sit outside the state model entirely (the plugin manages them by their recurrence rule). Nothing pulls the vault, so it reads the last synced state on disk — keep it synced separately (Obsidian Sync or the Obsidian Git plugin). It works on any OS.
 

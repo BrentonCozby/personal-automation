@@ -17,6 +17,31 @@ it('reads an open task and maps the created/due markers', () => {
   expect(tasks[0]?.due?.getDate()).toBe(24)
 })
 
+// The done list needs to know when a box was closed, which is the only thing the vault records about
+// finishing or dropping a task.
+it('reads the date a task was finished or dropped', () => {
+  const [finished] = scan('- [x] pay the water bill ✅ 2026-08-11')
+  const [dropped] = scan('- [-] replace the garage remote ❌ 2026-08-10')
+
+  expect(finished?.closed?.getDate()).toBe(11)
+  expect(finished?.closed?.getMonth()).toBe(7)
+  expect(dropped?.closed?.getDate()).toBe(10)
+})
+
+it('leaves the closed date null on an open task', () => {
+  const [task] = scan('- [ ] book india flights ➕ 2025-05-20')
+
+  expect(task?.closed).toBeNull()
+})
+
+// Only reachable by hand. The checkbox says which list the task belongs in, so the date just says
+// when, and finishing something is the more meaningful of the two.
+it('prefers the finished date when a line carries both', () => {
+  const [task] = scan('- [x] odd one ❌ 2026-08-01 ✅ 2026-08-09')
+
+  expect(task?.closed?.getDate()).toBe(9)
+})
+
 it('parses dates as LOCAL midnight, not UTC (no off-by-one on any day count)', () => {
   const [task] = scan('- [ ] file taxes ➕ 2026-01-01')
 

@@ -50,11 +50,12 @@ it('frames the tasks as commitments that have gone quiet, and asks for no rankin
 })
 
 // The model's reasoning is printed in the email as written, so the register rules have to reach it.
-it('bans the accusatory register in the model’s own words', () => {
+it('bans the accusatory register and em dashes in the model’s own words', () => {
   const prompt = buildAnalysisPrompt({ tasks: [promptTask()], today: TODAY })
 
   expect(prompt).toContain('overdue')
   expect(prompt).toContain('never use the words')
+  expect(prompt).toContain('Write no em dashes')
 })
 
 it('states today’s date', () => {

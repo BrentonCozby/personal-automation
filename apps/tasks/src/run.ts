@@ -9,23 +9,42 @@ import { buildAnalysisPrompt, type PromptTask } from './anthropic/prompts.js'
 import type { TaskAnalysis } from './anthropic/schemas.js'
 import { toCandidate, withTaskClock } from './commands/task-io.js'
 import type { Config } from './config.js'
-import { buildDigest, type DigestItem } from './digest.js'
+import { buildDigest, type Digest, type DigestItem, type DoneSummary } from './digest.js'
 import { appendRunLog, type RunLogEntry } from './run-log.js'
 import { dueStatus, localIsoDate } from './state/days.js'
-import { isStalled, orderByLongestUntouched, untouchedDays } from './state/stall.js'
+import { closedSince, countMoved } from './state/done.js'
+import { isStalled, untouchedDays } from './state/stall.js'
 import { defaultTouchClockPath, type TouchClock } from './state/touch-clock.js'
-import { type CapCandidate, countsTowardCap } from './state/wip.js'
+import { type CapCandidate, countsTowardCap, orderByClosestToDone } from './state/wip.js'
 import type { ScannedTask } from './tasks/obsidian/scan.js'
 
 export type RunOptions = {
   dryRun: boolean
 }
 
+/**
+ * Nothing was sent, and why. Both reasons also mean the done list was empty: a record of what you
+ * finished sends on its own, so silence requires both halves to have nothing in them.
+ */
+export type SilentReason = 'no_active' | 'nothing_stalled'
+
 export type RunResult =
-  | { kind: 'no_active' }
-  | { kind: 'nothing_stalled'; activeCount: number }
-  | { kind: 'dry_run'; subject: string; body: string; quietCount: number; activeCount: number }
-  | { kind: 'sent'; messageId: string; quietCount: number; activeCount: number }
+  | { kind: 'silent'; reason: SilentReason; activeCount: number }
+  | {
+      kind: 'dry_run'
+      subject: string
+      body: string
+      quietCount: number
+      doneCount: number
+      activeCount: number
+    }
+  | {
+      kind: 'sent'
+      messageId: string
+      quietCount: number
+      doneCount: number
+      activeCount: number
+    }
 
 /** A task as both the state model reads it and the vault holds it, so one pass can do both. */
 type Reviewed = CapCandidate & { task: ScannedTask }
@@ -38,11 +57,14 @@ type Quiet = {
 }
 
 /**
- * Reviews the tasks you are carrying and emails the ones that have gone quiet.
+ * Reviews the tasks you are carrying: emails the ones that have gone quiet, and the record of what
+ * the last few days produced.
  *
- * Silent in two cases, both deliberate: nothing is `#active`, or everything `#active` was touched
- * inside the stall window. A message about not having committed to anything, or about work that is
- * moving, is the deficit feeling this whole model exists to avoid.
+ * Silence needs both halves to be empty. Nothing `#active`, or nothing quiet, means there is no ask
+ * to make, because a message about not having committed to anything or about work that is moving is
+ * the deficit feeling this whole model exists to avoid. But a record of what you finished or dropped
+ * is not an ask, so it sends on its own: a to-do list can only ever show the shortfall, and the
+ * counterweight has to be able to arrive on a week when nothing is wrong.
  *
  * Runs through the same touch clock as the editing commands, so a twice-weekly review is also what
  * keeps the clock current.
@@ -77,14 +99,26 @@ export async function runDigest({
     now,
     // Reviewing a task is not touching it, so the clock goes back unchanged: reconciling it against
     // the vault is the only thing this run does to it.
-    act: async ({ open, clock }) => ({
+    act: async ({ tasks, open, clock }) => ({
       clock,
-      result: await review({ open, clock, config, opts, now, analyzer, gmail, runsDir, logger }),
+      result: await review({
+        tasks,
+        open,
+        clock,
+        config,
+        opts,
+        now,
+        analyzer,
+        gmail,
+        runsDir,
+        logger,
+      }),
     }),
   })
 }
 
 async function review({
+  tasks,
   open,
   clock,
   config,
@@ -95,6 +129,7 @@ async function review({
   runsDir,
   logger,
 }: {
+  tasks: ScannedTask[]
   open: ScannedTask[]
   clock: TouchClock
   config: Config
@@ -106,17 +141,41 @@ async function review({
   logger: pino.Logger
 }): Promise<RunResult> {
   const { active, quiet } = partition({ open, clock, stallDays: config.stallDays, now })
-  logger.info({ open: open.length, active: active.length, quiet: quiet.length }, 'Read the vault.')
-
-  if (active.length === 0) {
-    logger.info('Nothing is #active, so there is nothing to review.')
-
-    return { kind: 'no_active' }
+  const windowDays = config.doneWindowDays
+  const closed = closedSince({ tasks, windowDays, now })
+  const done: DoneSummary = {
+    ...closed,
+    windowDays,
+    movedCount: countMoved({ active, windowDays, now }),
   }
-  if (quiet.length === 0) {
-    logger.info({ activeCount: active.length }, 'Every active task was touched recently; no email.')
+  // Closures rather than entries, so this agrees with the counts the email prints: a chore done three
+  // times is three things done, on one line.
+  const doneCount = closed.finishedCount + closed.droppedCount
+  logger.info(
+    { open: open.length, active: active.length, quiet: quiet.length, doneCount },
+    'Read the vault.',
+  )
 
-    return { kind: 'nothing_stalled', activeCount: active.length }
+  // The two halves are gated separately. Whichever of them has something decides the email; only an
+  // empty pair is silent.
+  if (quiet.length === 0) {
+    const reason: SilentReason = active.length === 0 ? 'no_active' : 'nothing_stalled'
+    if (doneCount === 0) {
+      logger.info({ reason, activeCount: active.length }, 'Nothing to say; no email.')
+
+      return { kind: 'silent', reason, activeCount: active.length }
+    }
+
+    return await deliver({
+      digest: buildDigest({ items: [], activeCount: active.length, done }),
+      quietCount: 0,
+      doneCount,
+      activeCount: active.length,
+      config,
+      opts,
+      gmail,
+      logger,
+    })
   }
 
   const analyses = await analyze({ quiet, config, analyzer, logger })
@@ -137,7 +196,6 @@ async function review({
     })
   }
 
-  const digest = buildDigest({ items, activeCount: active.length })
   const today = todayIso()
   appendRunLog({
     entries: items.map(item => toRunLogEntry({ item, dryRun: opts.dryRun, now, today })),
@@ -145,13 +203,46 @@ async function review({
     ...(runsDir !== undefined ? { dir: runsDir } : {}),
   })
 
+  return await deliver({
+    digest: buildDigest({ items, activeCount: active.length, done }),
+    quietCount: items.length,
+    doneCount,
+    activeCount: active.length,
+    config,
+    opts,
+    gmail,
+    logger,
+  })
+}
+
+/** Prints the email or sends it, so both halves of the review leave by the same door. */
+async function deliver({
+  digest,
+  quietCount,
+  doneCount,
+  activeCount,
+  config,
+  opts,
+  gmail,
+  logger,
+}: {
+  digest: Digest
+  quietCount: number
+  doneCount: number
+  activeCount: number
+  config: Config
+  opts: RunOptions
+  gmail: GmailClient | undefined
+  logger: pino.Logger
+}): Promise<RunResult> {
   if (opts.dryRun) {
     return {
       kind: 'dry_run',
       subject: digest.subject,
       body: digest.body,
-      quietCount: items.length,
-      activeCount: active.length,
+      quietCount,
+      doneCount,
+      activeCount,
     }
   }
 
@@ -164,24 +255,22 @@ async function review({
         refreshToken: config.gmailRefreshToken,
       }),
     })
-  logger.info({ to: config.toEmail }, 'Sending digest…')
+  logger.info({ to: config.toEmail }, 'Sending the review…')
   const sent = await client.sendMessage({
     to: config.toEmail,
     subject: digest.subject,
     body: digest.body,
     html: digest.html,
   })
-  logger.info({ messageId: sent.id, quietCount: items.length }, 'Digest sent.')
+  logger.info({ messageId: sent.id, quietCount, doneCount }, 'Review sent.')
 
-  return {
-    kind: 'sent',
-    messageId: sent.id,
-    quietCount: items.length,
-    activeCount: active.length,
-  }
+  return { kind: 'sent', messageId: sent.id, quietCount, doneCount, activeCount }
 }
 
-// The tasks being carried, and of those the ones that have gone quiet, longest untouched first.
+// The tasks being carried, and of those the ones that have gone quiet, closest to done first.
+//
+// That order is the cap's own, and it is the point rather than a detail: pointing at the quietest
+// task points at the one hardest to restart, when finishing one thing beats resuming everything.
 // Everything else in the vault is out of scope by design: `#someday` is a holding pool and untagged
 // is the permanent steady state, so neither is counted or reported on.
 function partition({
@@ -197,9 +286,7 @@ function partition({
 }): { active: Reviewed[]; quiet: Quiet[] } {
   const reviewed: Reviewed[] = open.map(task => ({ ...toCandidate({ task, clock }), task }))
   const active = reviewed.filter(countsTowardCap)
-  const stalled = orderByLongestUntouched(
-    active.filter(task => isStalled({ task, stallDays, now })),
-  )
+  const stalled = orderByClosestToDone(active.filter(task => isStalled({ task, stallDays, now })))
 
   return {
     active,
