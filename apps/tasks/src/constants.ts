@@ -17,3 +17,6 @@ export const CLI_INVOCATION = 'pnpm --filter @personal-automation/tasks tasks'
 
 /** Where this app's own settings live, relative to the repo root. The digest names it to edit. */
 export const ENV_FILE = 'apps/tasks/.env'
+
+/** The label under the push's tap target. Pushover shows it beside the link. */
+export const ALERT_URL_TITLE = 'Open the dashboard'

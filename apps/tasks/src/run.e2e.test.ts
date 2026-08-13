@@ -98,6 +98,10 @@ function makeConfig(overrides: Partial<Config> = {}): Config {
     gmailClientId: 'cid',
     gmailClientSecret: 'secret',
     gmailRefreshToken: 'rtok',
+    dueAlertDays: 7,
+    alertUrl: 'obsidian://open?vault=test&file=Todos/Dashboard.md',
+    pushoverToken: 'test-pushover-token',
+    pushoverUserKey: 'test-pushover-user',
     ...overrides,
   }
 }

@@ -3,9 +3,9 @@ import { z } from 'zod'
 
 loadAppEnv(import.meta.url)
 
-// TASKS_SCHEDULE (the days/times the digest runs) isn't here: it's consumed only by the
-// launchd plist generator at setup time, not at app runtime. launchd fires the digest on the
-// scheduled days/times, so the app has no day-gate of its own: when invoked, it reviews.
+// TASKS_SCHEDULE (the review's days/times) and TASKS_ALERT_TIMES (the alert's times) aren't here:
+// both are consumed only by the launchd plist generator at setup time, not at app runtime. launchd
+// fires each job on its own schedule, so neither has a day-gate of its own: when invoked, it runs.
 const schema = z.object({
   TASKS_TO_EMAIL: z.email(),
   // The thresholds of the state model. They live here and nowhere else, so no part of the
@@ -18,6 +18,10 @@ const schema = z.object({
   TASKS_OVERRIDE_WINDOW_DAYS: z.coerce.number().pipe(z.int().positive()),
   // Zero is allowed: it asks for the suggestion the first time the cap is raised at all.
   TASKS_OVERRIDE_LIMIT: z.coerce.number().pipe(z.int().nonnegative()),
+  TASKS_DUE_ALERT_DAYS: z.coerce.number().pipe(z.int().positive()),
+  TASKS_ALERT_URL: z.string().min(1),
+  PUSHOVER_TOKEN: z.string().min(1),
+  PUSHOVER_USER_KEY: z.string().min(1),
   TASK_LISTS: jsonValue.pipe(z.array(z.string())),
   OBSIDIAN_VAULT_PATH: z.string().min(1),
   TASKS_ANTHROPIC_MODEL: z.string().min(1),
@@ -51,6 +55,15 @@ export type Config = {
    * A cap gone around exactly this many times is a cap that mostly holds.
    */
   overrideLimit: number
+  /**
+   * Days a dated one-off task keeps being pushed about, counting the due day. Recurring tasks
+   * ignore it: an unticked chore is asked about every day until it is ticked.
+   */
+  dueAlertDays: number
+  /** Where tapping the push lands. Held whole rather than composed, so it matches what was tested. */
+  alertUrl: string
+  pushoverToken: string
+  pushoverUserKey: string
   /** Files or folders in the vault that hold tasks; empty = just `todos.md` at the vault root. */
   taskLists: string[]
   /** The vault folder every command reads and writes. */
@@ -73,6 +86,10 @@ export function loadConfig(): Config {
     doneWindowDays: parsed.TASKS_DONE_WINDOW_DAYS,
     overrideWindowDays: parsed.TASKS_OVERRIDE_WINDOW_DAYS,
     overrideLimit: parsed.TASKS_OVERRIDE_LIMIT,
+    dueAlertDays: parsed.TASKS_DUE_ALERT_DAYS,
+    alertUrl: parsed.TASKS_ALERT_URL,
+    pushoverToken: parsed.PUSHOVER_TOKEN,
+    pushoverUserKey: parsed.PUSHOVER_USER_KEY,
     taskLists: parsed.TASK_LISTS,
     obsidianVaultPath: parsed.OBSIDIAN_VAULT_PATH,
     model: parsed.TASKS_ANTHROPIC_MODEL,
