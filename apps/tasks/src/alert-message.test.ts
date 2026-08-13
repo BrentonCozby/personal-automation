@@ -107,3 +107,22 @@ it('keeps the demotion when the due list is truncated', () => {
   expect(Buffer.byteLength(result.message, 'utf8')).toBeLessThanOrEqual(1024)
   expect(result.message).toContain('book india flights, untouched 31 days')
 })
+
+// Pushover refuses an over-long message rather than trimming it, and a refusal loses the whole
+// alert, so the limit has to hold even when the demotions alone would fill it.
+it('trims the demotion list when it fills the message on its own', () => {
+  const demoted = Array.from({ length: 8 }, (_, index) => ({
+    title: `a demoted task carrying a name long enough to matter here, number ${index}`.repeat(3),
+    untouchedDays: 31,
+  }))
+
+  const result = buildAlertMessage({
+    due: [{ title: 'give Dolly her meds', due: TODAY }],
+    demoted,
+    now: NOW,
+  })
+
+  expect(Buffer.byteLength(result.message, 'utf8')).toBeLessThanOrEqual(1024)
+  expect(result.message).toMatch(/• and \d+ more moved to someday$/)
+  expect(result.message).toContain('Moved to someday:')
+})
