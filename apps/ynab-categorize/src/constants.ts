@@ -1,6 +1,6 @@
 export const PAYEE_FILTER = 'Amazon'
 
-/** Flag we set on every categorized row — and the marker we use to skip rows we've already touched. */
+/** Flag we set on every categorized row, and the marker we use to skip rows we've already touched. */
 export const FLAG_NAME = 'auto-categorized'
 export const FLAG_COLOR = 'yellow'
 

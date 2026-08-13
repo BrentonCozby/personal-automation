@@ -28,7 +28,7 @@ export type Config = {
   auditDir: string
   /** Matched against `category_group_name` (case-sensitive). Groups in this set are dropped from the LLM prompt entirely, so the model never picks from them. */
   excludedCategoryGroups: Set<string>
-  /** Free-form natural-language hints inserted as numbered rules in the LLM prompt — e.g. ``Pet items go to "Pet Care".`` */
+  /** Free-form natural-language hints inserted as numbered rules in the LLM prompt, for example ``Pet items go to "Pet Care".`` */
   categoryRoutingHints: readonly string[]
 }
 

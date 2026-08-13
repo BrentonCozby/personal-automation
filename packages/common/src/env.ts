@@ -5,7 +5,7 @@ import { z } from 'zod'
 
 /**
  * Resolves the workspace root from a caller's module URL. Assumes the standard
- * `apps/<name>/src/...` or `packages/<name>/src/...` layout — three levels up
+ * `apps/<name>/src/...` or `packages/<name>/src/...` layout: three levels up
  * from the caller lands at the workspace root. Centralized here so the layout
  * assumption is encoded in one place.
  */
@@ -28,7 +28,7 @@ export function loadRootEnv(callerUrl: string): void {
 
 /**
  * Loads the monorepo-root `.env`, then the calling app's own `apps/<name>/.env`
- * layered on top — shared secrets live at the root, app-specific config sits
+ * layered on top: shared secrets live at the root, app-specific config sits
  * beside the app. Apps call this once at the top of their config.ts:
  *
  *   loadAppEnv(import.meta.url)
@@ -41,7 +41,7 @@ export function loadAppEnv(callerUrl: string): void {
 
 /**
  * Zod string transform that parses the input as JSON. Pair with `.pipe(...)`
- * to validate the parsed shape — e.g. `jsonValue.pipe(z.array(z.string()))`
+ * to validate the parsed shape, for example `jsonValue.pipe(z.array(z.string()))`
  * for an env var that holds a JSON array.
  */
 export const jsonValue = z.string().transform((s, ctx) => {

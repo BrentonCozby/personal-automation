@@ -2,7 +2,7 @@
 # launchd wrapper for the tasks digest. Its own agent
 # (com.personal-automation.tasks) fires it on the days/times in TASKS_SCHEDULE,
 # separate from the daily run.sh. Posts a macOS notification on failure so a broken run isn't
-# silent — same failure-surfacing as run.sh.
+# silent. Same failure-surfacing as run.sh.
 
 set -u
 PROJECT_DIR="$(cd "$(dirname "$0")/.." && pwd)"

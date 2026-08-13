@@ -2,8 +2,8 @@ import { z } from 'zod'
 
 // Structured output, so the response is a typed object rather than a free-text sentinel:
 // `receipt_found` is the discriminator, `item_summary` carries the one-line summary,
-// `order_total` is the matched order's total — returned separately so the caller can verify it
-// against the charge amount deterministically — and `matched_email_index` points back at the
+// `order_total` is the matched order's total, returned separately so the caller can verify it
+// against the charge amount deterministically. `matched_email_index` points back at the
 // source email so the caller can link to it. All non-found fields are null.
 export const receiptResponseSchema = z.object({
   receipt_found: z.boolean(),

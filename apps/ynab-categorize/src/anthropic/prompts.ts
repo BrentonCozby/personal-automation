@@ -12,7 +12,7 @@ export type CategorizationInput = {
 }
 
 // Builds the user message handed to Claude. Output format is enforced by `output_config.format`
-// in the client, so the prompt doesn't need to describe the JSON shape — Claude returns
+// in the client, so the prompt doesn't need to describe the JSON shape. Claude returns
 // `{category_id: string}` automatically.
 export function buildCategorizationPrompt({
   transactionId,

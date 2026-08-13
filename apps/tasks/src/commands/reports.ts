@@ -28,10 +28,10 @@ export function renderPromoteResult({ result, now }: { result: PromoteResult; no
     case 'promoted':
       return result.isOverCap
         ? [
-            `Promoted "${result.title}" to #active — ${result.activeCount} active, one over the cap of ${result.cap}.`,
+            `Promoted "${result.title}" to #active: ${result.activeCount} active, one over the cap of ${result.cap}.`,
             'Recorded in runs/overrides.jsonl.',
           ].join('\n')
-        : `Promoted "${result.title}" to #active — ${result.activeCount} of ${result.cap} active.`
+        : `Promoted "${result.title}" to #active: ${result.activeCount} of ${result.cap} active.`
     default: {
       const _exhaustive: never = result
       throw new AppError({ message: `Unhandled promote result: ${JSON.stringify(_exhaustive)}` })
@@ -51,7 +51,7 @@ export function renderAbandonResult(result: AbandonResult): string {
       return renderConflict(result)
     case 'abandoned':
       return [
-        `Dropped "${result.title}" — its checkbox is cancelled and dated ${result.date}.`,
+        `Dropped "${result.title}": its checkbox is cancelled and dated ${result.date}.`,
         ...(result.wasActive ? ['That frees a place on the active list.'] : []),
       ].join('\n')
     default: {
@@ -157,7 +157,7 @@ function renderAtCap({
     `${active.length} ${active.length === 1 ? 'task is' : 'tasks are'} already #active, which is the cap.`,
     '',
     'Closest to done first (most recently touched, then soonest due):',
-    ...active.map((task, index) => `  ${index + 1}. ${task.title} — ${describe({ task, now })}`),
+    ...active.map((task, index) => `  ${index + 1}. ${task.title}: ${describe({ task, now })}`),
     '',
     `Finish or drop one of those, or run again with --over-cap to make it ${cap + 1} this once.`,
   ].join('\n')

@@ -10,7 +10,7 @@ let active: ActiveBar | null = null
 
 // Write text to stdout, cooperatively clearing/redrawing any active progress bar so the
 // text lands above the bar instead of on top of it. The logger routes pino-pretty's output
-// through here so log lines coexist with the bar — including in verbose mode.
+// through here so log lines coexist with the bar, including in verbose mode.
 export function writeWithProgress(text: string): void {
   if (active === null) {
     process.stdout.write(text)

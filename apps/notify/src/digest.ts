@@ -13,7 +13,7 @@ export type AuditRow = {
   amount_dollars: number
   outcome: Outcome
   error?: string
-  /** The transaction's memo — the input ynab-categorize used to pick a category. */
+  /** The transaction's memo: the input ynab-categorize used to pick a category. */
   memo?: string | null
   /** The transaction's own date (YYYY-MM-DD). */
   transaction_date?: string | null
@@ -54,7 +54,7 @@ export function buildDigest({ rows }: { rows: AuditRow[] }): Digest {
 
   const errorCount = [...byApp.values()].reduce((sum, b) => sum + b.errors.length, 0)
   const successCount = [...byApp.values()].reduce((sum, b) => sum + b.successes.length, 0)
-  const subject = `${SUBJECT_PREFIX} — ${errorCount} ${errorCount === 1 ? 'error' : 'errors'}`
+  const subject = `${SUBJECT_PREFIX}: ${errorCount} ${errorCount === 1 ? 'error' : 'errors'}`
   const body = renderBody({ byApp })
   const html = renderHtml({ byApp, errorCount })
 
@@ -77,7 +77,7 @@ function renderBody({ byApp }: { byApp: Map<string, AppBucket> }): string {
 function renderSection({ app, bucket }: { app: string; bucket: AppBucket }): string {
   const errorCount = bucket.errors.length
   const successCount = bucket.successes.length
-  const header = `${app} — ${errorCount} ${errorCount === 1 ? 'error' : 'errors'}, ${successCount} ${successCount === 1 ? 'success' : 'successes'}`
+  const header = `${app}: ${errorCount} ${errorCount === 1 ? 'error' : 'errors'}, ${successCount} ${successCount === 1 ? 'success' : 'successes'}`
   const rule = '═'.repeat([...header].length)
 
   const blocks: string[] = []
@@ -92,7 +92,7 @@ function renderSection({ app, bucket }: { app: string; bucket: AppBucket }): str
   if (errorCount === 0 && successCount === 0) blocks.push('  (nothing to report)')
 
   // For a summary-only app with successes and no errors, the header count is the whole report,
-  // so there are no blocks — drop the trailing rule spacing rather than leave blank lines.
+  // so there are no blocks. Drop the trailing rule spacing rather than leave blank lines.
   return blocks.length > 0 ? `${header}\n${rule}\n\n${blocks.join('\n\n')}` : `${header}\n${rule}`
 }
 
@@ -118,7 +118,7 @@ function renderRow({ row }: { row: AuditRow }): string {
 }
 
 // A few lines per applied transaction: payee/amount/date, the memo the decision used (for
-// ynab-categorize), and what the run produced — enough to eyeball that the category / memo
+// ynab-categorize), and what the run produced, enough to eyeball that the category / memo
 // looks right.
 function renderSuccessRow({ row }: { row: AuditRow }): string {
   const payee = row.payee_name ?? '(no payee)'
@@ -251,9 +251,9 @@ ${reasonBlock({ reason })}
 </div>`
 }
 
-// A light row per applied transaction — green left accent (vs the bordered red cards for
+// A light row per applied transaction: green left accent (vs the bordered red cards for
 // errors). Line 1 is payee · amount · date; for ynab-categorize the memo the decision used
-// follows, then the outcome (category, or the memo written for ynab-enrich-memos) — enough to
+// follows, then the outcome (category, or the memo written for ynab-enrich-memos), enough to
 // check at a glance that the result fits.
 function renderHtmlSuccess({ row }: { row: AuditRow }): string {
   const payee = row.payee_name ?? '(no payee)'
@@ -288,7 +288,7 @@ function reasonBlock({ reason }: { reason: string }): string {
 </div>`
 }
 
-// failed_upstream is a failure before the write — amber, distinct from a hard write failure in
+// failed_upstream is a failure before the write: amber, distinct from a hard write failure in
 // red. Both are the only outcomes that reach an error row.
 function statusText(outcome: Outcome): string {
   const color = outcome === 'failed_upstream' ? '#b45309' : '#b91c1c'

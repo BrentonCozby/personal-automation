@@ -23,19 +23,19 @@ type SendMessageParams = {
 }
 
 // Separates the parts of a multipart/alternative message. Must not occur in any part's content
-// — this fixed string never appears in a digest.
+// This fixed string never appears in a digest.
 const MULTIPART_BOUNDARY = 'personal-automation-alt-boundary-9d8f7a6b1c'
 
 export type GmailClient = {
   sendMessage: (params: SendMessageParams) => Promise<SendMessageResponse>
   /** Search messages with a Gmail query string (the same syntax as the Gmail search box). */
   listMessages: (params: { query: string; maxResults: number }) => Promise<MessageRef[]>
-  /** Fetch one message and normalize it — headers flattened, body decoded to text. */
+  /** Fetch one message and normalize it: headers flattened, body decoded to text. */
   getMessage: (params: { id: string }) => Promise<GmailMessage>
 }
 
 export function createGmailClient({ auth }: { auth: GmailAuth }): GmailClient {
-  // GET helper for the read endpoints. sendMessage keeps its own fetch — it POSTs a body and
+  // GET helper for the read endpoints. sendMessage keeps its own fetch, since it POSTs a body and
   // pre-validates headers, so sharing this would tangle the two paths for little gain.
   function getJson<T>({
     path,
@@ -71,7 +71,7 @@ export function createGmailClient({ auth }: { auth: GmailAuth }): GmailClient {
   }): Promise<MessageRef[]> {
     const params = new URLSearchParams({ q: query, maxResults: String(maxResults) })
 
-    // `messages` is omitted (not an empty array) on a no-match query — collapse both to [].
+    // `messages` is omitted (not an empty array) on a no-match query, so collapse both to [].
     return getJson({
       path: `/users/me/messages?${params.toString()}`,
       schema: listMessagesResponseSchema,
@@ -93,7 +93,7 @@ export function createGmailClient({ auth }: { auth: GmailAuth }): GmailClient {
     body,
     html,
   }: SendMessageParams): Promise<SendMessageResponse> {
-    // Header values get interpolated into a multi-line RFC 5322 message — a CR or LF
+    // Header values get interpolated into a multi-line RFC 5322 message, where a CR or LF
     // in `to` or `subject` would let a caller inject extra headers (Bcc, etc.).
     // Use Promise.reject so the function consistently returns a Promise; a sync throw
     // would prevent callers from using `.rejects` / `.catch` chains.
@@ -191,7 +191,7 @@ function decodeBase64Url(data: string): string {
 }
 
 // Minimal HTML-to-text: drop script/style blocks and tags, decode the handful of entities
-// that show up in receipts, and collapse whitespace. Good enough to hand to the model — we
+// that show up in receipts, and collapse whitespace. Good enough to hand to the model, since we
 // don't need to preserve layout, just the words and prices.
 function stripHtml(html: string): string {
   return html
@@ -210,7 +210,7 @@ function stripHtml(html: string): string {
 
 // Gmail's users.messages.send expects a base64url-encoded RFC 5322 message in the `raw` field.
 // Each part body is itself base64 (Content-Transfer-Encoding: base64), which both carries UTF-8
-// safely and keeps every line within RFC 5322's 998-octet limit — an HTML digest can have lines
+// safely and keeps every line within RFC 5322's 998-octet limit: an HTML digest can have lines
 // far longer than that, which 8bit would emit unwrapped. With `html`, the message is
 // multipart/alternative: the text part first, then the HTML part (clients prefer the last part
 // they can render, so HTML wins where supported and text is the fallback).
@@ -258,7 +258,7 @@ function encodeBase64Body(text: string): string {
 // Subject (an em dash, box-drawing glyph, etc.) gets mis-decoded by mail clients and renders
 // as mojibake like "Ã¢Â€Â"". RFC 2047 'encoded-word' carries it safely. ASCII subjects pass
 // through unchanged. Digest subjects are short, so a single encoded-word stays within the
-// 75-char limit — revisit with folding if subjects ever grow long.
+// 75-char limit. Revisit with folding if subjects ever grow long.
 function encodeSubjectHeader(subject: string): string {
   if (/^[\x20-\x7e]*$/.test(subject)) return subject
 

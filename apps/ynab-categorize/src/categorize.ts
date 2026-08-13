@@ -64,7 +64,7 @@ type CategoriesContext = {
   routingHints: readonly string[]
 }
 
-// Categorize fills in everything but `outcome` — the persistence stage (or dry-run
+// Categorize fills in everything but `outcome`. The persistence stage (or dry-run
 // loop) decides that and overrides on emit.
 type AuditCore = Omit<CategorizeAudit, 'outcome'>
 type CategorizationOutcome = { patch: TransactionPatch; auditCore: AuditCore }
@@ -87,7 +87,7 @@ export async function runCategorize({
   try {
     return await runCategorizeInner({ config, opts, logger })
   } catch (err) {
-    // Surface fatal aborts in the audit log so the notify digest emails them — the
+    // Surface fatal aborts in the audit log so the notify digest emails them. The
     // macOS notification and stderr stack might be missed. Guard the audit write: if
     // appendFileSync itself fails (disk full, perms), don't let that error replace the
     // real cause. logger.error goes to pino/stderr, a different sink than the audit
@@ -121,7 +121,7 @@ async function runCategorizeInner({
 
   // Spinners only show when stdout is a TTY. Non-TTY runs (launchd) get periodic pino
   // progress logs instead. In verbose mode the bar coexists with logs via the progress
-  // coordinator — logs scroll above and the bar redraws below.
+  // coordinator: logs scroll above and the bar redraws below.
   const spinnersEnabled = process.stdout.isTTY === true
 
   const lookback = opts.lookbackDays || config.lookbackDays
@@ -155,7 +155,9 @@ async function runCategorizeInner({
   const allCategories = flattenCategories(groups)
   const uncategorizedId = findUncategorizedId(allCategories)
   if (!uncategorizedId) {
-    throw new Error(`Could not find "${UNCATEGORIZED_NAME}" category — needed for LLM fallback.`)
+    throw new Error(
+      `Could not find "${UNCATEGORIZED_NAME}" category, which the LLM fallback needs.`,
+    )
   }
 
   const promptCategories = filterCategoriesForPrompt({
@@ -227,7 +229,7 @@ async function runCategorizeInner({
     for (const o of outcomes.successes) {
       logger.audit({ ...o.auditCore, outcome: 'skipped_for_dry_run' })
     }
-    logger.info({ msg: 'Dry run — skipping PATCH', extra: { proposed: outcomes.successes.length } })
+    logger.info({ msg: 'Dry run, skipping PATCH', extra: { proposed: outcomes.successes.length } })
 
     return {
       succeeded: outcomes.successes.length,
@@ -296,7 +298,7 @@ export async function categorizeAll({
       continue
     }
     // Anthropic SDK wraps all transport/protocol failures in AnthropicError. Anything
-    // else is a programmer bug or genuinely unexpected — let it crash the run.
+    // else is a programmer bug or genuinely unexpected, so let it crash the run.
     if (!(result.reason instanceof AnthropicError)) throw result.reason
     categorizeFailed += 1
     logger.error({
@@ -454,7 +456,7 @@ function resolveCategoryId({
 
   if (!result.categoryId) {
     logger.warn({
-      msg: `LLM returned no category_id for ${txnId} — falling back to Uncategorized`,
+      msg: `LLM returned no category_id for ${txnId}, falling back to Uncategorized`,
     })
 
     return fallback
@@ -462,7 +464,7 @@ function resolveCategoryId({
 
   if (!validCategoryIds.has(result.categoryId)) {
     logger.warn({
-      msg: `LLM chose unknown category ${result.categoryId} for ${txnId} — falling back to Uncategorized`,
+      msg: `LLM chose unknown category ${result.categoryId} for ${txnId}, falling back to Uncategorized`,
     })
 
     return fallback

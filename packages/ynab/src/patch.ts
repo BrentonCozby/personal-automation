@@ -5,7 +5,7 @@ import type { YnabClient } from './client.js'
 import type { TransactionPatch } from './types.js'
 
 /**
- * A patch to apply plus the audit row to emit for it, minus `outcome` — patchInBatches sets
+ * A patch to apply plus the audit row to emit for it, minus `outcome`, which patchInBatches sets
  * the status from the PATCH outcome. `TCore` is the app's own audit shape with `outcome`
  * omitted (e.g. `Omit<CategorizeAudit, 'outcome'>`).
  */

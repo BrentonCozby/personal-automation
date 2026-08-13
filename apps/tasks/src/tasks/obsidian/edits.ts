@@ -9,7 +9,7 @@ const CHECKBOX = /^(\s*[-*+]\s+\[)(.)(\])/u
 /**
  * The line with its due date set to `date` (a local `YYYY-MM-DD`), replacing any date already
  * there. A line with no due date gets one appended after its other markers, which the Tasks plugin
- * reads the same way — it parses markers wherever they sit and rewrites them in its own order.
+ * reads the same way: it parses markers wherever they sit and rewrites them in its own order.
  */
 export function withDueDate({ line, date }: { line: string; date: string }): string {
   const marker = `📅 ${date}`

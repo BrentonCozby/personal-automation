@@ -9,7 +9,7 @@ import { RUNS_DIR_NAME } from '../constants.js'
 const VERSION = 1
 
 // Resolved relative to this module (app dir), not CWD, so the clock always lands in
-// apps/tasks/runs/ — outside notify's apps/*/audit/* glob, which it would otherwise mail as errors.
+// apps/tasks/runs/, outside notify's apps/*/audit/* glob, which it would otherwise mail as errors.
 const DEFAULT_PATH = join(
   fileURLToPath(new URL(`../../${RUNS_DIR_NAME}/`, import.meta.url)),
   'touch-clock.json',
@@ -57,7 +57,7 @@ export function defaultTouchClockPath(): string {
 /**
  * A task's identity: its list plus its title. `title` must already have its state tags stripped
  * (`ScannedTask.title` and `Task.title` both do), which is what lets a task keep its identity
- * through a promotion — otherwise adding `#active` would read as a brand new task.
+ * through a promotion; otherwise adding `#active` would read as a brand new task.
  *
  * Editing a title does break identity, and the replacement is stamped as touched now. That is
  * correct: editing the title was itself a touch.
@@ -80,7 +80,7 @@ export function fingerprintOf(raw: string): string {
  * also what makes the first run a clean cold start.
  *
  * Keys absent from `tasks` are dropped, so callers must pass every task in scope rather than a
- * filtered subset — passing only the `#active` ones would forget every other task's history.
+ * filtered subset: passing only the `#active` ones would forget every other task's history.
  */
 export function reconcileTouchClock({
   stored,

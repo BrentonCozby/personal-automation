@@ -23,7 +23,7 @@ function okRow(overrides: Partial<EnrichMemosAudit> = {}): EnrichMemosAudit {
     transaction_date: '2026-06-08',
     status: 'enriched',
     outcome: 'applied',
-    new_memo: 'auto-gen: USB-C cable ($21.48) — Total $21.48',
+    new_memo: 'auto-gen: USB-C cable ($21.48). Total $21.48',
     order_total: 21.48,
     matched_email_url: 'https://mail.google.com/mail/u/0/#all/m1',
     matched_email_subject: 'Your Amazon.com order',
@@ -150,11 +150,11 @@ describe('formatReview', (): void => {
       total: 1,
     })
 
-    expect(out).toContain('Enrich-memos review — runs 2026-06-08')
+    expect(out).toContain('Enrich-memos review: runs 2026-06-08')
     expect(out).toContain('1 enriched transaction')
     expect(out).toContain('-$21.48')
     expect(out).toContain('order total $21.48')
-    expect(out).toContain('memo:   auto-gen: USB-C cable ($21.48) — Total $21.48')
+    expect(out).toContain('memo:   auto-gen: USB-C cable ($21.48). Total $21.48')
     expect(out).toContain('source: "Your Amazon.com order"  ·  Mon, 8 Jun 2026 10:00:00 -0700')
     expect(out).toContain('link:   https://mail.google.com/mail/u/0/#all/m1')
   })

@@ -3,8 +3,8 @@ import { buildMemo } from './memo.js'
 
 describe('buildMemo', (): void => {
   it('prepends the prefix and a space', (): void => {
-    expect(buildMemo('USB-C cable ($9.99) — Total $9.99')).toBe(
-      'auto-gen: USB-C cable ($9.99) — Total $9.99',
+    expect(buildMemo('USB-C cable ($9.99). Total $9.99')).toBe(
+      'auto-gen: USB-C cable ($9.99). Total $9.99',
     )
   })
 

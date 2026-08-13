@@ -4,16 +4,16 @@
 # Run this once after cloning, or any time the project moves on disk.
 #
 # Generated files:
-#   com.personal-automation.daily.plist         — daily scheduled job (runs run.sh at 12:00)
-#   com.personal-automation.vault-backup.plist  — daily Obsidian vault git backup (09:00)
-#   newsyslog.personal-automation.conf          — optional log rotation config
+#   com.personal-automation.daily.plist         : daily scheduled job (runs run.sh at 12:00)
+#   com.personal-automation.vault-backup.plist  : daily Obsidian vault git backup (09:00)
+#   newsyslog.personal-automation.conf          : optional log rotation config
 
 set -euo pipefail
 
 PROJECT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 USERNAME="$(whoami)"
 
-# launchd won't create the StandardOutPath/StandardErrorPath directory — make it up front.
+# launchd won't create the StandardOutPath/StandardErrorPath directory, so make it up front.
 mkdir -p "$PROJECT_DIR/launchd/logs"
 
 substitute() {
@@ -43,7 +43,7 @@ echo "Generating the tasks digest schedule…"
 
 cat <<EOF
 
-Next (load all three agents — the daily run, the digest, and the vault backup):
+Next (load all three agents: the daily run, the digest, and the vault backup):
   cp $PROJECT_DIR/launchd/com.personal-automation.daily.plist ~/Library/LaunchAgents/
   cp $PROJECT_DIR/launchd/com.personal-automation.tasks.plist ~/Library/LaunchAgents/
   cp $PROJECT_DIR/launchd/com.personal-automation.vault-backup.plist ~/Library/LaunchAgents/

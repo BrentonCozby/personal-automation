@@ -1,17 +1,17 @@
 # personal-automation
 
-A catch-all monorepo for my personal automation — a pnpm workspace of small scheduled jobs and the shared libraries they build on. There's no "main" app: each automation is its own app on top of shared packages, and the list grows as I add more.
+A catch-all monorepo for my personal automation: a pnpm workspace of small scheduled jobs and the shared libraries they build on. There's no "main" app: each automation is its own app on top of shared packages, and the list grows as I add more.
 
-- **`apps/ynab-categorize`** — daily CLI that auto-categorizes Amazon transactions using the Anthropic API (Claude Haiku by default).
-- **`apps/ynab-enrich-memos`** — reads Amazon receipt emails, parses the product list, and PATCHes it into the `memo` of matching YNAB transactions so the categorizer has real item names to work from. Runs before `ynab-categorize` in the daily run.
-- **`apps/notify`** — emails an error digest after the daily run when any app's audit log shows errors.
-- **`apps/tasks`** — a state model over Obsidian todos, with a scheduled review that emails the committed tasks that have gone quiet (one next action each) plus a record of what was finished and dropped.
-- **`packages/anthropic`** — shared Claude API client (`messages.parse` + `zodOutputFormat`).
-- **`packages/ynab`** — shared YNAB API client (zod-validated) + schemas + types + milliunits helpers.
-- **`packages/gmail`** — Gmail API client (OAuth + send, optional multipart HTML), zod-validated.
-- **`packages/common`** — shared helpers: pino-based logger, AppError + retry, PID lockfile, ora spinner, plus tiny utilities (json, chunks, date).
+- **`apps/ynab-categorize`**: daily CLI that auto-categorizes Amazon transactions using the Anthropic API (Claude Haiku by default).
+- **`apps/ynab-enrich-memos`**: reads Amazon receipt emails, parses the product list, and PATCHes it into the `memo` of matching YNAB transactions so the categorizer has real item names to work from. Runs before `ynab-categorize` in the daily run.
+- **`apps/notify`**: emails an error digest after the daily run when any app's audit log shows errors.
+- **`apps/tasks`**: a state model over Obsidian todos, with a scheduled review that emails the committed tasks that have gone quiet (one next action each) plus a record of what was finished and dropped.
+- **`packages/anthropic`**: shared Claude API client (`messages.parse` + `zodOutputFormat`).
+- **`packages/ynab`**: shared YNAB API client (zod-validated) + schemas + types + milliunits helpers.
+- **`packages/gmail`**: Gmail API client (OAuth + send, optional multipart HTML), zod-validated.
+- **`packages/common`**: shared helpers: pino-based logger, AppError + retry, PID lockfile, ora spinner, plus tiny utilities (json, chunks, date).
 
-Commit messages follow [Conventional Commits](https://www.conventionalcommits.org/) — enforced via a husky `commit-msg` hook running commitlint.
+Commit messages follow [Conventional Commits](https://www.conventionalcommits.org/), enforced via a husky `commit-msg` hook running commitlint.
 
 ## Contents
 
@@ -34,38 +34,38 @@ cp apps/tasks/.env.example apps/tasks/.env
 cp apps/notify/.env.example apps/notify/.env
 ```
 
-Config is split: shared secrets and ids live in the root `.env`, and each app's own config sits beside it in `apps/<app>/.env`. At startup an app loads the root `.env` then its own `.env` on top; every variable it needs is required — config loaders throw if any are missing — so only fill in the apps you actually run. Each `.env` has a `.env.example` next to it:
+Config is split: shared secrets and ids live in the root `.env`, and each app's own config sits beside it in `apps/<app>/.env`. At startup an app loads the root `.env` then its own `.env` on top; every variable it needs is required (config loaders throw if any are missing), so only fill in the apps you actually run. Each `.env` has a `.env.example` next to it:
 
-- **root `.env`** — `ANTHROPIC_API_KEY` (from [console.anthropic.com](https://console.anthropic.com), separate from Claude Pro), `YNAB_TOKEN` + `YNAB_BUDGET_ID`, `ALLOWED_ACCOUNT_IDS` (shared by both YNAB apps), and the `GMAIL_OAUTH_*` credentials apps send mail through. Mint `GMAIL_OAUTH_REFRESH_TOKEN` with `pnpm --filter @personal-automation/gmail bootstrap`, and re-run that after any Google password change — it revokes the token.
-- **`apps/ynab-categorize/.env`** — `LOOKBACK_DAYS`, `AUDIT_DIR`, `EXCLUDED_CATEGORY_GROUPS`, `CATEGORY_ROUTING_HINTS`, `YNAB_CATEGORIZER_ANTHROPIC_MODEL`.
-- **`apps/ynab-enrich-memos/.env`** — `AUDIT_DIR`, `ENRICH_LOOKBACK_DAYS`, `GMAIL_RECEIPT_WINDOW_DAYS`, `GMAIL_FROM_FILTER`, `ENRICH_MEMOS_ANTHROPIC_MODEL`.
-- **`apps/tasks/.env`** — `OBSIDIAN_VAULT_PATH`, `TASK_LISTS`, `TASKS_SCHEDULE`, `TASKS_TO_EMAIL`, `TASKS_ANTHROPIC_MODEL`, and the state-model thresholds (`TASKS_WIP_CAP`, `TASKS_STALL_DAYS`, `TASKS_HORIZON_DAYS`, `TASKS_DONE_WINDOW_DAYS`, `TASKS_OVERRIDE_WINDOW_DAYS`, `TASKS_OVERRIDE_LIMIT`).
-- **`apps/notify/.env`** — `NOTIFY_TO_EMAIL`.
+- **root `.env`**: `ANTHROPIC_API_KEY` (from [console.anthropic.com](https://console.anthropic.com), separate from Claude Pro), `YNAB_TOKEN` + `YNAB_BUDGET_ID`, `ALLOWED_ACCOUNT_IDS` (shared by both YNAB apps), and the `GMAIL_OAUTH_*` credentials apps send mail through. Mint `GMAIL_OAUTH_REFRESH_TOKEN` with `pnpm --filter @personal-automation/gmail bootstrap`, and re-run that after any Google password change, which revokes the token.
+- **`apps/ynab-categorize/.env`**: `LOOKBACK_DAYS`, `AUDIT_DIR`, `EXCLUDED_CATEGORY_GROUPS`, `CATEGORY_ROUTING_HINTS`, `YNAB_CATEGORIZER_ANTHROPIC_MODEL`.
+- **`apps/ynab-enrich-memos/.env`**: `AUDIT_DIR`, `ENRICH_LOOKBACK_DAYS`, `GMAIL_RECEIPT_WINDOW_DAYS`, `GMAIL_FROM_FILTER`, `ENRICH_MEMOS_ANTHROPIC_MODEL`.
+- **`apps/tasks/.env`**: `OBSIDIAN_VAULT_PATH`, `TASK_LISTS`, `TASKS_SCHEDULE`, `TASKS_TO_EMAIL`, `TASKS_ANTHROPIC_MODEL`, and the state-model thresholds (`TASKS_WIP_CAP`, `TASKS_STALL_DAYS`, `TASKS_HORIZON_DAYS`, `TASKS_DONE_WINDOW_DAYS`, `TASKS_OVERRIDE_WINDOW_DAYS`, `TASKS_OVERRIDE_LIMIT`).
+- **`apps/notify/.env`**: `NOTIFY_TO_EMAIL`.
 
 Requires Node 26+ and pnpm 11+.
 
 ## Run
 
-Each app is a workspace package; run its scripts with `pnpm --filter`. No app is privileged at the root — the pattern is the same for every one:
+Each app is a workspace package; run its scripts with `pnpm --filter`. No app is privileged at the root. The pattern is the same for every one:
 
 ```bash
 pnpm --filter @personal-automation/<app> <script>
 ```
 
 ```bash
-# ynab-categorize — dry run (verbose, does NOT PATCH), then a real run
+# ynab-categorize: dry run (verbose, does NOT PATCH), then a real run
 pnpm --filter @personal-automation/ynab-categorize test:ynab-categorize
 pnpm --filter @personal-automation/ynab-categorize ynab-categorize
 pnpm --filter @personal-automation/ynab-categorize ynab-categorize --lookback-days 5
 
-# ynab-enrich-memos — dry run (does NOT PATCH), then a real run
+# ynab-enrich-memos: dry run (does NOT PATCH), then a real run
 pnpm --filter @personal-automation/ynab-enrich-memos test:ynab-enrich-memos
 pnpm --filter @personal-automation/ynab-enrich-memos ynab-enrich-memos
 
-# tasks — print the digest to the console without sending
+# tasks: print the digest to the console without sending
 pnpm --filter @personal-automation/tasks test:tasks
 
-# tasks — act on one task (any part of the title, no quoting needed)
+# tasks: act on one task (any part of the title, no quoting needed)
 pnpm --filter @personal-automation/tasks tasks promote fix the bike
 pnpm --filter @personal-automation/tasks tasks schedule fix the bike +7d
 pnpm --filter @personal-automation/tasks tasks abandon fix the bike
@@ -88,9 +88,9 @@ The categorizer always appends a JSONL audit line per decision to `apps/ynab-cat
 
 Runs before `ynab-categorize` so the categorizer reasons from real item names instead of an empty memo. Appends a JSONL audit line per attempt to `apps/ynab-enrich-memos/audit/ynab-enrich-memos-YYYY-MM-DD.jsonl`. Design notes in [apps/ynab-enrich-memos/plan.md](apps/ynab-enrich-memos/plan.md).
 
-1. Loads transactions per allowed account `since ENRICH_LOOKBACK_DAYS` and keeps only Amazon, non-transfer rows whose `memo` is empty. A non-empty memo — yours or a prior run's — is never touched.
+1. Loads transactions per allowed account `since ENRICH_LOOKBACK_DAYS` and keeps only Amazon, non-transfer rows whose `memo` is empty. A non-empty memo (yours or a prior run's) is never touched.
 2. For each eligible transaction (`ENRICH_CONCURRENCY` in parallel), searches Gmail for receipts from `GMAIL_FROM_FILTER` senders within ±`GMAIL_RECEIPT_WINDOW_DAYS` of the charge date, drops any that fail DMARC, and asks Claude to match the order whose total equals the charge to the cent.
-3. Verifies the returned order total against the charge in code — a mismatch is rejected (fails closed). On a match, prefixes the memo with `auto-gen:` and queues a memo-only PATCH (no flag, so the categorizer still runs on it).
+3. Verifies the returned order total against the charge in code: a mismatch is rejected (fails closed). On a match, prefixes the memo with `auto-gen:` and queues a memo-only PATCH (no flag, so the categorizer still runs on it).
 4. Bulk PATCHes in batches of 10.
 
 ## tasks
@@ -105,7 +105,7 @@ The email's other half is the done list: what was finished and dropped in the la
 
 A raised cap (`promote --over-cap`) is recorded in `apps/tasks/runs/overrides.jsonl`. More than `TASKS_OVERRIDE_LIMIT` raises inside `TASKS_OVERRIDE_WINDOW_DAYS` days and the review adds a note suggesting you set `TASKS_WIP_CAP` to the most you actually carried, on the grounds that a limit you go around that often was set too low. Only raises recorded against the cap now in force count, so making the change silences the note. It rides along on a review that was already sending rather than being a third reason to send one.
 
-Every command reads the same vault on disk (`OBSIDIAN_VAULT_PATH`) through one scanner. With `TASK_LISTS=[]` it reads `todos.md` at the vault root; otherwise `TASK_LISTS` names files or folders (relative to the vault) and folders are walked for their `*.md`. It parses [Obsidian Tasks](https://publish.obsidian.md/tasks/) lines — open `- [ ]` and in-progress `- [/]` checkboxes count as live (done and cancelled are skipped), `📅` sets the due date, and recurring (`🔁`) tasks sit outside the state model entirely (the plugin manages them by their recurrence rule). Nothing pulls the vault, so it reads the last synced state on disk — keep it synced separately (Obsidian Sync or the Obsidian Git plugin). It works on any OS.
+Every command reads the same vault on disk (`OBSIDIAN_VAULT_PATH`) through one scanner. With `TASK_LISTS=[]` it reads `todos.md` at the vault root; otherwise `TASK_LISTS` names files or folders (relative to the vault) and folders are walked for their `*.md`. It parses [Obsidian Tasks](https://publish.obsidian.md/tasks/) lines: open `- [ ]` and in-progress `- [/]` checkboxes count as live (done and cancelled are skipped), `📅` sets the due date, and recurring (`🔁`) tasks sit outside the state model entirely (the plugin manages them by their recurrence rule). Nothing pulls the vault, so it reads the last synced state on disk. Keep it synced separately (Obsidian Sync or the Obsidian Git plugin). It works on any OS.
 
 `TASKS_ANTHROPIC_MODEL` is a separate knob from `YNAB_CATEGORIZER_ANTHROPIC_MODEL`. Judging *why* a commitment went quiet and naming its next physical step is harder judgment than picking a category id, so it starts on a Sonnet-tier model rather than Haiku. Each run logs its classifications to `apps/tasks/runs/` for tuning.
 
@@ -113,11 +113,11 @@ Every command reads the same vault on disk (`OBSIDIAN_VAULT_PATH`) through one s
 
 Three launchd agents:
 
-- `com.personal-automation.daily` runs `launchd/run.sh` daily at 12:00 — each app in the `APPS` array in sequence (`ynab-enrich-memos` then `ynab-categorize`), then `notify`.
+- `com.personal-automation.daily` runs `launchd/run.sh` daily at 12:00: each app in the `APPS` array in sequence (`ynab-enrich-memos` then `ynab-categorize`), then `notify`.
 - `com.personal-automation.tasks` runs the digest on its `TASKS_SCHEDULE` days/times.
-- `com.personal-automation.vault-backup` runs `launchd/run-vault-backup.sh` daily (09:00) — a one-way `git push` of the Obsidian vault to its remote for offsite backup. Obsidian Sync is the live cross-device sync; this only snapshots to git, so it never conflicts. The vault path comes from `OBSIDIAN_VAULT_PATH` in `apps/tasks/.env`.
+- `com.personal-automation.vault-backup` runs `launchd/run-vault-backup.sh` daily (09:00): a one-way `git push` of the Obsidian vault to its remote for offsite backup. Obsidian Sync is the live cross-device sync; this only snapshots to git, so it never conflicts. The vault path comes from `OBSIDIAN_VAULT_PATH` in `apps/tasks/.env`.
 
-Each is its own agent because launchd binds one agent to one program on one schedule: a plist's `StartCalendarInterval` can list many times, but they all run the same script. The agents are siblings grouped by schedule — `com.personal-automation` is just the shared namespace, not a job. An app gets its own agent only when it needs its own schedule — otherwise it's another entry in `run.sh`. Keeping them apart also means each gets its own logs and its own failure notification.
+Each is its own agent because launchd binds one agent to one program on one schedule: a plist's `StartCalendarInterval` can list many times, but they all run the same script. The agents are siblings grouped by schedule: `com.personal-automation` is just the shared namespace, not a job. An app gets its own agent only when it needs its own schedule; otherwise it's another entry in `run.sh`. Keeping them apart also means each gets its own logs and its own failure notification.
 
 All post a macOS notification on a non-zero exit.
 
@@ -131,9 +131,9 @@ launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.personal-automation.
 launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.personal-automation.vault-backup.plist
 ```
 
-Run `./launchd/run-vault-backup.sh` once by hand before relying on the schedule — it confirms the `git push` credential (the https token in your keychain) is reachable from a launchd context.
+Run `./launchd/run-vault-backup.sh` once by hand before relying on the schedule: it confirms the `git push` credential (the https token in your keychain) is reachable from a launchd context.
 
-Re-run `setup.sh` (and reload the digest agent — it prints the commands) whenever you change `TASKS_SCHEDULE`, since that regenerates the digest plist from the schedule.
+Re-run `setup.sh` (and reload the digest agent, which prints the commands) whenever you change `TASKS_SCHEDULE`, since that regenerates the digest plist from the schedule.
 
 Optional log rotation (weekly, keeps 4 gzipped archives):
 
@@ -149,7 +149,7 @@ Quick commands to see whether the scheduled jobs are healthy and what the last r
 
 ### Are the agents loaded and OK?
 
-The quick check — three columns: PID, last exit code, label. A label showing up means it's loaded; a `0` in the middle means the last run was clean. A `-` PID means "not running this instant," which is the normal, healthy state for a scheduled job — it only shows a real PID during the seconds it's actually running.
+The quick check gives three columns: PID, last exit code, label. A label showing up means it's loaded; a `0` in the middle means the last run was clean. A `-` PID means "not running this instant," which is the normal, healthy state for a scheduled job. It only shows a real PID during the seconds it's actually running.
 
 ```bash
 launchctl list | grep personal-automation
@@ -160,7 +160,7 @@ launchctl list | grep personal-automation
 launchctl list | awk '/personal-automation/ {print ($2==0 ? "OK   " : "CHECK") "  " $3 "  (last exit " $2 ")"}'
 ```
 
-Only reach for the verbose `launchctl print` when you need details the line above doesn't show — next scheduled fire time, run count, the resolved program path:
+Only reach for the verbose `launchctl print` when you need details the line above doesn't show, such as next scheduled fire time, run count, or the resolved program path:
 
 ```bash
 launchctl print "gui/$(id -u)/com.personal-automation.daily"
@@ -181,7 +181,7 @@ tail -n 50 launchd/logs/tasks-digest.out.log
 tail -n 50 launchd/logs/tasks-digest.err.log
 ```
 
-A non-empty `*.err.log` isn't always a failure — pnpm and progress spinners write to stderr. Check the agent's last exit code (above) for the real verdict.
+A non-empty `*.err.log` isn't always a failure: pnpm and progress spinners write to stderr. Check the agent's last exit code (above) for the real verdict.
 
 ### What did the last run do? (audit logs)
 
@@ -192,7 +192,7 @@ Each YNAB app appends one JSONL line per transaction to `apps/<app>/audit/<app>-
 jq -r .status "apps/ynab-categorize/audit/ynab-categorize-$(date +%F).jsonl" | sort | uniq -c
 
 # Today's enrichment results: did each transaction get a memo, and did the PATCH land?
-jq -r '[.status, .patch_status, (.new_memo // "—")] | @tsv' \
+jq -r '[.status, .patch_status, (.new_memo // "-")] | @tsv' \
   "apps/ynab-enrich-memos/audit/ynab-enrich-memos-$(date +%F).jsonl"
 
 # Only the failures across both YNAB apps today
@@ -215,7 +215,7 @@ launchctl kickstart -k "gui/$(id -u)/com.personal-automation.daily"
 launchctl kickstart -k "gui/$(id -u)/com.personal-automation.tasks"
 ```
 
-To run an app by hand without launchd (and without the failure notification), use the `pnpm --filter` commands in [Run](#run) — start with the `test:` dry-run script.
+To run an app by hand without launchd (and without the failure notification), use the `pnpm --filter` commands in [Run](#run). Start with the `test:` dry-run script.
 
 ### Stuck lock?
 

@@ -13,7 +13,7 @@ import { type EnrichMemosAudit, runEnrich } from './enrich.js'
 const BUDGET_ID = '11111111-1111-1111-1111-111111111111'
 const ACCOUNT_ID = 'acct-A'
 const ANTHROPIC_MESSAGES_URL = 'https://api.anthropic.com/v1/messages'
-const SUMMARY = 'USB-C cable ($12.99), AA batteries ($8.49) — Total $21.48'
+const SUMMARY = 'USB-C cable ($12.99), AA batteries ($8.49). Total $21.48'
 
 const server = setupMswServer()
 
@@ -190,7 +190,7 @@ describe('runEnrich (e2e)', (): void => {
       ...gmailReceiptHandlers(),
       http.post(ANTHROPIC_MESSAGES_URL, () =>
         HttpResponse.json(
-          // Only one candidate (index 0), but the model reports index 5 — guard drops the link.
+          // Only one candidate (index 0), but the model reports index 5, so the guard drops the link.
           anthropicResponse({
             receipt_found: true,
             item_summary: SUMMARY,
@@ -291,7 +291,7 @@ describe('runEnrich (e2e)', (): void => {
         HttpResponse.json(
           anthropicResponse({
             receipt_found: true,
-            item_summary: 'Some unrelated order — Total $99.99',
+            item_summary: 'Some unrelated order. Total $99.99',
             order_total: 99.99,
             matched_email_index: 0,
           }),
@@ -348,7 +348,7 @@ describe('runEnrich (e2e)', (): void => {
   it('skips rows that already have a memo, with no Gmail or model calls', async (): Promise<void> => {
     // Only the YNAB transactions GET is registered. Any Gmail/OAuth/Anthropic call would hit an
     // unhandled request and fail the test via msw's onUnhandledRequest: 'error'.
-    server.use(transactionsHandler([makeTxn({ memo: 'gift for mom — do not touch' })]))
+    server.use(transactionsHandler([makeTxn({ memo: 'gift for mom, do not touch' })]))
 
     const result = await runEnrich({
       config: makeConfig(),
@@ -425,7 +425,7 @@ describe('runEnrich (e2e)', (): void => {
   it('a malformed transactions response aborts the run and writes a run-aborted audit row', async (): Promise<void> => {
     server.use(
       // `data` is missing `transactions`, so the YNAB client's zod parse throws before any
-      // per-transaction work begins — the kind of fatal that would otherwise leave no trail.
+      // per-transaction work begins: the kind of fatal that would otherwise leave no trail.
       http.get(
         `${YNAB_API_BASE_URL}/budgets/${BUDGET_ID}/accounts/${ACCOUNT_ID}/transactions`,
         () => HttpResponse.json({ data: {} }),

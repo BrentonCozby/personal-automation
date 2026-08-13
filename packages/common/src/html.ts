@@ -2,7 +2,7 @@
 // Email clients strip <style>/<head> and can't load web fonts, so digests inline everything and
 // lean on system font stacks.
 
-/** System sans-serif stack — what the OS already has, since email can't load web fonts. */
+/** System sans-serif stack: what the OS already has, since email can't load web fonts. */
 export const SANS_FONT_STACK =
   "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif"
 

@@ -25,7 +25,7 @@ export async function runNotify({ config, today, appsDir }: RunOptions): Promise
   const rows = collectAuditRows({ appsDir, today, logger })
   const digest = buildDigest({ rows })
 
-  // Send a digest whenever the run did something — errors or successes — so the email doubles
+  // Send a digest whenever the run did something (errors or successes), so the email doubles
   // as a daily check that categorization and memo-enrichment are still working. Skip only when
   // nothing was applied (an empty run, or one with only skips).
   if (digest.errorCount === 0 && digest.successCount === 0) {

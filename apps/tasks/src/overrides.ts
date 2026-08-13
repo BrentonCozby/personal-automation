@@ -6,7 +6,7 @@ import { z } from 'zod'
 import { RUNS_DIR_NAME } from './constants.js'
 
 // Resolved relative to this module (app dir), not CWD, so the records always land in
-// apps/tasks/runs/ — outside notify's apps/*/audit/* glob, which would mail them to you as
+// apps/tasks/runs/, outside notify's apps/*/audit/* glob, which would mail them to you as
 // failures. Raising the cap for one promotion is a legitimate use of the system, not an error.
 const DEFAULT_RUNS_DIR = fileURLToPath(new URL(`../${RUNS_DIR_NAME}/`, import.meta.url))
 
@@ -30,7 +30,7 @@ export type OverrideEntry = z.infer<typeof entrySchema>
  *
  * No reason is asked for and no warning is printed. The record exists so the digest can notice
  * that a rule routed around often enough is a rule that doesn't fit, and suggest raising the
- * default cap — never that you try harder.
+ * default cap, never that you try harder.
  */
 export function appendOverride({
   entry,

@@ -44,7 +44,7 @@ export function createAnthropicClient({
   maxRetries?: number
 }): AnthropicClient {
   // The SDK retries 429/5xx with exponential backoff honoring the Retry-After header, so callers
-  // don't wrap this in withRetry — non-retryable failures bubble up as AnthropicError.
+  // don't wrap this in withRetry: non-retryable failures bubble up as AnthropicError.
   const client = new Anthropic({ apiKey, maxRetries })
 
   async function parse<T>({

@@ -45,7 +45,7 @@ it('prefers the finished date when a line carries both', () => {
 it('parses dates as LOCAL midnight, not UTC (no off-by-one on any day count)', () => {
   const [task] = scan('- [ ] file taxes ➕ 2026-01-01')
 
-  // new Date('2026-01-01') would be UTC midnight — the previous day in any negative-offset zone.
+  // new Date('2026-01-01') would be UTC midnight, the previous day in any negative-offset zone.
   expect(task?.created?.getFullYear()).toBe(2026)
   expect(task?.created?.getMonth()).toBe(0)
   expect(task?.created?.getDate()).toBe(1)

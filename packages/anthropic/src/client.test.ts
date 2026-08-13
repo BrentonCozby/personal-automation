@@ -7,7 +7,7 @@ import { createAnthropicClient } from './client.js'
 const MESSAGES_URL = 'https://api.anthropic.com/v1/messages'
 const server = setupMswServer()
 
-// Anthropic Messages API response shape — the SDK parses content[0].text against the
+// Anthropic Messages API response shape. The SDK parses content[0].text against the
 // Zod schema in output_config.format and surfaces it as parsed_output.
 function anthropicResponse(content: string): Record<string, unknown> {
   return {

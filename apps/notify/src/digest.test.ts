@@ -18,7 +18,7 @@ describe('buildDigest', (): void => {
     const digest = buildDigest({ rows: [row({}), row({ transaction_id: 't-2' })] })
 
     expect(digest.errorCount).toBe(0)
-    expect(digest.subject).toBe('Personal Automation — 0 errors')
+    expect(digest.subject).toBe('Personal Automation: 0 errors')
   })
 
   it('pluralizes singular vs plural in the subject', (): void => {
@@ -30,8 +30,8 @@ describe('buildDigest', (): void => {
       ],
     })
 
-    expect(one.subject).toBe('Personal Automation — 1 error')
-    expect(many.subject).toBe('Personal Automation — 2 errors')
+    expect(one.subject).toBe('Personal Automation: 1 error')
+    expect(many.subject).toBe('Personal Automation: 2 errors')
   })
 
   it('groups by app and counts errors vs successes per app', (): void => {
@@ -56,15 +56,15 @@ describe('buildDigest', (): void => {
     })
 
     expect(digest.errorCount).toBe(2)
-    expect(digest.body).toContain('ynab-categorize — 1 error, 2 successes')
-    expect(digest.body).toContain('ynab-enrich-memos — 1 error, 1 success')
+    expect(digest.body).toContain('ynab-categorize: 1 error, 2 successes')
+    expect(digest.body).toContain('ynab-enrich-memos: 1 error, 1 success')
   })
 
   it('excludes skipped_for_dry_run and skipped_for_no_match rows from both counts', (): void => {
     const digest = buildDigest({
       rows: [
         row({ transaction_id: 'a', outcome: 'skipped_for_dry_run' }),
-        // Benign "nothing to enrich" — must not read as an error in the digest.
+        // Benign "nothing to enrich": must not read as an error in the digest.
         row({ transaction_id: 'b', outcome: 'skipped_for_no_match' }),
         row({ transaction_id: 'c', outcome: 'applied' }),
         row({ transaction_id: 'd', outcome: 'failed', error: 'boom' }),
@@ -72,7 +72,7 @@ describe('buildDigest', (): void => {
     })
 
     expect(digest.errorCount).toBe(1)
-    expect(digest.body).toContain('ynab-categorize — 1 error, 1 success')
+    expect(digest.body).toContain('ynab-categorize: 1 error, 1 success')
   })
 
   it('renders each error row with labeled fields and quotes the error verbatim', (): void => {
@@ -130,11 +130,11 @@ describe('buildDigest', (): void => {
     })
 
     expect(digest.errorCount).toBe(1)
-    expect(digest.body).toContain('ynab-categorize — 0 errors, 1 success')
+    expect(digest.body).toContain('ynab-categorize: 0 errors, 1 success')
     expect(digest.body).toContain('Successes:')
     expect(digest.body).toContain('Whole Foods')
     expect(digest.body).toContain('→  Groceries')
-    expect(digest.body).toContain('ynab-enrich-memos — 1 error, 0 successes')
+    expect(digest.body).toContain('ynab-enrich-memos: 1 error, 0 successes')
   })
 
   it('keeps the success count but drops per-transaction success rows for summary-only apps', (): void => {
@@ -158,7 +158,7 @@ describe('buildDigest', (): void => {
     })
 
     // The header still reports the count so the section reads as "it ran".
-    expect(digest.body).toContain('ynab-enrich-memos — 0 errors, 1 success')
+    expect(digest.body).toContain('ynab-enrich-memos: 0 errors, 1 success')
     // …but the enrich-memos success detail (its result summary) is gone.
     expect(digest.body).not.toContain('auto-gen: AAA batteries')
     // ynab-categorize successes are unaffected.
@@ -185,7 +185,7 @@ describe('buildDigest', (): void => {
       ],
     })
 
-    expect(digest.body).toContain('ynab-enrich-memos — 1 error, 1 success')
+    expect(digest.body).toContain('ynab-enrich-memos: 1 error, 1 success')
     expect(digest.body).toContain('Reason:  Gmail token refresh failed')
     expect(digest.body).not.toContain('auto-gen: AAA batteries')
   })
@@ -266,7 +266,7 @@ describe('buildDigest', (): void => {
     })
 
     expect(digest.errorCount).toBe(0)
-    expect(digest.body).toContain('ynab-enrich-memos — 0 errors, 0 successes')
+    expect(digest.body).toContain('ynab-enrich-memos: 0 errors, 0 successes')
     expect(digest.body).toContain('(nothing to report)')
   })
 
@@ -298,8 +298,8 @@ describe('buildDigest', (): void => {
       ],
     })
 
-    const alphaIdx = digest.body.indexOf('alpha —')
-    const zetaIdx = digest.body.indexOf('zeta —')
+    const alphaIdx = digest.body.indexOf('alpha:')
+    const zetaIdx = digest.body.indexOf('zeta:')
     expect(alphaIdx).toBeGreaterThanOrEqual(0)
     expect(zetaIdx).toBeGreaterThan(alphaIdx)
   })

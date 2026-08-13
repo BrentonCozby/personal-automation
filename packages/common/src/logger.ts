@@ -10,16 +10,16 @@ import { writeWithProgress } from './progress.js'
 
 // Fields every app's audit entry must include. Each app spreads `baseAuditFields` into its
 // own Zod schema and adds app-specific fields (status, etc.). Common doesn't enumerate
-// apps — the per-app schema is the source of truth, passed to `createLogger` for write-time
+// apps. The per-app schema is the source of truth, passed to `createLogger` for write-time
 // validation.
 //
 // outcome values, and how notify's digest treats each:
-//   applied                    — change written to YNAB (counts as a success)
-//   failed                     — write attempted and failed (counts as a digest error)
-//   failed_upstream            — a failure before the write, so none was attempted; counts as a
+//   applied                    : change written to YNAB (counts as a success)
+//   failed                     : write attempted and failed (counts as a digest error)
+//   failed_upstream            : a failure before the write, so none was attempted; counts as a
 //                                digest error (e.g. ynab-categorize's LLM call threw)
-//   skipped_for_dry_run        — dry run, nothing written (excluded from digest counts)
-//   skipped_for_no_match       — ran fine, nothing to act on, not a failure; excluded from
+//   skipped_for_dry_run        : dry run, nothing written (excluded from digest counts)
+//   skipped_for_no_match       : ran fine, nothing to act on, not a failure; excluded from
 //                                digest counts (e.g. ynab-enrich-memos found no matching receipt)
 // Read your app's own `status` field for the specific cause.
 export const baseAuditFields = {
@@ -39,7 +39,7 @@ export const baseAuditFields = {
   latency_ms: z.number().optional(),
   error: z.string().optional(),
   /**
-   * Short, human-readable summary of what the run did to this transaction — the category
+   * Short, human-readable summary of what the run did to this transaction: the category
    * assigned, the memo written. The notify digest shows it on success rows so the model's
    * output can be eyeballed. Absent on errors and skips, where there's no outcome to show.
    */
@@ -128,7 +128,7 @@ export function createLogger<TAudit extends BaseAudit>({
     if (!parsed.success) {
       pinoLogger.warn(
         { issues: parsed.error.issues, transaction_id: entry.transaction_id },
-        'malformed audit entry — writing anyway',
+        'malformed audit entry, writing anyway',
       )
     }
     appendFileSync(auditPath, `${JSON.stringify(entry)}\n`)

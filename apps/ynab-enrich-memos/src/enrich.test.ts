@@ -44,13 +44,13 @@ describe('isEligible', (): void => {
     )
   })
 
-  it('rejects a transaction with a memo you typed — manual notes are never overwritten', (): void => {
+  it('rejects a transaction with a memo you typed: manual notes are never overwritten', (): void => {
     expect(
-      isEligible({ txn: txn({ memo: 'gift for mom — do not touch' }), allowedAccountIds }),
+      isEligible({ txn: txn({ memo: 'gift for mom, do not touch' }), allowedAccountIds }),
     ).toBe(false)
   })
 
-  it('rejects a memo this job already generated (non-empty) — clear it to regenerate', (): void => {
+  it('rejects a memo this job already generated (non-empty): clear it to regenerate', (): void => {
     expect(isEligible({ txn: txn({ memo: 'auto-gen: USB cable ($9)' }), allowedAccountIds })).toBe(
       false,
     )

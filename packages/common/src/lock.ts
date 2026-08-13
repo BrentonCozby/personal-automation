@@ -14,7 +14,7 @@ export class LockHeldError extends Error {
   }
 }
 
-// A dead PID in the lockfile means a previous run crashed without cleaning up — we claim it.
+// A dead PID in the lockfile means a previous run crashed without cleaning up, so we claim it.
 export function acquireLock(path: string): LockHandle {
   if (existsSync(path)) {
     const heldByPid = readPidFromLock(path)

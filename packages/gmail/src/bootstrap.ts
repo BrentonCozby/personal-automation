@@ -49,7 +49,7 @@ async function main(): Promise<void> {
   console.log('\n=== SUCCESS ===\n')
   console.log('Paste this into your .env file as GMAIL_OAUTH_REFRESH_TOKEN:\n')
   console.log(refreshToken)
-  console.log('\nKeep it secret — it is the only one of the three Gmail env vars that')
+  console.log('\nKeep it secret: it is the only one of the three Gmail env vars that')
   console.log('is truly sensitive.\n')
 }
 
@@ -99,7 +99,7 @@ function captureCodeFromBrowser({
           message: 'State mismatch (CSRF guard). Check the console.',
         })
         server.close()
-        reject(new Error('OAuth state mismatch — possible CSRF; aborting.'))
+        reject(new Error('OAuth state mismatch, possible CSRF; aborting.'))
 
         return
       }
@@ -179,7 +179,7 @@ async function exchangeCodeForRefreshToken({
   const parsed = tokenResponseSchema.parse(await res.json())
   if (!parsed.refresh_token) {
     throw new Error(
-      'Google did not return a refresh_token. This usually means you have already consented this app — revoke access at https://myaccount.google.com/permissions and try again, or check that `prompt=consent` is being sent.',
+      'Google did not return a refresh_token. This usually means you have already consented this app. Revoke access at https://myaccount.google.com/permissions and try again, or check that `prompt=consent` is being sent.',
     )
   }
 

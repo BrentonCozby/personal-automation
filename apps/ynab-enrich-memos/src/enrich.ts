@@ -50,7 +50,7 @@ export const enrichMemosAuditSchema = z.object({
   order_total: z.number().optional(),
   /** Gmail deep-link to the matched receipt email, for spot-checking the source. */
   matched_email_url: z.string().optional(),
-  /** Subject of the matched receipt email — compact context the model read. */
+  /** Subject of the matched receipt email: compact context the model read. */
   matched_email_subject: z.string().nullable().optional(),
   /** Date header of the matched receipt email, as Gmail provided it. */
   matched_email_date: z.string().nullable().optional(),
@@ -204,7 +204,7 @@ async function runEnrichInner({
     for (const o of outcomes.successes) {
       logger.audit({ ...o.auditCore, outcome: 'skipped_for_dry_run' })
     }
-    logger.info({ msg: 'Dry run — skipping PATCH', extra: { proposed: outcomes.successes.length } })
+    logger.info({ msg: 'Dry run, skipping PATCH', extra: { proposed: outcomes.successes.length } })
 
     return {
       succeeded: outcomes.successes.length,
@@ -277,14 +277,14 @@ export async function enrichAll({
         successes.push({ patch: result.value.patch, auditCore: result.value.auditCore })
       } else {
         // A benign skip (no candidate email, or no receipt matched): nothing to PATCH and not a
-        // failure, so audit it now with skipped_for_no_match — notify's digest won't flag it.
+        // failure, so audit it now with skipped_for_no_match, which notify's digest won't flag.
         skipped += 1
         logger.audit({ ...result.value.auditCore, outcome: 'skipped_for_no_match' })
       }
       continue
     }
     // Gmail failures are AppError, Anthropic failures are AnthropicError. Anything else is a
-    // programmer bug or genuinely unexpected — let it crash the run.
+    // programmer bug or genuinely unexpected, so let it crash the run.
     if (!(result.reason instanceof AppError) && !(result.reason instanceof AnthropicError)) {
       throw result.reason
     }
@@ -361,7 +361,7 @@ async function enrichOne({
   }
 
   if (messages.length === 0) {
-    // Candidates existed but none survived the trust filter — nothing safe to send.
+    // Candidates existed but none survived the trust filter, so nothing is safe to send.
     return {
       kind: 'skip',
       auditCore: buildAuditEntry({
@@ -406,7 +406,7 @@ async function enrichOne({
   }
 
   // Deterministic backstop to the prompt's amount rule: never write a memo we can't confirm
-  // matches the charge. Fails closed — a missing total (can't verify) is rejected just like a
+  // matches the charge. Fails closed: a missing total (can't verify) is rejected just like a
   // mismatched one. This is what silently mis-matched a receipt before: the real receipt was
   // truncated by the fetch cap and the model settled for a wrong-amount one.
   if (
@@ -482,7 +482,7 @@ export function isEligible({
   if (txn.payee_name !== PAYEE_FILTER) return false
   if (txn.transfer_account_id) return false
   if (txn.transfer_transaction_id) return false
-  // Only enrich empty memos. Any non-empty memo is left untouched — whether it's a note you
+  // Only enrich empty memos. Any non-empty memo is left untouched, whether it's a note you
   // typed or this job's own `auto-gen:` output (which also means we never overwrite the memo
   // the categorizer read, since the categorizer runs after us). To regenerate, clear the memo.
   if (txn.memo?.trim()) return false

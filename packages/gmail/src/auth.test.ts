@@ -96,7 +96,7 @@ describe('createGmailAuth.getAccessToken', (): void => {
 
         return HttpResponse.json({
           access_token: `atok-${calls}`,
-          // 30 seconds — under the 60-second refresh buffer so the second call refreshes.
+          // 30 seconds, under the 60-second refresh buffer so the second call refreshes.
           expires_in: 30,
           token_type: 'Bearer',
         })

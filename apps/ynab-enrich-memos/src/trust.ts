@@ -2,8 +2,8 @@
  * Whether a candidate receipt email is trustworthy enough to feed the model.
  *
  * Gmail stamps every message it receives with an `Authentication-Results` header carrying its
- * own SPF/DKIM/DMARC verdict. We drop a candidate only when DMARC explicitly **failed** — a
- * strong forged-sender signal (real Amazon mail is `dmarc=pass`) — and keep everything else.
+ * own SPF/DKIM/DMARC verdict. We drop a candidate only when DMARC explicitly **failed** (a
+ * strong forged-sender signal, since real Amazon mail is `dmarc=pass`) and keep everything else.
  *
  * This is fail-open by design: a missing or unparseable header never costs us a real receipt
  * (a missed enrichment is harmless; a wrongly-dropped one is not). It's defense-in-depth on top

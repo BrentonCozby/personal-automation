@@ -13,8 +13,8 @@ export type LineChange = {
  * the file was left untouched.
  *
  * Each line is checked against the text it was read as before anything is replaced. A mismatch
- * means the file moved underneath us — Obsidian Sync and the Git plugin are both live on this
- * vault, and an edit in another window lands the same way — so the whole file is skipped rather
+ * means the file moved underneath us. Obsidian Sync and the Git plugin are both live on this
+ * vault, and an edit in another window lands the same way, so the whole file is skipped rather
  * than half-written. Callers report which files this hit, because a skip that nothing mentions
  * reads exactly like a success.
  */

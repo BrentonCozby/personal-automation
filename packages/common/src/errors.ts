@@ -1,7 +1,7 @@
 import { z } from 'zod'
 
 // Renders any thrown value for user-facing fatal output. ZodError gets a
-// one-line-per-issue layout — much more readable than the default JSON dump
+// one-line-per-issue layout, more readable than the default JSON dump
 // of `error.issues`, especially for env-var or API-response validation
 // failures where the user just needs to know which field is wrong.
 export function formatError(err: unknown): string {

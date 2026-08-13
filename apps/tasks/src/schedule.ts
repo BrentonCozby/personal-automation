@@ -29,7 +29,7 @@ export type ScheduleSlot = {
 export function parseSchedule(entries: readonly string[]): ScheduleSlot[] {
   if (entries.length === 0) {
     throw new AppError({
-      message: 'TASKS_SCHEDULE is empty — add at least one "Day HH:MM" entry.',
+      message: 'TASKS_SCHEDULE is empty. Add at least one "Day HH:MM" entry.',
     })
   }
 
@@ -65,7 +65,7 @@ const PLIST_DOCTYPE =
 
 /**
  * Builds the dedicated launchd agent plist for the digest. Its StartCalendarInterval is an
- * array of {Weekday, Hour, Minute} triggers — one per schedule slot — so the digest fires on
+ * array of {Weekday, Hour, Minute} triggers (one per schedule slot), so the digest fires on
  * exactly the days and times configured, independent of the daily YNAB run.
  */
 export function buildTasksDigestPlist({

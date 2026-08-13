@@ -29,14 +29,14 @@ CHARGE:
 - date: ${transactionDate}
 - amount: $${amount.toFixed(2)}
 
-Find the ONE email whose order total equals the charge amount of $${amount.toFixed(2)}. Match on the amount FIRST: the order total must equal the charge to the cent (allow at most a few cents of difference, and only for tax rounding). An order whose total is clearly different — say $22.17 against a $39.86 charge — is NOT a match; never settle for the closest one. Among amount-matches, prefer an order dated on or before the charge date.
+Find the ONE email whose order total equals the charge amount of $${amount.toFixed(2)}. Match on the amount FIRST: the order total must equal the charge to the cent (allow at most a few cents of difference, and only for tax rounding). An order whose total is clearly different (say $22.17 against a $39.86 charge) is NOT a match; never settle for the closest one. Among amount-matches, prefer an order dated on or before the charge date.
 
 Summarize the matching order's items as a single line, for example:
 
-  USB-C cable ($9.99), AA batteries ($4.50) — Total $14.49
+  USB-C cable ($9.99), AA batteries ($4.50). Total $14.49
 
 Rules:
-- If no email's order total equals the charge amount, set receipt_found to false, item_summary to null, order_total to null, and matched_email_index to null. Finding no match is correct and expected — a wrong match is worse than none.
+- If no email's order total equals the charge amount, set receipt_found to false, item_summary to null, order_total to null, and matched_email_index to null. Finding no match is correct and expected: a wrong match is worse than none.
 - order_total: the matched order's total as a number (e.g. 14.49). It must equal the charge amount.
 - matched_email_index: the "index" value (shown on each email below) of the ONE email you matched. It must point to the email whose order total you used.
 - Use the product names as written in the email, shortened to the essential name. Include each item's price when shown, and the order total.
@@ -61,7 +61,7 @@ function toPromptEmail(email: ReceiptEmail, index: number): Record<string, unkno
 }
 
 // Strip the wrapper tags out of email text so a crafted message can't close the <emails> block
-// early, and collapse newlines so they can't fake the end of the data — mirrors the sanitize
+// early, and collapse newlines so they can't fake the end of the data. Mirrors the sanitize
 // step in apps/ynab-categorize/src/anthropic/prompts.ts.
 function sanitize(text: string, maxLength: number): string {
   return text

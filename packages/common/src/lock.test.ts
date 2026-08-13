@@ -46,7 +46,7 @@ describe('acquireLock', (): void => {
   })
 
   it('throws LockHeldError when a live PID owns the lock', (): void => {
-    // Write our own PID — process.kill(pid, 0) will succeed because we are alive.
+    // Write our own PID: process.kill(pid, 0) will succeed because we are alive.
     writeFileSync(path, String(process.pid))
     expect((): unknown => acquireLock(path)).toThrow(LockHeldError)
   })

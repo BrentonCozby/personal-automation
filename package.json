@@ -1,7 +1,7 @@
 {
   "name": "personal-automation",
   "version": "0.1.0",
-  "description": "Personal automation monorepo — small scheduled jobs and the shared libraries they build on.",
+  "description": "Personal automation monorepo: small scheduled jobs and the shared libraries they build on.",
   "type": "module",
   "private": true,
   "packageManager": "pnpm@11.2.2",

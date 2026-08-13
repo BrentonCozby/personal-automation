@@ -40,7 +40,7 @@ function makeConfig(overrides: Partial<Config> = {}): Config {
   }
 }
 
-// Anthropic Messages API response shape — the SDK parses `content[0].text` against the
+// Anthropic Messages API response shape. The SDK parses `content[0].text` against the
 // Zod schema passed to `output_config.format` and surfaces it as `parsed_output`.
 function anthropicResponse(content: string): Record<string, unknown> {
   return {
@@ -289,7 +289,7 @@ describe('runCategorize (e2e)', (): void => {
   it('writes a run-aborted audit entry when the categories endpoint returns a bad shape', async (): Promise<void> => {
     server.use(
       // Malformed: top-level `data` missing `category_groups`. This rejects in the YNAB
-      // client's Zod parse before any txn work begins — exactly the kind of fatal that
+      // client's Zod parse before any txn work begins: exactly the kind of fatal that
       // would otherwise leave no audit trail.
       http.get(`${YNAB_API_BASE_URL}/budgets/${BUDGET_ID}/categories`, () =>
         HttpResponse.json({ data: {} }),
@@ -313,7 +313,7 @@ describe('runCategorize (e2e)', (): void => {
 
   it('propagates the original error when the run-aborted audit write itself fails', async (): Promise<void> => {
     server.use(
-      // Malformed categories response rejects before any txn work — same fatal as above.
+      // Malformed categories response rejects before any txn work: same fatal as above.
       http.get(`${YNAB_API_BASE_URL}/budgets/${BUDGET_ID}/categories`, () =>
         HttpResponse.json({ data: {} }),
       ),

@@ -166,7 +166,7 @@ describe('runNotify', (): void => {
 
     const decoded = Buffer.from(receivedRaw, 'base64url').toString('utf8')
     expect(decoded).toContain('To: me@example.com')
-    expect(decodeSubject(decoded)).toBe('Personal Automation — 1 error')
+    expect(decodeSubject(decoded)).toBe('Personal Automation: 1 error')
     // The email carries both a plain-text fallback and an HTML part.
     expect(decoded).toContain('multipart/alternative')
     expect(decoded).toContain('Content-Type: text/html')
@@ -209,7 +209,7 @@ describe('runNotify', (): void => {
 
     expect(result.kind).toBe('sent')
     const decoded = Buffer.from(receivedRaw, 'base64url').toString('utf8')
-    expect(decodeSubject(decoded)).toBe('Personal Automation — 1 error')
+    expect(decodeSubject(decoded)).toBe('Personal Automation: 1 error')
     expect(receivedRaw).not.toBe('')
   })
 

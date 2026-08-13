@@ -83,7 +83,7 @@ Options:
 /**
  * Audit files whose run date (the YYYY-MM-DD in the filename) falls in [since, until], oldest
  * first. The enrich audit dir holds only this app's `…-<date>.jsonl` files, so matching the
- * trailing date is enough — no need to hardcode the app name.
+ * trailing date is enough, with no need to hardcode the app name.
  */
 export function auditFilesInRange({
   auditDir,
@@ -131,8 +131,8 @@ export function readEnrichedRows(filePaths: string[]): EnrichMemosAudit[] {
 }
 
 /**
- * Collapse to one row per transaction, keeping the most recent. This looks redundant — a
- * transaction is normally enriched once — but the audit log is append-only across runs, so the
+ * Collapse to one row per transaction, keeping the most recent. This looks redundant, since a
+ * transaction is normally enriched once, but the audit log is append-only across runs, so the
  * same transaction can have an `enriched` row from each run that processed it: a backfill that
  * was re-run, or repeated dry-runs (a dry-run never writes the memo, so the transaction stays
  * eligible and gets re-matched on the next run). Without this, such a transaction shows up once
@@ -201,7 +201,7 @@ function formatRow(row: EnrichMemosAudit): string {
   return lines.join('\n')
 }
 
-/** The full review report: a header line, then one block per row. Pure — no IO. */
+/** The full review report: a header line, then one block per row. Pure, with no IO. */
 export function formatReview({
   rows,
   since,
@@ -215,11 +215,11 @@ export function formatReview({
   total: number
 }): string {
   const range = since === until ? since : `${since} to ${until}`
-  if (total === 0) return `Enrich-memos review — runs ${range}\nNo enriched transactions found.`
+  if (total === 0) return `Enrich-memos review: runs ${range}\nNo enriched transactions found.`
 
   const noun = total === 1 ? 'enriched transaction' : 'enriched transactions'
   const sampled = rows.length < total ? ` (showing ${rows.length} sampled)` : ''
-  const header = `Enrich-memos review — runs ${range}\n${total} ${noun}${sampled}`
+  const header = `Enrich-memos review: runs ${range}\n${total} ${noun}${sampled}`
 
   // Sort the shown rows by the transaction's own date so the report reads chronologically.
   const ordered = [...rows].sort((a, b) =>

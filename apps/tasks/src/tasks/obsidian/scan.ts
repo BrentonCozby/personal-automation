@@ -21,7 +21,7 @@ const NOTE_BULLET_PREFIX = /^\s*(?:[-*+]\s+)?/
 
 // Every Obsidian Tasks metadata marker that can trail the text, stripped so the title reads clean.
 // Date markers carry a YYYY-MM-DD; id/dependsOn/onCompletion carry one token; the priority markers
-// stand alone. Only created/due/recurrence are acted on above — the rest are removed from the
+// stand alone. Only created/due/recurrence are acted on above; the rest are removed from the
 // title but otherwise ignored.
 const DATE_METADATA = /[➕📅⏳🛫✅❌]\s*\d{4}-\d{2}-\d{2}/gu
 const TOKEN_METADATA = /[🆔⛔🏁]\s*\S+/gu
@@ -115,7 +115,7 @@ export function scanFileTasks({ path, content }: { path: string; content: string
 
 /**
  * The text the touch clock hashes for a task. Exported so a caller that has just rewritten a line
- * can build the new value the same way this scan does — building it differently would leave a
+ * can build the new value the same way this scan does: building it differently would leave a
  * fingerprint that the next scan disagrees with, and every run would read as a fresh touch.
  */
 export function rawOf({ lineText, notes }: { lineText: string; notes: string | null }): string {
@@ -126,8 +126,9 @@ function indentOf(line: string): number {
   return line.match(/^\s*/)?.[0].length ?? 0
 }
 
-// Collects the lines immediately under a task — more indented than it, not blank, not a checkbox
-// (a deeper checkbox is a separate subtask) — as its notes, with the bullet/indent stripped.
+// Collects the lines immediately under a task as its notes, with the bullet/indent stripped. A
+// note line is more indented than the task, not blank, and not a checkbox, since a deeper
+// checkbox is a separate subtask.
 function collectNotes({
   lines,
   taskIndex,

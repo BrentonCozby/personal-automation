@@ -29,8 +29,8 @@ it('names the tasks holding the cap and the order they are in', () => {
 
   expect(text).toContain('2 tasks are already #active, which is the cap.')
   expect(text).toContain('most recently touched, then soonest due')
-  expect(text).toContain('1. fix the bike — touched yesterday, due 2026-08-20')
-  expect(text).toContain('2. file taxes — not touched since the clock started')
+  expect(text).toContain('1. fix the bike: touched yesterday, due 2026-08-20')
+  expect(text).toContain('2. file taxes: not touched since the clock started')
   expect(text).toContain('--over-cap to make it 4 this once')
 })
 
@@ -74,7 +74,7 @@ it('states the count against the cap on a promotion', () => {
       cap: 3,
       isOverCap: false,
     }),
-  ).toBe('Promoted "fix the bike" to #active — 2 of 3 active.')
+  ).toBe('Promoted "fix the bike" to #active: 2 of 3 active.')
 })
 
 // Raising the cap is a supported move: no warning, no scolding, just what happened.
@@ -154,7 +154,7 @@ it('states an abandonment and what it freed', () => {
   }
 
   expect(renderAbandonResult(abandoned)).toBe(
-    'Dropped "fix the bike" — its checkbox is cancelled and dated 2026-08-12.\nThat frees a place on the active list.',
+    'Dropped "fix the bike": its checkbox is cancelled and dated 2026-08-12.\nThat frees a place on the active list.',
   )
 })
 

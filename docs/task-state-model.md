@@ -273,7 +273,7 @@ like every other command. Reviewing a task is not touching it, so the clock goes
 apart from that reconcile.
 
 Register: the email says "gone quiet" and "untouched for N days". It never says overdue, failing,
-behind, or should have — and the model is given the same rule, because its reasoning is printed as
+behind, or should have. The model is given the same rule, because its reasoning is printed as
 written.
 
 ## Migration
