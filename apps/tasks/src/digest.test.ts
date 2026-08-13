@@ -1,5 +1,6 @@
 import { expect, it } from 'vitest'
 import { buildDigest, type Digest, type DigestItem, type DoneSummary } from './digest.js'
+import type { CapSuggestion } from './state/cap-suggestion.js'
 import type { DoneEntry } from './state/done.js'
 
 function item(overrides: Partial<DigestItem> = {}): DigestItem {
@@ -167,13 +168,17 @@ it('closes and reopens the quoting around an embedded quote', () => {
 // The whole point of the model is to remove the deficit feeling, so the app's own words never
 // accuse. The model is told the same in its prompt.
 it('never uses the accusatory register in its own text', () => {
-  const digest = build(
-    [
+  const digest = buildDigest({
+    items: [
       item({ title: 'a', passedDueDate: '2026-08-10', suggestedNextAction: null }),
       item({ title: 'b', reasoning: 'waiting on a reply' }),
     ],
-    3,
-  )
+    activeCount: 3,
+    done: done({ finished: [entry('pay the water bill', 18)] }),
+    // Included here rather than tested apart: the cap note is the one place the review comments on
+    // a pattern in your choices, so it is the likeliest place for the register to slip.
+    capSuggestion: { overrideCount: 4, windowDays: 30, suggestedCap: 6 },
+  })
 
   for (const word of ['overdue', 'failing', 'behind', 'should have', 'stalled', 'flagged']) {
     expect(digest.body.toLowerCase()).not.toContain(word)
@@ -272,4 +277,47 @@ it('counts both halves in the subject of a done-list-only email', () => {
     'Task Review: 2 finished, 1 dropped',
   )
   expect(build([], 1, done({ dropped })).subject).toBe('Task Review: 1 dropped')
+})
+
+function withCap(suggestion: Partial<CapSuggestion> = {}): Digest {
+  return buildDigest({
+    items: [item()],
+    activeCount: 1,
+    done: done(),
+    capSuggestion: { overrideCount: 4, windowDays: 30, suggestedCap: 6, ...suggestion },
+  })
+}
+
+it('says nothing about the cap when the cap is holding', () => {
+  expect(build([item()]).body).not.toContain('The cap')
+  expect(build([item()]).html).not.toContain('TASKS_WIP_CAP')
+})
+
+// The number carried and the number suggested are the same on purpose: the edit renames what is
+// already true rather than granting anything new.
+it('names how often the cap was raised and the most that was carried', () => {
+  expect(withCap().body).toContain('You raised it 4 times in the last 30 days, carrying 6 at once.')
+  expect(withCap().body).toContain('A limit you go around that often is set too low.')
+  expect(withCap().body).toContain('TASKS_WIP_CAP=6  in apps/tasks/.env')
+})
+
+it('reads a single raise as once', () => {
+  expect(withCap({ overrideCount: 1 }).body).toContain('You raised it once in the last 30 days')
+})
+
+it('renders the cap note in the HTML body too', () => {
+  expect(withCap().html).toContain('The cap')
+  expect(withCap().html).toContain('TASKS_WIP_CAP=6')
+})
+
+// Last in the email: it is a note about the system, not about any of the work above it.
+it('puts the cap note after the done list', () => {
+  const digest = buildDigest({
+    items: [],
+    activeCount: 1,
+    done: done({ finished: [entry('pay the water bill', 18)] }),
+    capSuggestion: { overrideCount: 4, windowDays: 30, suggestedCap: 6 },
+  })
+
+  expect(digest.body.indexOf('The cap')).toBeGreaterThan(digest.body.indexOf('pay the water bill'))
 })

@@ -10,7 +10,9 @@ import type { TaskAnalysis } from './anthropic/schemas.js'
 import { toCandidate, withTaskClock } from './commands/task-io.js'
 import type { Config } from './config.js'
 import { buildDigest, type Digest, type DigestItem, type DoneSummary } from './digest.js'
+import { readOverrides } from './overrides.js'
 import { appendRunLog, type RunLogEntry } from './run-log.js'
+import { type CapSuggestion, suggestCapRaise } from './state/cap-suggestion.js'
 import { dueStatus, localIsoDate } from './state/days.js'
 import { closedSince, countMoved } from './state/done.js'
 import { isStalled, untouchedDays } from './state/stall.js'
@@ -155,6 +157,14 @@ async function review({
     { open: open.length, active: active.length, quiet: quiet.length, doneCount },
     'Read the vault.',
   )
+  // Read before the model call, so a log this can't parse fails the run without spending anything.
+  const capSuggestion = capRaise({ config, now, runsDir })
+  if (capSuggestion) {
+    logger.info(
+      { overrideCount: capSuggestion.overrideCount, suggestedCap: capSuggestion.suggestedCap },
+      'The cap has been raised often enough to suggest changing it.',
+    )
+  }
 
   // The two halves are gated separately. Whichever of them has something decides the email; only an
   // empty pair is silent.
@@ -167,7 +177,12 @@ async function review({
     }
 
     return await deliver({
-      digest: buildDigest({ items: [], activeCount: active.length, done }),
+      digest: buildDigest({
+        items: [],
+        activeCount: active.length,
+        done,
+        ...(capSuggestion ? { capSuggestion } : {}),
+      }),
       quietCount: 0,
       doneCount,
       activeCount: active.length,
@@ -204,7 +219,12 @@ async function review({
   })
 
   return await deliver({
-    digest: buildDigest({ items, activeCount: active.length, done }),
+    digest: buildDigest({
+      items,
+      activeCount: active.length,
+      done,
+      ...(capSuggestion ? { capSuggestion } : {}),
+    }),
     quietCount: items.length,
     doneCount,
     activeCount: active.length,
@@ -212,6 +232,25 @@ async function review({
     opts,
     gmail,
     logger,
+  })
+}
+
+/** What to say about the cap itself, or undefined when it is holding. */
+function capRaise({
+  config,
+  now,
+  runsDir,
+}: {
+  config: Config
+  now: Date
+  runsDir: string | undefined
+}): CapSuggestion | undefined {
+  return suggestCapRaise({
+    entries: readOverrides(runsDir !== undefined ? { dir: runsDir } : {}),
+    cap: config.wipCap,
+    windowDays: config.overrideWindowDays,
+    limit: config.overrideLimit,
+    now,
   })
 }
 

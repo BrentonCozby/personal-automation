@@ -15,6 +15,9 @@ const schema = z.object({
   TASKS_STALL_DAYS: z.coerce.number().pipe(z.int().positive()),
   TASKS_HORIZON_DAYS: z.coerce.number().pipe(z.int().positive()),
   TASKS_DONE_WINDOW_DAYS: z.coerce.number().pipe(z.int().positive()),
+  TASKS_OVERRIDE_WINDOW_DAYS: z.coerce.number().pipe(z.int().positive()),
+  // Zero is allowed: it asks for the suggestion the first time the cap is raised at all.
+  TASKS_OVERRIDE_LIMIT: z.coerce.number().pipe(z.int().nonnegative()),
   TASK_LISTS: jsonValue.pipe(z.array(z.string())),
   OBSIDIAN_VAULT_PATH: z.string().min(1),
   TASKS_ANTHROPIC_MODEL: z.string().min(1),
@@ -41,6 +44,13 @@ export type Config = {
    * of what you did stays interesting.
    */
   doneWindowDays: number
+  /** How many days of raised caps the review looks back over before judging the cap too low. */
+  overrideWindowDays: number
+  /**
+   * Raises inside that window the cap is allowed before the review suggests raising it for good.
+   * A cap gone around exactly this many times is a cap that mostly holds.
+   */
+  overrideLimit: number
   /** Files or folders in the vault that hold tasks; empty = just `todos.md` at the vault root. */
   taskLists: string[]
   /** The vault folder every command reads and writes. */
@@ -61,6 +71,8 @@ export function loadConfig(): Config {
     stallDays: parsed.TASKS_STALL_DAYS,
     horizonDays: parsed.TASKS_HORIZON_DAYS,
     doneWindowDays: parsed.TASKS_DONE_WINDOW_DAYS,
+    overrideWindowDays: parsed.TASKS_OVERRIDE_WINDOW_DAYS,
+    overrideLimit: parsed.TASKS_OVERRIDE_LIMIT,
     taskLists: parsed.TASK_LISTS,
     obsidianVaultPath: parsed.OBSIDIAN_VAULT_PATH,
     model: parsed.TASKS_ANTHROPIC_MODEL,

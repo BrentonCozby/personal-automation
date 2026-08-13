@@ -5,7 +5,8 @@ import {
   MONO_FONT_STACK,
 } from '@personal-automation/common/html'
 import type { Classification } from './anthropic/schemas.js'
-import { CLI_INVOCATION, SUBJECT_PREFIX } from './constants.js'
+import { CLI_INVOCATION, ENV_FILE, SUBJECT_PREFIX } from './constants.js'
+import type { CapSuggestion } from './state/cap-suggestion.js'
 import { localIsoDate } from './state/days.js'
 import type { DoneEntry, DoneList } from './state/done.js'
 
@@ -49,6 +50,11 @@ const START_HERE_PREFIX = 'Start here →  '
 const NO_ACTION = '(no single step; fit it into the right context.)'
 const ALTERNATIVES = 'Or give it a date, or drop it:'
 const NOTHING_QUIET = 'Nothing has gone quiet. Here is what the last few days produced.'
+const CAP_HEADING = 'The cap'
+// The one conclusion this note is allowed to reach. A cap gone around this often is a number that
+// was set wrong, and saying anything else here would turn a record of your own choices into a
+// complaint about them.
+const CAP_TOO_LOW = 'A limit you go around that often is set too low.'
 
 // A stand-in date for the printed command, not a recommendation: the point is a runnable line the
 // reader edits. Well inside TASKS_HORIZON_DAYS, so pasting it as-is keeps the task active.
@@ -68,15 +74,18 @@ export function buildDigest({
   items,
   activeCount,
   done,
+  capSuggestion,
 }: {
   items: DigestItem[]
   activeCount: number
   done: DoneSummary
+  /** Present only when the cap has been raised often enough to be worth changing. */
+  capSuggestion?: CapSuggestion
 }): Digest {
   return {
     subject: subjectFor({ items, done }),
-    body: renderBody({ items, activeCount, done }),
-    html: renderHtml({ items, activeCount, done }),
+    body: renderBody({ items, activeCount, done, capSuggestion }),
+    html: renderHtml({ items, activeCount, done, capSuggestion }),
   }
 }
 
@@ -163,10 +172,12 @@ function renderBody({
   items,
   activeCount,
   done,
+  capSuggestion,
 }: {
   items: DigestItem[]
   activeCount: number
   done: DoneSummary
+  capSuggestion: CapSuggestion | undefined
 }): string {
   const sections: string[] = []
   if (items.length === 0) {
@@ -184,8 +195,37 @@ function renderBody({
   }
   const record = renderDone({ done, activeCount })
   if (record) sections.push(record)
+  if (capSuggestion) sections.push(renderCapSuggestion(capSuggestion))
 
   return sections.join('\n\n')
+}
+
+/**
+ * The note about the cap itself, last in the email because it is about the system rather than about
+ * any of the work above it.
+ */
+function renderCapSuggestion(suggestion: CapSuggestion): string {
+  return [
+    CAP_HEADING,
+    RULE,
+    ...capSuggestionLines(suggestion).map(line => `  ${line}`),
+    '',
+    `    ${capSetting(suggestion)}`,
+  ].join('\n')
+}
+
+function capSuggestionLines(suggestion: CapSuggestion): string[] {
+  const raises = suggestion.overrideCount === 1 ? 'once' : `${suggestion.overrideCount} times`
+
+  return [
+    `You raised it ${raises} in the last ${suggestion.windowDays} days, carrying ${suggestion.suggestedCap} at once.`,
+    CAP_TOO_LOW,
+  ]
+}
+
+// The number you actually worked at, so the edit only renames what is already true.
+function capSetting(suggestion: CapSuggestion): string {
+  return `TASKS_WIP_CAP=${suggestion.suggestedCap}  in ${ENV_FILE}`
 }
 
 // The counts, then the list itself. A count of zero is left out rather than printed as a zero: the
@@ -280,10 +320,12 @@ function renderHtml({
   items,
   activeCount,
   done,
+  capSuggestion,
 }: {
   items: DigestItem[]
   activeCount: number
   done: DoneSummary
+  capSuggestion: CapSuggestion | undefined
 }): string {
   const parts: string[] = []
   if (items.length === 0) {
@@ -296,6 +338,7 @@ function renderHtml({
   }
   const record = htmlDone({ done, activeCount })
   if (record) parts.push(record)
+  if (capSuggestion) parts.push(htmlCapSuggestion(capSuggestion))
 
   return `<div style="font-family:${FONT_STACK};max-width:560px;margin:0;padding:8px;color:#202124;font-size:15px;line-height:1.5;">${parts.join('')}</div>`
 }
@@ -324,6 +367,14 @@ function htmlDone({
   const list = entries ? `<ul style="margin:6px 0 0;padding-left:18px;">${entries}</ul>` : ''
 
   return `<div style="margin-top:22px;padding-top:14px;border-top:1px solid #ececec;"><div style="${HTML_LABEL}">${escapeHtml(doneHeading(done.windowDays))}</div><div style="font-size:14px;color:#3c4043;margin-top:6px;">${countLines}</div><div style="font-size:14px;">${list}</div></div>`
+}
+
+function htmlCapSuggestion(suggestion: CapSuggestion): string {
+  const lines = capSuggestionLines(suggestion)
+    .map(line => `<div>${escapeHtml(line)}</div>`)
+    .join('')
+
+  return `<div style="margin-top:22px;padding-top:14px;border-top:1px solid #ececec;"><div style="${HTML_LABEL}">${escapeHtml(CAP_HEADING)}</div><div style="font-size:14px;color:#3c4043;margin-top:6px;">${lines}</div><div style="${COMMAND_BLOCK}">${escapeHtml(capSetting(suggestion))}</div></div>`
 }
 
 function htmlStartHere(pick: DigestItem): string {

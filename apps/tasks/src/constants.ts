@@ -14,3 +14,6 @@ export const RUNS_DIR_NAME = 'runs'
  * match the `tasks` script in this app's package.json.
  */
 export const CLI_INVOCATION = 'pnpm --filter @personal-automation/tasks tasks'
+
+/** Where this app's own settings live, relative to the repo root. The digest names it to edit. */
+export const ENV_FILE = 'apps/tasks/.env'

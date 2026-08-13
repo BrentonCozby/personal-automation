@@ -134,6 +134,8 @@ They all live in `apps/tasks/src/config.ts` and nowhere else.
 | `TASKS_STALL_DAYS` | 7 | The computed stalled state, which is what the review reports. |
 | `TASKS_HORIZON_DAYS` | 28 | Decay threshold and scheduling ceiling, read from this one value. |
 | `TASKS_DONE_WINDOW_DAYS` | 7 | How far back the done list reaches, counting today. |
+| `TASKS_OVERRIDE_WINDOW_DAYS` | 30 | How far back the review counts raised caps, counting today. |
+| `TASKS_OVERRIDE_LIMIT` | 3 | Raises inside that window before the review suggests raising the cap for good. |
 
 The decay threshold and the scheduling ceiling are the same number because they are the same claim
 about how far ahead you can honestly see. A date past the horizon is routed to `#someday`.
@@ -253,6 +255,8 @@ able to arrive on a week when nothing is wrong. Tying it to a quiet task would m
 wins only ever appeared next to a complaint, and a clean week would show nothing at all.
 
 Silence therefore needs both halves to be empty: nothing quiet, and nothing closed inside the window.
+The note about the cap (see [Overrides](#overrides)) is not a third half. It rides along on a review
+that was already sending, so it can wait for the next one.
 
 Dropping is reported as a result rather than a gap, because choosing what not to carry is the
 mechanism the cap runs on. A count of zero is left out rather than printed as a zero, since a row of
@@ -337,9 +341,23 @@ Both places name the proxy in what they print, so the ordering is never mysterio
 Raising the cap for a single invocation is a legitimate use of the system. It requires no reason,
 prints no warning, and is not an error.
 
-Each override appends one line to `apps/tasks/runs/overrides.jsonl`. When more than three land
-inside a rolling 30 days, the digest suggests raising the default cap, on the grounds that a rule
-routed around this often is a rule that does not fit. It never suggests trying harder.
+Each override appends one line to `apps/tasks/runs/overrides.jsonl`, carrying the cap in force at the
+time and how many tasks were already active. More than `TASKS_OVERRIDE_LIMIT` of them inside
+`TASKS_OVERRIDE_WINDOW_DAYS` days and the review suggests raising the default cap, on the grounds
+that a rule routed around this often is a rule that does not fit. It never suggests trying harder.
+
+The number it suggests is one more than the largest `active_count` on record, which is the most you
+actually carried. Suggesting one more than the current cap would contradict the system's own record
+of what you chose.
+
+Only raises recorded against the cap now in force are counted, so raising `TASKS_WIP_CAP` retires
+every entry written under the old value and the count starts again from zero. That is what silences
+the suggestion, and it is why nothing has to store the fact that the suggestion was made. Setting the
+cap back down brings the old entries back into the count for the rest of the window.
+
+The suggestion rides along on a review that was already sending, and is never a third reason to send
+one. A line the reader cannot parse fails the run rather than being skipped: an undercount would show
+up only as a suggestion that never arrives, which is not something anyone would notice.
 
 Override records must stay out of `apps/*/audit/`. The `notify` app globs that path and would mail
 them to you as failures.

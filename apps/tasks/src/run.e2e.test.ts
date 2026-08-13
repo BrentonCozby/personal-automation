@@ -20,6 +20,7 @@ import type { TasksAnalyzer } from './anthropic/client.js'
 import type { TaskAnalysis } from './anthropic/schemas.js'
 import { readOpenTasks } from './commands/task-io.js'
 import type { Config } from './config.js'
+import { appendOverride } from './overrides.js'
 import { type RunResult, runDigest } from './run.js'
 import type { RunLogEntry } from './run-log.js'
 import { fingerprintOf, touchKey } from './state/touch-clock.js'
@@ -88,6 +89,8 @@ function makeConfig(overrides: Partial<Config> = {}): Config {
     stallDays: 7,
     horizonDays: 28,
     doneWindowDays: 7,
+    overrideWindowDays: 30,
+    overrideLimit: 3,
     taskLists: SCOPES,
     obsidianVaultPath: vaultPath,
     model: 'claude-sonnet-5',
@@ -399,4 +402,51 @@ it('propagates a vault-access failure instead of reporting an empty review', asy
   await expect(
     run({ config: makeConfig({ obsidianVaultPath: join(vaultPath, 'nope') }) }),
   ).rejects.toThrow(/Obsidian vault not found/)
+})
+
+function seedOverrides({ count, cap }: { count: number; cap: number }): void {
+  for (let index = 0; index < count; index += 1) {
+    appendOverride({
+      entry: {
+        timestamp: new Date('2026-05-20T12:00:00Z').toISOString(),
+        title: `task ${index}`,
+        list: 'todos',
+        cap,
+        active_count: cap + 2,
+      },
+      dir: runsDir,
+    })
+  }
+}
+
+// The note about the cap rides along on whatever was already sending rather than being a third
+// reason to send, so a review with nothing quiet and nothing done stays silent.
+it('adds the cap note to a done-list-only email', async () => {
+  writeTodos(['- [x] pay the water bill ✅ 2026-05-30'])
+  seedOverrides({ count: 4, cap: 3 })
+
+  const result = await run()
+
+  if (result.kind !== 'dry_run') throw new Error('expected dry_run')
+  expect(result.body).toContain('You raised it 4 times in the last 30 days, carrying 6 at once.')
+  expect(result.body).toContain('TASKS_WIP_CAP=6')
+})
+
+// Acting on the suggestion is what silences it: the raises on record were made against the old cap,
+// and nothing counts them against the new one.
+it('drops the cap note once the cap has been raised', async () => {
+  writeTodos(['- [x] pay the water bill ✅ 2026-05-30'])
+  seedOverrides({ count: 4, cap: 3 })
+
+  const result = await run({ config: makeConfig({ wipCap: 4 }) })
+
+  if (result.kind !== 'dry_run') throw new Error('expected dry_run')
+  expect(result.body).not.toContain('TASKS_WIP_CAP')
+})
+
+it('fails the run rather than undercounting an override log it cannot read', async () => {
+  writeTodos(['- [x] pay the water bill ✅ 2026-05-30'])
+  writeFileSync(join(runsDir, 'overrides.jsonl'), 'not json\n')
+
+  await expect(run()).rejects.toThrow(/overrides\.jsonl/)
 })
