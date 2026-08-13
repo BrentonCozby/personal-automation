@@ -1,5 +1,11 @@
 import { afterEach, beforeEach, expect, test } from 'vitest'
-import { calendarDaysBetween, isTaskDateShape, localIsoDate, parseTaskDate } from './days.js'
+import {
+  calendarDaysBetween,
+  dueStatus,
+  isTaskDateShape,
+  localIsoDate,
+  parseTaskDate,
+} from './days.js'
 
 // Every threshold in this app is a count of local calendar days, so the tests have to pin a zone
 // rather than inherit the machine's. Los_Angeles is the current zone; the DST dates below are its
@@ -101,4 +107,22 @@ test('recognises the two date shapes without needing a clock', () => {
   expect(isTaskDateShape('+7d')).toBe(true)
   expect(isTaskDateShape('bike')).toBe(false)
   expect(isTaskDateShape('7d')).toBe(false)
+})
+
+test('reports an undated task as none', () => {
+  expect(dueStatus({ due: null, now: new Date(2026, 7, 20) })).toBe('none')
+})
+
+test('reports a date still ahead as future', () => {
+  expect(dueStatus({ due: new Date(2026, 7, 25), now: new Date(2026, 7, 20) })).toBe('future')
+})
+
+test('reports a date gone by as past', () => {
+  expect(dueStatus({ due: new Date(2026, 7, 10), now: new Date(2026, 7, 20) })).toBe('past')
+})
+
+// Due dates are local midnight, so a task due today is already behind `now` by the time anything
+// reads it. Counting it as past is what keeps it in the day's list rather than dropping it.
+test('reports a task due today as past', () => {
+  expect(dueStatus({ due: new Date(2026, 7, 20), now: new Date(2026, 7, 20, 9, 0) })).toBe('past')
 })

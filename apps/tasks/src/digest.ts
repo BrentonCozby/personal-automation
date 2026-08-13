@@ -2,34 +2,29 @@ import {
   escapeHtml,
   SANS_FONT_STACK as FONT_STACK,
   linkify,
+  MONO_FONT_STACK,
 } from '@personal-automation/common/html'
-import type { Classification, Priority } from './anthropic/schemas.js'
-import { SUBJECT_PREFIX } from './constants.js'
-import type { DueStatus } from './staleness.js'
+import type { Classification } from './anthropic/schemas.js'
+import { CLI_INVOCATION, SUBJECT_PREFIX } from './constants.js'
 
 /**
- * One analysis joined back to its locally-computed staleness + due signals. The model never
- * sees staleDays in its output (it's computed here), so ranking can't be hallucinated.
+ * One analysis joined back to the task it was made about. Every number here is computed locally
+ * rather than returned by the model, so nothing it wrote can contradict the figures printed beside
+ * it.
  */
 export type DigestItem = {
   title: string
-  /** The list (file/folder) the task lives on — shown so shared-list tasks (e.g. Family) are obvious. */
+  /** The list (file) the task lives on — shown so shared-list tasks (e.g. Family) are obvious. */
   list: string
   classification: Classification
   reasoning: string
   suggestedNextAction: string | null
-  priority: Priority
-  staleDays: number | null
-  dueStatus: DueStatus
+  untouchedDays: number
+  /** The task's own date, when it has already gone by. Null when it carries no date. */
+  passedDueDate: string | null
 }
 
 export type Digest = {
-  /** Items shown in the action list (capped). Drives the subject and the no-email gate. */
-  flaggedCount: number
-  /** All stalled+actionable items before the cap — the tail the summary line conveys. */
-  totalStalled: number
-  /** The capped, ranked items actually rendered — same object refs passed in, so callers can flag which surfaced. */
-  shown: DigestItem[]
   subject: string
   /** Plain-text body (the multipart fallback, and what `--dry-run` prints). */
   body: string
@@ -37,91 +32,101 @@ export type Digest = {
   html: string
 }
 
-const PRIORITY_RANK: Record<Priority, number> = { high: 3, medium: 2, low: 1 }
-
-// "Stuck:"/"Do next:" labels pad to this column so their text lines up.
+// "Quiet:"/"Do next:" labels pad to this column so their text lines up.
 const LABEL_WIDTH = 10
 const RULE = '═'.repeat(41)
 const START_HERE_PREFIX = 'Start here →  '
+const NO_ACTION = '(no single step — fit it into the right context.)'
+const ALTERNATIVES = 'Or give it a date, or drop it:'
 
+// A stand-in date for the printed command, not a recommendation: the point is a runnable line the
+// reader edits. Well inside TASKS_HORIZON_DAYS, so pasting it as-is keeps the task active.
+const SUGGESTED_DELAY = '+7d'
+
+/**
+ * The email for a set of tasks that have gone quiet. Renders what it is given: which tasks are quiet
+ * and in what order is decided before this, so nothing here can disagree with the counts.
+ */
 export function buildDigest({
   items,
-  maxItems,
-  staleThresholdDays,
+  activeCount,
 }: {
   items: DigestItem[]
-  maxItems: number
-  staleThresholdDays: number
+  activeCount: number
 }): Digest {
-  const habits = items.filter(i => i.classification === 'habit')
-  const candidates = items.filter(i => isCandidate({ item: i, staleThresholdDays }))
-  const ranked = [...candidates].sort(compareItems)
-  const shown = ranked.slice(0, maxItems)
-
-  const flaggedCount = shown.length
-  const totalStalled = candidates.length
-  const subject = `${SUBJECT_PREFIX} — ${flaggedCount} flagged`
-  const body = renderBody({ shown, totalStalled, habits })
-  const html = renderHtml({ shown, totalStalled, habits })
-
-  return { flaggedCount, totalStalled, shown, subject, body, html }
-}
-
-// habit → footer, not the action list. fine = clear, no blocker → not worth nagging, EXCEPT
-// when it's high priority (a safety issue or hard deadline): clear doesn't mean unimportant, so
-// those still surface. future-due → scheduled, not stalled; skip it. Of the rest, only flag the
-// genuinely stale: overdue, untouched past the threshold, or unknown age.
-function isCandidate({
-  item,
-  staleThresholdDays,
-}: {
-  item: DigestItem
-  staleThresholdDays: number
-}): boolean {
-  if (item.classification === 'habit') return false
-  if (item.classification === 'fine' && item.priority !== 'high') return false
-  if (item.dueStatus === 'future') return false
-  if (item.dueStatus === 'past') return true
-  if (item.staleDays === null) return true
-
-  return item.staleDays >= staleThresholdDays
-}
-
-// priority desc, then overdue first, then staleDays desc (unknown staleness sorts last).
-function compareItems(a: DigestItem, b: DigestItem): number {
-  if (PRIORITY_RANK[a.priority] !== PRIORITY_RANK[b.priority]) {
-    return PRIORITY_RANK[b.priority] - PRIORITY_RANK[a.priority]
+  return {
+    subject: `${SUBJECT_PREFIX} — ${items.length} ${items.length === 1 ? 'task has' : 'tasks have'} gone quiet`,
+    body: renderBody({ items, activeCount }),
+    html: renderHtml({ items, activeCount }),
   }
-  const aPast = a.dueStatus === 'past' ? 1 : 0
-  const bPast = b.dueStatus === 'past' ? 1 : 0
-  if (aPast !== bPast) return bPast - aPast
-
-  return (b.staleDays ?? -1) - (a.staleDays ?? -1)
 }
 
-function renderBody({
-  shown,
-  totalStalled,
-  habits,
-}: {
-  shown: DigestItem[]
-  totalStalled: number
-  habits: DigestItem[]
-}): string {
-  const sections: string[] = []
+function summaryLine({ quiet, activeCount }: { quiet: number; activeCount: number }): string {
+  if (quiet < activeCount) {
+    return `${quiet} of the ${activeCount} tasks you are carrying ${quiet === 1 ? 'has' : 'have'} gone quiet.`
+  }
+  if (activeCount === 1) return 'The one task you are carrying has gone quiet.'
+  if (activeCount === 2) return 'Both of the tasks you are carrying have gone quiet.'
 
-  const top = shown[0]
-  if (top) sections.push(renderStartHere({ shown, top }))
-  sections.push(renderSummary({ shown: shown.length, totalStalled }))
-  for (const item of shown) sections.push(renderItem(item))
-  const footer = renderHabits(habits)
-  if (footer) sections.push(footer)
+  return `All ${activeCount} of the tasks you are carrying have gone quiet.`
+}
+
+function quietFor(days: number): string {
+  return `${days} ${days === 1 ? 'day' : 'days'}`
+}
+
+function dateNote(item: DigestItem): string | undefined {
+  if (!item.passedDueDate) return undefined
+
+  return `Its date, ${item.passedDueDate}, has gone by.`
+}
+
+/** The two commands offered beside each quiet task, ready to paste from the repo root. */
+function commandsFor(item: DigestItem): string[] {
+  const title = shellArgument(item.title)
+
+  return [
+    `${CLI_INVOCATION} schedule ${title} ${SUGGESTED_DELAY}`,
+    `${CLI_INVOCATION} abandon ${title}`,
+  ]
+}
+
+/**
+ * Characters a shell would act on rather than pass through: quoting, expansion, globbing,
+ * redirection, job control, history, and a leading `#` comment. Spaces are absent on purpose — the
+ * CLI joins its remaining arguments, so a multi-word title needs no quoting.
+ */
+const SHELL_SPECIAL = /[!"#$&'()*;<>?[\\\]`{|}~]/
+
+/**
+ * The title as a shell argument: bare when nothing in it needs quoting, which is the ordinary case
+ * and the form the README documents.
+ */
+function shellArgument(text: string): string {
+  if (!SHELL_SPECIAL.test(text)) return text
+
+  // Single quotes protect everything except a single quote, which has to close the quoting, be
+  // escaped, and reopen it. Without that the pasted line would not run.
+  return `'${text.replaceAll("'", "'\\''")}'`
+}
+
+// The first item that has a next step, so the lead line is always something to do. Ordering is the
+// caller's, so this only ever moves past an item the model could name no single step for.
+function startHerePick(items: DigestItem[]): DigestItem | undefined {
+  return items.find(item => item.suggestedNextAction) ?? items[0]
+}
+
+function renderBody({ items, activeCount }: { items: DigestItem[]; activeCount: number }): string {
+  const sections: string[] = []
+  const pick = startHerePick(items)
+  if (pick) sections.push(renderStartHere(pick))
+  sections.push(summaryLine({ quiet: items.length, activeCount }))
+  for (const item of items) sections.push(renderItem(item))
 
   return sections.join('\n\n')
 }
 
-function renderStartHere({ shown, top }: { shown: DigestItem[]; top: DigestItem }): string {
-  const pick = shown.find(i => i.suggestedNextAction) ?? top
+function renderStartHere(pick: DigestItem): string {
   const indent = ' '.repeat(START_HERE_PREFIX.length)
   if (pick.suggestedNextAction) {
     return `${START_HERE_PREFIX}${pick.suggestedNextAction}\n${indent}(${pick.title} · ${pick.list})`
@@ -130,71 +135,46 @@ function renderStartHere({ shown, top }: { shown: DigestItem[]; top: DigestItem 
   return `${START_HERE_PREFIX}${pick.title} · ${pick.list}\n${indent}${pick.reasoning}`
 }
 
-function renderSummary({ shown, totalStalled }: { shown: number; totalStalled: number }): string {
-  if (totalStalled > shown) {
-    return `${totalStalled} stalled total — here are the ${shown} that matter most right now.`
-  }
-
-  return `${totalStalled} stalled ${totalStalled === 1 ? 'task' : 'tasks'} right now.`
+function label(text: string): string {
+  return `${text}:`.padEnd(LABEL_WIDTH)
 }
 
-// A surfaced `fine` task isn't stuck (it's clear, just high-priority and undone), so "Stuck"
-// would be contradictory — label its reason line "Status" instead.
-function statusLabel(classification: Classification): string {
-  return classification === 'fine' ? 'Status' : 'Stuck'
-}
-
-// Title stands alone on its line; the priority rides as a leading tag on the reason line, so
-// nothing depends on a right-aligned column (which can't line up in Gmail's proportional font).
 function renderItem(item: DigestItem): string {
-  const header = `${item.title} · ${item.list}`
-  const label = `${statusLabel(item.classification)}:`.padEnd(LABEL_WIDTH)
-  const stuck = `${label}[${item.priority}] ${item.classification} — ${item.reasoning}`
-  const action = item.suggestedNextAction ?? '(no single action — fit it into the right context.)'
-  const doNext = `${'Do next:'.padEnd(LABEL_WIDTH)}${action}`
+  const valueIndent = ' '.repeat(LABEL_WIDTH)
+  const lines = [
+    `${item.title} · ${item.list}`,
+    RULE,
+    `  ${label('Quiet')}${quietFor(item.untouchedDays)} · ${item.classification} — ${item.reasoning}`,
+  ]
+  const note = dateNote(item)
+  if (note) lines.push(`  ${valueIndent}${note}`)
+  lines.push(`  ${label('Do next')}${item.suggestedNextAction ?? NO_ACTION}`)
+  lines.push('', `  ${ALTERNATIVES}`, ...commandsFor(item).map(command => `    ${command}`))
 
-  return `${header}\n${RULE}\n  ${stuck}\n  ${doNext}`
-}
-
-function renderHabits(habits: DigestItem[]): string {
-  if (habits.length === 0) return ''
-  const lines = habits.map(h => `  • ${h.title} · ${h.list}  (anchor to a routine)`)
-
-  return `Not really tasks — consider moving these off your todo list:\n${lines.join('\n')}`
+  return lines.join('\n')
 }
 
 // --- HTML rendering (multipart alternative; the plain text above is the fallback) ---
 // Email HTML must use inline styles (clients strip <style>/<head>), a web-safe font stack, and
 // no external assets. Kept deliberately simple — divs + inline styles render reliably in Gmail.
 
-const PRIORITY_PILL: Record<Priority, { bg: string; fg: string }> = {
-  high: { bg: '#fce8e6', fg: '#c5221f' },
-  medium: { bg: '#fef7e0', fg: '#b06000' },
-  low: { bg: '#e8eaed', fg: '#5f6368' },
-}
+const HTML_LABEL =
+  'font-size:11px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;color:#80868b;'
+const QUIET_PILL =
+  'display:inline-block;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.03em;padding:1px 7px;border-radius:10px;background:#e8eaed;color:#5f6368;margin-left:6px;vertical-align:middle;'
+const COMMAND_BLOCK = `font-family:${MONO_FONT_STACK};font-size:12px;color:#3c4043;background:#f8f9fa;border-radius:4px;padding:8px 10px;margin-top:8px;white-space:pre-wrap;word-break:break-all;`
 
-function renderHtml({
-  shown,
-  totalStalled,
-  habits,
-}: {
-  shown: DigestItem[]
-  totalStalled: number
-  habits: DigestItem[]
-}): string {
+function renderHtml({ items, activeCount }: { items: DigestItem[]; activeCount: number }): string {
   const parts: string[] = []
-  const top = shown[0]
-  if (top) parts.push(htmlStartHere({ shown, top }))
-  parts.push(htmlSummary({ shown: shown.length, totalStalled }))
-  for (const item of shown) parts.push(htmlItem(item))
-  const footer = htmlHabits(habits)
-  if (footer) parts.push(footer)
+  const pick = startHerePick(items)
+  if (pick) parts.push(htmlStartHere(pick))
+  parts.push(htmlSummary({ quiet: items.length, activeCount }))
+  for (const item of items) parts.push(htmlItem(item))
 
   return `<div style="font-family:${FONT_STACK};max-width:560px;margin:0;padding:8px;color:#202124;font-size:15px;line-height:1.5;">${parts.join('')}</div>`
 }
 
-function htmlStartHere({ shown, top }: { shown: DigestItem[]; top: DigestItem }): string {
-  const pick = shown.find(i => i.suggestedNextAction) ?? top
+function htmlStartHere(pick: DigestItem): string {
   const lead = pick.suggestedNextAction
     ? linkify(escapeHtml(pick.suggestedNextAction))
     : escapeHtml(pick.title)
@@ -205,36 +185,19 @@ function htmlStartHere({ shown, top }: { shown: DigestItem[]; top: DigestItem })
   return `<div style="background:#eef4ff;border-left:4px solid #1a73e8;border-radius:6px;padding:14px 16px;margin:0 0 20px;"><div style="font-size:12px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:#1a73e8;margin-bottom:4px;">Start here</div><div style="font-size:16px;font-weight:600;">${lead}</div><div style="font-size:13px;color:#5f6368;margin-top:2px;">${sub}</div></div>`
 }
 
-function htmlSummary({ shown, totalStalled }: { shown: number; totalStalled: number }): string {
-  const text =
-    totalStalled > shown
-      ? `${totalStalled} stalled total — here are the ${shown} that matter most right now.`
-      : `${totalStalled} stalled ${totalStalled === 1 ? 'task' : 'tasks'} right now.`
-
-  return `<div style="font-size:13px;color:#5f6368;margin:0 0 6px;">${escapeHtml(text)}</div>`
+function htmlSummary({ quiet, activeCount }: { quiet: number; activeCount: number }): string {
+  return `<div style="font-size:13px;color:#5f6368;margin:0 0 6px;">${escapeHtml(summaryLine({ quiet, activeCount }))}</div>`
 }
-
-// Shared micro-label style so "Stuck"/"Do next" match the "Start here" callout's label.
-const HTML_LABEL =
-  'font-size:11px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;color:#80868b;'
 
 function htmlItem(item: DigestItem): string {
-  const pill = PRIORITY_PILL[item.priority]
   const action = item.suggestedNextAction
     ? `<span style="font-weight:500;">${linkify(escapeHtml(item.suggestedNextAction))}</span>`
-    : '<span style="color:#80868b;">(no single action — fit it into the right context)</span>'
+    : `<span style="color:#80868b;">${escapeHtml(NO_ACTION)}</span>`
+  const note = dateNote(item)
+  const dateLine = note
+    ? `<div style="font-size:13px;color:#5f6368;margin-bottom:4px;">${escapeHtml(note)}</div>`
+    : ''
+  const commands = commandsFor(item).map(escapeHtml).join('\n')
 
-  return `<div style="padding:14px 0;border-top:1px solid #ececec;"><div style="margin-bottom:6px;"><span style="font-size:16px;font-weight:600;">${escapeHtml(item.title)}</span><span style="display:inline-block;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.03em;padding:1px 7px;border-radius:10px;background:${pill.bg};color:${pill.fg};margin-left:6px;vertical-align:middle;">${item.priority}</span><span style="font-size:13px;color:#80868b;"> · ${escapeHtml(item.list)}</span></div><div style="font-size:14px;color:#3c4043;margin-bottom:4px;"><span style="${HTML_LABEL}">${statusLabel(item.classification)}</span>&nbsp;&nbsp;${escapeHtml(item.classification)} — ${escapeHtml(item.reasoning)}</div><div style="font-size:14px;color:#202124;"><span style="${HTML_LABEL}">Do next</span>&nbsp;&nbsp;${action}</div></div>`
-}
-
-function htmlHabits(habits: DigestItem[]): string {
-  if (habits.length === 0) return ''
-  const items = habits
-    .map(
-      h =>
-        `<li style="margin-bottom:3px;">${escapeHtml(h.title)} · ${escapeHtml(h.list)} <span style="color:#9aa0a6;">(anchor to a routine)</span></li>`,
-    )
-    .join('')
-
-  return `<div style="margin-top:22px;padding-top:14px;border-top:1px solid #ececec;font-size:13px;color:#5f6368;"><div style="margin-bottom:6px;">Not really tasks — consider moving these off your todo list:</div><ul style="margin:0;padding-left:18px;">${items}</ul></div>`
+  return `<div style="padding:14px 0;border-top:1px solid #ececec;"><div style="margin-bottom:6px;"><span style="font-size:16px;font-weight:600;">${escapeHtml(item.title)}</span><span style="${QUIET_PILL}">quiet ${escapeHtml(quietFor(item.untouchedDays))}</span><span style="font-size:13px;color:#80868b;"> · ${escapeHtml(item.list)}</span></div><div style="font-size:14px;color:#3c4043;margin-bottom:4px;">${escapeHtml(item.classification)} — ${escapeHtml(item.reasoning)}</div>${dateLine}<div style="font-size:14px;color:#202124;"><span style="${HTML_LABEL}">Do next</span>&nbsp;&nbsp;${action}</div><div style="font-size:13px;color:#5f6368;margin-top:10px;">${escapeHtml(ALTERNATIVES)}</div><div style="${COMMAND_BLOCK}">${commands}</div></div>`
 }

@@ -12,7 +12,7 @@ import {
   type WriteFailure,
   withTaskClock,
   writeTaskLine,
-} from './task-edit.js'
+} from './task-io.js'
 
 export type ScheduleResult =
   | LookupFailure

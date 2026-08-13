@@ -118,8 +118,8 @@ return (end - start) / MS_PER_DAY
 
 Reading the local calendar date and rebuilding it in UTC drops the clock time and the offset
 together, so daylight saving never reaches the arithmetic and the division stays exact. Subtracting
-raw timestamps and flooring, which is what the old staleness code did, loses an hour across a
-spring-forward: a 30-day span reports 29 and every threshold fires a day late.
+raw timestamps and flooring loses an hour across a spring-forward: a 30-day span reports 29 and
+every threshold fires a day late.
 
 Tests pin `TZ` explicitly rather than trusting the machine's zone, and cover both the spring-forward
 and fall-back boundaries.
@@ -131,7 +131,7 @@ All three live in `apps/tasks/src/config.ts` and nowhere else.
 | Setting | Default | Used by |
 | --- | --- | --- |
 | `TASKS_WIP_CAP` | 3 | Promotion. |
-| `TASKS_STALL_DAYS` | 7 | The computed stalled state. |
+| `TASKS_STALL_DAYS` | 7 | The computed stalled state, which is what the review reports. |
 | `TASKS_HORIZON_DAYS` | 28 | Decay threshold and scheduling ceiling, read from this one value. |
 
 The decay threshold and the scheduling ceiling are the same number because they are the same claim
@@ -163,10 +163,11 @@ confirms the line still matches the text it was read as. A mismatch means Obsidi
 edit moved it, so nothing in that file is written and the caller reports a conflict. Both Sync and
 the Git plugin are live on this vault, so a write can always land underneath a concurrent edit.
 
-The write path is not on `TaskSource`. Every writer here is Obsidian-specific, and a provider-
-neutral change type with only one implementation behind it would be a seam holding nothing. The
-scanner and the writer are the seam; a second provider moves them, and until then `TaskSource`
-stays read-only.
+There is no provider seam above them. Every reader and writer here is Obsidian-specific, and the
+state model is Obsidian-shaped throughout: tags on the line, checkbox statuses, `✅`/`❌` dates. A
+provider-neutral task type in front of that would be a seam holding nothing, because a second
+backend would have to reproduce the whole model rather than supply a list of tasks. The scanner and
+the writer are the seam; a second backend moves them.
 
 Outcomes are tagged unions (`promoted`, `at_cap`, `conflict`, and the rest) rather than thrown
 errors, so callers branch on a value. "You are at the cap" is an answer, not a failure.
@@ -207,6 +208,38 @@ quietly roll into March) is refused too.
 A date inside the horizon leaves the task where it is, holding its place on the active list if it
 had one: naming a day inside the next few weeks is a commitment, not a deferral. A date beyond the
 horizon is not a plan, so the task moves to `#someday`, which frees its place if it had one.
+
+## The review
+
+The scheduled digest reads `#active` and nothing else. `#someday` is a holding pool and untagged is
+the permanent steady state, so counting or reporting either one would turn the whole vault back into
+a backlog to answer for.
+
+A task is reported when it is `#active`, has no touch inside the stall window, and carries no date
+still ahead of it. The date rule and the stall rule cannot fight each other, because scheduling is
+itself a touch: naming a day both resets the window and puts the date in the future.
+
+**The review sends nothing in two cases.** No task is `#active`, or nothing has gone quiet. Both are
+silence by design. A message saying you have committed to nothing is exactly the deficit feeling this
+model exists to prevent, and a message saying everything is moving is a notification about the
+absence of a problem. A weekly report that always arrives has to find something to say, and what it
+finds is fault.
+
+Each reported task gets three ways out, and the email prints all three: do the next physical step
+(the model names it), give the task a date, or drop it. Not promotion, which would make no sense for
+a task already on the active list.
+
+Only the quiet tasks are sent to the model, so at most `TASKS_WIP_CAP` tasks are analysed instead of
+every open task in the vault. Nothing is ranked: a list that short is read in full, so the model is
+asked for no priority and gets none to inflate.
+
+The review is also what keeps the touch clock current between edits, since it reconciles the clock
+like every other command. Reviewing a task is not touching it, so the clock goes back unchanged
+apart from that reconcile.
+
+Register: the email says "gone quiet" and "untouched for N days". It never says overdue, failing,
+behind, or should have — and the model is given the same rule, because its reasoning is printed as
+written.
 
 ## Migration
 

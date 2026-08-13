@@ -20,7 +20,9 @@ function printHelp(): void {
   console.log(`Usage: tsx src/index.ts <command> [options]
 
 Commands:
-  digest              Review #active tasks and email the digest
+  digest              Review the #active tasks and email the ones that have
+                      gone quiet. Sends nothing when none has, or when
+                      nothing is #active.
     --dry-run         Print it to the console instead of sending
 
   migrate             Give every task a state tag. Dry by default.
@@ -48,22 +50,24 @@ Commands:
 
 function logDigestResult(result: RunResult): void {
   switch (result.kind) {
-    case 'no_open_tasks':
-      console.log('No open tasks found. Nothing to do.')
+    case 'no_active':
+      console.log('Nothing is #active, so there is nothing to review. No email.')
       break
-    case 'no_actionable':
+    case 'nothing_stalled':
       console.log(
-        `${result.totalStalled} stalled, none actionable enough to flag right now. No email.`,
+        result.activeCount === 1
+          ? 'The one task you are carrying was touched recently. No email.'
+          : `All ${result.activeCount} of the tasks you are carrying were touched recently. No email.`,
       )
       break
     case 'dry_run':
       console.log(`\n${result.subject}\n\n${result.body}\n`)
-      console.log(
-        `[dry run] ${result.flaggedCount} flagged of ${result.totalStalled} stalled — not sent.`,
-      )
+      console.log(`[dry run] ${result.quietCount} of ${result.activeCount} gone quiet — not sent.`)
       break
     case 'sent':
-      console.log(`Sent digest — ${result.flaggedCount} flagged (message_id=${result.messageId}).`)
+      console.log(
+        `Sent the review — ${result.quietCount} gone quiet (message_id=${result.messageId}).`,
+      )
       break
     default: {
       const _exhaustive: never = result
@@ -148,21 +152,18 @@ async function main(): Promise<void> {
     lockPath: lockPathFor(args.command),
     run: async () => {
       const config = loadConfig()
+      const vaultPath = config.obsidianVaultPath
+      // TASK_LISTS for every command, so none of them can decide a checkbox is a task while
+      // another decides it isn't. An empty TASK_LISTS means the vault-root todos.md.
+      const configured = config.taskLists.length > 0 ? config.taskLists : [DEFAULT_TODOS_FILE]
+
       if (args.command === 'digest') {
-        logDigestResult(await runDigest({ config, opts: { dryRun: args.dryRun } }))
+        logDigestResult(
+          await runDigest({ config, scopes: configured, opts: { dryRun: args.dryRun } }),
+        )
 
         return
       }
-
-      const vaultPath = config.obsidianVaultPath
-      if (!vaultPath) {
-        throw new AppError({
-          message: `${args.command} needs OBSIDIAN_VAULT_PATH to point at your vault.`,
-        })
-      }
-      // TASK_LISTS by default, so every command agrees on what a task is. An empty TASK_LISTS
-      // means the vault-root todos.md, matching the Obsidian source.
-      const configured = config.taskLists.length > 0 ? config.taskLists : [DEFAULT_TODOS_FILE]
 
       if (args.command === 'promote') {
         const promoted = await runPromote({

@@ -3,165 +3,57 @@ import { buildDigest, type Digest, type DigestItem } from './digest.js'
 
 function item(overrides: Partial<DigestItem> = {}): DigestItem {
   return {
-    title: 'a task',
+    title: 'book india flights',
     list: 'todos',
     classification: 'aversion',
-    reasoning: 'because reasons',
-    suggestedNextAction: 'do the next thing',
-    priority: 'medium',
-    staleDays: 40,
-    dueStatus: 'none',
+    reasoning: 'vague verb hides a multi-step project',
+    suggestedNextAction: 'Text Heidi for date windows',
+    untouchedDays: 9,
+    passedDueDate: null,
     ...overrides,
   }
 }
 
-function build(items: DigestItem[]): Digest {
-  return buildDigest({ items, maxItems: 5, staleThresholdDays: 30 })
+function build(items: DigestItem[], activeCount = items.length): Digest {
+  return buildDigest({ items, activeCount })
 }
 
-it('drops fine tasks from both the action list and the stalled count', () => {
-  const digest = build([
-    item({ title: 'stuck', classification: 'aversion' }),
-    item({ title: 'just undone', classification: 'fine' }),
-  ])
-
-  expect(digest.flaggedCount).toBe(1)
-  expect(digest.totalStalled).toBe(1)
-  expect(digest.body).toContain('stuck')
-  expect(digest.body).not.toContain('just undone')
-})
-
-it('surfaces a high-priority fine task (safety/deadline) but still drops low/medium fine tasks', () => {
-  const digest = build([
-    item({ title: 'secure furniture', classification: 'fine', priority: 'high', staleDays: 60 }),
-    item({ title: 'water cooler', classification: 'fine', priority: 'medium', staleDays: 60 }),
-  ])
-
-  expect(digest.flaggedCount).toBe(1)
-  expect(digest.body).toContain('secure furniture')
-  expect(digest.body).not.toContain('water cooler')
-  // A surfaced fine task reads "Status", not the contradictory "Stuck".
-  expect(digest.body).toContain('Status:')
-  expect(digest.body).not.toContain('Stuck:')
-})
-
-it('routes habits to the footer, not the action list or the stalled count', () => {
-  const digest = build([
-    item({ title: 'real task', classification: 'aversion' }),
-    item({ title: 'meditate daily', classification: 'habit', suggestedNextAction: null }),
-  ])
-
-  expect(digest.flaggedCount).toBe(1)
-  expect(digest.totalStalled).toBe(1)
-  expect(digest.body).toContain('Not really tasks — consider moving these off your todo list:')
-  expect(digest.body).toContain('• meditate daily · todos  (anchor to a routine)')
-})
-
-it('drops tasks with a future due date (scheduled, not stalled)', () => {
-  const digest = build([
-    item({ title: 'scheduled', dueStatus: 'future', staleDays: 200 }),
-    item({ title: 'stalled', dueStatus: 'none' }),
-  ])
-
-  expect(digest.flaggedCount).toBe(1)
-  expect(digest.body).toContain('stalled')
-  expect(digest.body).not.toContain('scheduled')
-})
-
-it('excludes tasks fresher than the staleness threshold', () => {
-  const digest = build([
-    item({ title: 'fresh', staleDays: 5, dueStatus: 'none' }),
-    item({ title: 'old', staleDays: 60, dueStatus: 'none' }),
-  ])
-
-  expect(digest.flaggedCount).toBe(1)
-  expect(digest.body).toContain('old')
-  expect(digest.body).not.toContain('fresh')
-})
-
-it('includes an overdue task even when it is fresher than the threshold', () => {
-  const digest = build([item({ title: 'overdue but fresh', staleDays: 2, dueStatus: 'past' })])
-
-  expect(digest.flaggedCount).toBe(1)
-  expect(digest.body).toContain('overdue but fresh')
-})
-
-it('includes a task with unknown staleness', () => {
-  const digest = build([item({ title: 'unknown age', staleDays: null, dueStatus: 'none' })])
-
-  expect(digest.flaggedCount).toBe(1)
-})
-
-it('ranks high priority before medium before low', () => {
-  const digest = build([
-    item({ title: 'lowp', priority: 'low' }),
-    item({ title: 'highp', priority: 'high' }),
-    item({ title: 'medp', priority: 'medium' }),
-  ])
-
-  expect(digest.shown.map(i => i.title)).toEqual(['highp', 'medp', 'lowp'])
-})
-
-it('ranks overdue ahead of non-overdue at the same priority', () => {
-  const digest = build([
-    item({ title: 'not-due', priority: 'medium', dueStatus: 'none', staleDays: 90 }),
-    item({ title: 'overdue', priority: 'medium', dueStatus: 'past', staleDays: 10 }),
-  ])
-
-  expect(digest.shown.map(i => i.title)).toEqual(['overdue', 'not-due'])
-})
-
-it('ranks by staleDays descending at the same priority and due status', () => {
-  const digest = build([
-    item({ title: 'newer', priority: 'low', staleDays: 35, dueStatus: 'none' }),
-    item({ title: 'older', priority: 'low', staleDays: 120, dueStatus: 'none' }),
-  ])
-
-  expect(digest.shown.map(i => i.title)).toEqual(['older', 'newer'])
-})
-
-it('caps the action list to maxItems but counts all stalled tasks', () => {
-  const items = Array.from({ length: 8 }, (_, i) =>
-    item({ title: `t${i}`, priority: 'medium', staleDays: 100 - i, dueStatus: 'none' }),
+it('counts the quiet tasks in the subject', () => {
+  expect(build([item()]).subject).toBe('Task Review — 1 task has gone quiet')
+  expect(build([item({ title: 'a' }), item({ title: 'b' })]).subject).toBe(
+    'Task Review — 2 tasks have gone quiet',
   )
-  const digest = build(items)
-
-  expect(digest.flaggedCount).toBe(5)
-  expect(digest.totalStalled).toBe(8)
-  expect(digest.subject).toBe('Task Review — 5 flagged')
-  expect(digest.body).toContain('8 stalled total — here are the 5 that matter most right now.')
 })
 
-it('uses a singular summary line when nothing is capped', () => {
-  const one = build([item({ title: 'solo' })])
-  expect(one.body).toContain('1 stalled task right now.')
+it('says how many of the tasks being carried have gone quiet', () => {
+  const digest = build([item({ title: 'a' }), item({ title: 'b' })], 3)
 
-  const two = build([item({ title: 'a' }), item({ title: 'b' })])
-  expect(two.body).toContain('2 stalled tasks right now.')
+  expect(digest.body).toContain('2 of the 3 tasks you are carrying have gone quiet.')
 })
 
-it('leads with a Start here line built from the top-ranked actionable item', () => {
+it('says so plainly when every task being carried has gone quiet', () => {
+  const digest = build([item({ title: 'a' }), item({ title: 'b' })], 2)
+
+  expect(digest.body).toContain('Both of the tasks you are carrying have gone quiet.')
+})
+
+it('reads naturally when one task is being carried and it has gone quiet', () => {
+  const digest = build([item()], 1)
+
+  expect(digest.body).toContain('The one task you are carrying has gone quiet.')
+})
+
+it('leads with a Start here line built from the first item that has an action', () => {
   const digest = build([
-    item({ title: 'top', priority: 'high', suggestedNextAction: 'call the dentist' }),
-    item({ title: 'other', priority: 'low' }),
+    item({ title: 'no-action', suggestedNextAction: null }),
+    item({ title: 'has-action', suggestedNextAction: 'mail the form' }),
   ])
 
-  expect(digest.body).toContain('Start here →  call the dentist')
-  expect(digest.body).toContain('(top · todos)')
-})
-
-it('skips an actionless top item when choosing the Start here pick', () => {
-  const digest = build([
-    item({ title: 'no-action', priority: 'high', suggestedNextAction: null, dueStatus: 'past' }),
-    item({ title: 'has-action', priority: 'medium', suggestedNextAction: 'mail the form' }),
-  ])
-
-  // Ranking still puts no-action first in the list, but Start here picks the first with an action.
-  expect(digest.shown[0]?.title).toBe('no-action')
   expect(digest.body).toContain('Start here →  mail the form')
+  expect(digest.body).toContain('(has-action · todos)')
 })
 
-it('falls back to title + reasoning for Start here when no shown item has an action', () => {
+it('falls back to the title and the reason when no item has an action', () => {
   const digest = build([
     item({
       title: 'schedule call',
@@ -175,41 +67,97 @@ it('falls back to title + reasoning for Start here when no shown item has an act
   expect(digest.body).toContain('needs business hours')
 })
 
-it('renders an item block with a clean title line and priority folded into the Stuck line', () => {
+it('renders how long the task has been quiet, its reason, and its next step', () => {
   const digest = build([
     item({
       title: 'fix the gate',
-      classification: 'aversion',
-      reasoning: 'vague verb hides a project',
-      suggestedNextAction: 'buy the hinge',
-      priority: 'high',
+      list: 'Family',
+      classification: 'blocked',
+      reasoning: 'waiting on the hinge to arrive',
+      suggestedNextAction: 'Check the delivery date',
+      untouchedDays: 12,
     }),
   ])
 
-  // Title + list stand on the header line — no trailing priority tag.
-  expect(digest.body).toContain('fix the gate · todos\n═')
-  expect(digest.body).toContain('Stuck:    [high] aversion — vague verb hides a project')
-  expect(digest.body).toContain('Do next:  buy the hinge')
+  expect(digest.body).toContain('fix the gate · Family\n═')
+  expect(digest.body).toContain('Quiet:    12 days · blocked — waiting on the hinge to arrive')
+  expect(digest.body).toContain('Do next:  Check the delivery date')
 })
 
-it('labels each task with its list so shared-list tasks are obvious', () => {
-  const digest = build([item({ title: 'Create will before India trip', list: 'Family' })])
+it('says one day rather than 1 days', () => {
+  const digest = build([item({ untouchedDays: 1 })])
 
-  expect(digest.body).toContain('Create will before India trip · Family')
+  expect(digest.body).toContain('Quiet:    1 day · ')
 })
 
-it('renders an HTML body with the title, priority pill color, and Start here callout', () => {
-  const digest = build([
-    item({ title: 'fix the gate', priority: 'high', suggestedNextAction: 'buy the hinge' }),
-  ])
+it('notes a date that has gone by, and says nothing when there is none', () => {
+  const withDate = build([item({ passedDueDate: '2026-08-10' })])
+  const withoutDate = build([item()])
+
+  expect(withDate.body).toContain('Its date, 2026-08-10, has gone by.')
+  expect(withoutDate.body).not.toContain('has gone by')
+})
+
+it('prints a placeholder when the model found no single next step', () => {
+  const digest = build([item({ classification: 'conditional', suggestedNextAction: null })])
+
+  expect(digest.body).toContain('Do next:  (no single step — fit it into the right context.)')
+})
+
+it('prints the schedule and abandon commands for each task', () => {
+  const digest = build([item({ title: 'book india flights' })])
+
+  expect(digest.body).toContain(
+    'pnpm --filter @personal-automation/tasks tasks schedule book india flights +7d',
+  )
+  expect(digest.body).toContain(
+    'pnpm --filter @personal-automation/tasks tasks abandon book india flights',
+  )
+})
+
+// The CLI joins its remaining arguments, so a plain title needs no quotes. One carrying a character
+// the shell acts on does, or the pasted command would not run.
+it('quotes a title the shell would otherwise act on', () => {
+  const digest = build([item({ title: 'sort out T&C (again)' })])
+
+  expect(digest.body).toContain("tasks schedule 'sort out T&C (again)' +7d")
+  expect(digest.body).toContain("tasks abandon 'sort out T&C (again)'")
+})
+
+it('closes and reopens the quoting around an embedded quote', () => {
+  const digest = build([item({ title: "fix Heidi's laptop" })])
+
+  expect(digest.body).toContain("tasks abandon 'fix Heidi'\\''s laptop'")
+})
+
+// The whole point of the model is to remove the deficit feeling, so the app's own words never
+// accuse. The model is told the same in its prompt.
+it('never uses the accusatory register in its own text', () => {
+  const digest = build(
+    [
+      item({ title: 'a', passedDueDate: '2026-08-10', suggestedNextAction: null }),
+      item({ title: 'b', reasoning: 'waiting on a reply' }),
+    ],
+    3,
+  )
+
+  for (const word of ['overdue', 'failing', 'behind', 'should have', 'stalled', 'flagged']) {
+    expect(digest.body.toLowerCase()).not.toContain(word)
+    expect(digest.html.toLowerCase()).not.toContain(word)
+  }
+})
+
+it('renders an HTML body with the Start here callout, the quiet count, and the commands', () => {
+  const digest = build([item({ title: 'fix the gate', suggestedNextAction: 'buy the hinge' })])
 
   expect(digest.html).toContain('Start here')
   expect(digest.html).toContain('buy the hinge')
   expect(digest.html).toContain('fix the gate')
-  expect(digest.html).toContain('#c5221f') // high-priority pill color
+  expect(digest.html).toContain('quiet 9 days')
+  expect(digest.html).toContain('tasks abandon fix the gate')
 })
 
-it('HTML-escapes user content so titles/reasoning cannot break the markup', () => {
+it('HTML-escapes user content so titles and reasoning cannot break the markup', () => {
   const digest = build([item({ title: 'a <b> & "c"', reasoning: 'x < y' })])
 
   expect(digest.html).toContain('a &lt;b&gt; &amp; &quot;c&quot;')
@@ -217,34 +165,7 @@ it('HTML-escapes user content so titles/reasoning cannot break the markup', () =
 })
 
 it('linkifies http(s) URLs in the HTML action', () => {
-  const digest = build([
-    item({ title: 't', suggestedNextAction: 'open https://irs.gov/W4app now' }),
-  ])
+  const digest = build([item({ suggestedNextAction: 'open https://irs.gov/W4app now' })])
 
   expect(digest.html).toContain('<a href="https://irs.gov/W4app"')
-})
-
-it('renders a placeholder Do next line when the action is null', () => {
-  const digest = build([
-    item({ title: 'call urologist', classification: 'conditional', suggestedNextAction: null }),
-  ])
-
-  expect(digest.body).toContain('Do next:  (no single action — fit it into the right context.)')
-})
-
-it('omits the habits footer when there are no habits', () => {
-  const digest = build([item({ title: 'a task', classification: 'blocked' })])
-
-  expect(digest.body).not.toContain('Not really tasks')
-})
-
-it('returns flaggedCount 0 with no candidates when every task is fine', () => {
-  const digest = build([
-    item({ title: 'x', classification: 'fine' }),
-    item({ title: 'y', classification: 'fine' }),
-  ])
-
-  expect(digest.flaggedCount).toBe(0)
-  expect(digest.totalStalled).toBe(0)
-  expect(digest.subject).toBe('Task Review — 0 flagged')
 })

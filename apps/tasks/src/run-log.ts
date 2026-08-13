@@ -14,17 +14,15 @@ export type RunLogEntry = {
   title: string
   list: string
   classification: string
-  priority: string
-  stale_days: number | null
-  due_status: string
+  untouched_days: number
+  due_date_passed: boolean
   suggested_next_action: string | null
-  shown: boolean
 }
 
 /**
  * One JSONL line per analyzed task, appended to runs/run-<today>.jsonl. This is the corrections
- * substrate for tuning the prompt later (compare classifications to what I'd have wanted), so it
- * records every task — not just the ones that made the digest.
+ * substrate for tuning the prompt later: compare each classification and next step to what you'd
+ * have wanted for a task you know.
  */
 export function appendRunLog({
   entries,

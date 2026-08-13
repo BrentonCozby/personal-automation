@@ -8,7 +8,7 @@ set -u
 PROJECT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$PROJECT_DIR"
 
-err_log="$(mktemp -t personal-automation-stalled.XXXXXX)"
+err_log="$(mktemp -t personal-automation-tasks.XXXXXX)"
 trap 'rm -f "$err_log"' EXIT
 
 /bin/zsh -lc "pnpm --filter @personal-automation/tasks tasks digest" 2> >(tee -a "$err_log" >&2)
@@ -17,7 +17,7 @@ exit_code=$?
 if [ "$exit_code" -ne 0 ]; then
   last_err="$(tail -3 "$err_log" | tr '\n' ' ' | sed 's/"/\\"/g')"
   /usr/bin/osascript \
-    -e "display notification \"${last_err:-See $PROJECT_DIR/launchd/logs/tasks-digest.err.log}\" with title \"Stalled Tasks digest FAILED (exit $exit_code)\" sound name \"Basso\""
+    -e "display notification \"${last_err:-See $PROJECT_DIR/launchd/logs/tasks-digest.err.log}\" with title \"Task review FAILED (exit $exit_code)\" sound name \"Basso\""
 fi
 
 exit "$exit_code"

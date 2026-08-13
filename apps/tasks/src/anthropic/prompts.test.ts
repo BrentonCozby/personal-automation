@@ -8,8 +8,8 @@ function promptTask(overrides: Partial<PromptTask> = {}): PromptTask {
     title: 'book india flights',
     notes: null,
     list: 'Family',
-    staleDays: 40,
-    dueStatus: 'none',
+    untouchedDays: 9,
+    isDatePassed: false,
     ...overrides,
   }
 }
@@ -18,8 +18,8 @@ type PromptData = {
   index: number
   title: string
   list: string
-  stale_days: number | string
-  due: string
+  untouched_days: number
+  due_date_passed: boolean
   notes?: string
 }
 
@@ -31,15 +31,30 @@ function dataBlock(prompt: string): PromptData[] {
   return JSON.parse(prompt.slice(open, close)) as PromptData[]
 }
 
-it('includes the taxonomy and the priority rules', () => {
+it('includes the taxonomy', () => {
   const prompt = buildAnalysisPrompt({ tasks: [promptTask()], today: TODAY })
 
   expect(prompt).toContain('aversion:')
   expect(prompt).toContain('blocked:')
   expect(prompt).toContain('conditional:')
-  expect(prompt).toContain('habit:')
   expect(prompt).toContain('fine:')
-  expect(prompt).toContain('mark "high" ONLY for safety')
+})
+
+// A task only reaches the model when it is #active and has gone quiet, so the model is judging a
+// commitment rather than sorting a backlog. Nothing is ranked, so there is no priority to ask for.
+it('frames the tasks as commitments that have gone quiet, and asks for no ranking', () => {
+  const prompt = buildAnalysisPrompt({ tasks: [promptTask()], today: TODAY })
+
+  expect(prompt).toContain('gone quiet')
+  expect(prompt).not.toContain('priority')
+})
+
+// The model's reasoning is printed in the email as written, so the register rules have to reach it.
+it('bans the accusatory register in the model’s own words', () => {
+  const prompt = buildAnalysisPrompt({ tasks: [promptTask()], today: TODAY })
+
+  expect(prompt).toContain('overdue')
+  expect(prompt).toContain('never use the words')
 })
 
 it('states today’s date', () => {
@@ -75,36 +90,31 @@ it('numbers each task with a sequential index for the join', () => {
   expect(data.map(d => d.index)).toEqual([0, 1, 2])
 })
 
-it('maps stale_days to "unknown" when null and keeps the number otherwise', () => {
+it('carries how long each task has been untouched', () => {
   const data = dataBlock(
     buildAnalysisPrompt({
       tasks: [
-        promptTask({ title: 'a', staleDays: null }),
-        promptTask({ title: 'b', staleDays: 12 }),
+        promptTask({ title: 'a', untouchedDays: 7 }),
+        promptTask({ title: 'b', untouchedDays: 41 }),
       ],
       today: TODAY,
     }),
   )
 
-  expect(data[0]?.stale_days).toBe('unknown')
-  expect(data[1]?.stale_days).toBe(12)
+  expect(data[0]?.untouched_days).toBe(7)
+  expect(data[1]?.untouched_days).toBe(41)
 })
 
-it('labels due status as overdue / scheduled / none', () => {
+it('says whether the task’s own date has gone by', () => {
   const data = dataBlock(
     buildAnalysisPrompt({
-      tasks: [
-        promptTask({ title: 'a', dueStatus: 'past' }),
-        promptTask({ title: 'b', dueStatus: 'future' }),
-        promptTask({ title: 'c', dueStatus: 'none' }),
-      ],
+      tasks: [promptTask({ title: 'a', isDatePassed: true }), promptTask({ title: 'b' })],
       today: TODAY,
     }),
   )
 
-  expect(data[0]?.due).toBe('overdue')
-  expect(data[1]?.due).toBe('scheduled')
-  expect(data[2]?.due).toBe('none')
+  expect(data[0]?.due_date_passed).toBe(true)
+  expect(data[1]?.due_date_passed).toBe(false)
 })
 
 it('includes notes when present and omits the key when absent', () => {

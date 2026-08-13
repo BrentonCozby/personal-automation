@@ -12,14 +12,14 @@ system of record that the `tasks` automation reads.
   to `Todos/todos.md`; Obsidian Sync propagates it everywhere.
 - **Backup — daily `git push` via launchd.** A one-way snapshot to a private
   GitHub repo for offsite backup. *Not* the live sync path, so it never conflicts.
-- **Consumption — `tasks`.** Reads `Todos/todos.md` with `TASK_PROVIDER=obsidian`
-  and `TASK_LISTS=["Todos/todos.md"]`.
+- **Consumption — `tasks`.** Reads `Todos/todos.md` with
+  `TASK_LISTS=["Todos/todos.md"]`.
 
 **Key facts:**
 
 - **Capture file:** `Todos/todos.md` (in the `Todos/` folder) — every capture appends one line.
 - **Line format:** `- [ ] <text> ➕ <YYYY-MM-DD>` (Obsidian Tasks syntax; the `➕`
-  created-date drives staleness).
+  created-date records when it was captured).
 - **Vault name differs per device.** With Obsidian Sync each device names its local
   vault independently (Mac: `obsidian-shared`, iPhone: `iphone`). An `obsidian://`
   URL resolves against the **local** name on the device that runs it — so the
@@ -100,11 +100,11 @@ confirm the push credential) is in the repo README's **Production** section.
 
 ## Part 4 — Consumption (`tasks`)
 
-`tasks` reads the vault on disk via `TASK_PROVIDER=obsidian` +
-`OBSIDIAN_VAULT_PATH` (the Mac's synced copy — no git needed for reading). It parses
-open `- [ ]` lines: `➕` → created (drives staleness for undated tasks), `📅` → due,
-and recurring (`🔁`) tasks are kept and judged by their due date. See the README's
-**tasks** section and
+`tasks` reads the vault on disk via `OBSIDIAN_VAULT_PATH` (the Mac's synced copy — no
+git needed for reading). It parses open `- [ ]` lines: `📅` → due, `#someday`/`#active`
+→ the task's state, and recurring (`🔁`) tasks sit outside the state model. Reviewing is
+read-only; the `promote`, `schedule` and `abandon` commands rewrite one line each. See
+the README's **tasks** section, `docs/task-state-model.md`, and
 `apps/tasks/src/tasks/obsidian/`.
 
 ---

@@ -3,7 +3,7 @@ import { calendarDaysBetween, localIsoDate } from '../state/days.js'
 import type { AbandonResult } from './abandon.js'
 import type { PromoteResult } from './promote.js'
 import type { ScheduleResult } from './schedule.js'
-import type { LookupFailure, NotEditable, TaskSummary, WriteFailure } from './task-edit.js'
+import type { LookupFailure, NotEditable, TaskSummary, WriteFailure } from './task-io.js'
 
 /**
  * The console message for one promotion attempt.

@@ -1,29 +1,21 @@
 import { jsonValue, loadAppEnv } from '@personal-automation/common/env'
 import { z } from 'zod'
-import { TASK_PROVIDERS, type TaskProvider } from './tasks/source.js'
 
 loadAppEnv(import.meta.url)
 
 // TASKS_SCHEDULE (the days/times the digest runs) isn't here: it's consumed only by the
 // launchd plist generator at setup time, not at app runtime. launchd fires the digest on the
-// scheduled days/times, so the app has no day-gate of its own — when invoked, it runs and sends.
+// scheduled days/times, so the app has no day-gate of its own — when invoked, it reviews.
 const schema = z.object({
   TASKS_TO_EMAIL: z.email(),
-  // coerce because process.env values are always strings
-  DIGEST_MAX_ITEMS: z.coerce.number().pipe(z.int().positive()),
-  STALE_THRESHOLD_DAYS: z.coerce.number().pipe(z.int().positive()),
   // The three thresholds of the state model. They live here and nowhere else, so no part of the
-  // app can hold its own idea of how many days or how many commitments are too many.
+  // app can hold its own idea of how many days or how many commitments are too many. Coerced
+  // because process.env values are always strings.
   TASKS_WIP_CAP: z.coerce.number().pipe(z.int().positive()),
   TASKS_STALL_DAYS: z.coerce.number().pipe(z.int().positive()),
   TASKS_HORIZON_DAYS: z.coerce.number().pipe(z.int().positive()),
-  // Which backend to read tasks from. Selecting a provider is a config change, not a code one.
-  TASK_PROVIDER: z.enum(TASK_PROVIDERS),
   TASK_LISTS: jsonValue.pipe(z.array(z.string())),
-  // Provider-specific: only used (and required) when TASK_PROVIDER=obsidian — validated at the
-  // seam in createTaskSource, so other providers don't have to set it. Optional here, not a
-  // .default(), so the repo's no-default rule holds.
-  OBSIDIAN_VAULT_PATH: z.string().min(1).optional(),
+  OBSIDIAN_VAULT_PATH: z.string().min(1),
   TASKS_ANTHROPIC_MODEL: z.string().min(1),
   ANTHROPIC_API_KEY: z.string().min(1),
   GMAIL_OAUTH_CLIENT_ID: z.string().min(1),
@@ -33,8 +25,6 @@ const schema = z.object({
 
 export type Config = {
   toEmail: string
-  digestMaxItems: number
-  staleThresholdDays: number
   /** How many tasks may carry `#active` at once. Promotion past it needs `--over-cap`. */
   wipCap: number
   /** Days an `#active` task can go untouched before it counts as stalled. */
@@ -44,12 +34,10 @@ export type Config = {
    * the same number because they are the same claim: a date past it is routed to `#someday`.
    */
   horizonDays: number
-  /** Which task backend to read from. */
-  taskProvider: TaskProvider
-  /** Task lists to read; empty = just todos.md. */
+  /** Files or folders in the vault that hold tasks; empty = just `todos.md` at the vault root. */
   taskLists: string[]
-  /** Vault folder for the obsidian provider; undefined for other providers. */
-  obsidianVaultPath?: string
+  /** The vault folder every command reads and writes. */
+  obsidianVaultPath: string
   model: string
   anthropicApiKey: string
   gmailClientId: string
@@ -62,17 +50,11 @@ export function loadConfig(): Config {
 
   return {
     toEmail: parsed.TASKS_TO_EMAIL,
-    digestMaxItems: parsed.DIGEST_MAX_ITEMS,
-    staleThresholdDays: parsed.STALE_THRESHOLD_DAYS,
     wipCap: parsed.TASKS_WIP_CAP,
     stallDays: parsed.TASKS_STALL_DAYS,
     horizonDays: parsed.TASKS_HORIZON_DAYS,
-    taskProvider: parsed.TASK_PROVIDER,
     taskLists: parsed.TASK_LISTS,
-    // Spread rather than assign undefined: exactOptionalPropertyTypes rejects `key: undefined`.
-    ...(parsed.OBSIDIAN_VAULT_PATH !== undefined
-      ? { obsidianVaultPath: parsed.OBSIDIAN_VAULT_PATH }
-      : {}),
+    obsidianVaultPath: parsed.OBSIDIAN_VAULT_PATH,
     model: parsed.TASKS_ANTHROPIC_MODEL,
     anthropicApiKey: parsed.ANTHROPIC_API_KEY,
     gmailClientId: parsed.GMAIL_OAUTH_CLIENT_ID,
