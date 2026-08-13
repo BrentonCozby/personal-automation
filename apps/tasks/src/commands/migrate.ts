@@ -1,10 +1,11 @@
-import { readFile, writeFile } from 'node:fs/promises'
+import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { LEAVE_REASONS, type LeaveReason } from '../state/migration.js'
 import { TASK_STATES, type TaskState } from '../state/types.js'
 import { checkRevertible, type RevertCheck } from '../tasks/obsidian/git-guard.js'
 import { type PlannedChange, planFileMigration } from '../tasks/obsidian/plan.js'
 import { findMarkdownFiles } from '../tasks/obsidian/vault.js'
+import { writeChangedLines } from '../tasks/obsidian/write.js'
 
 export type VaultMigrationPlan = {
   scannedFiles: number
@@ -100,32 +101,4 @@ export async function runMigrate({
   }
 
   return { kind: 'applied', plan, written, conflicted }
-}
-
-/**
- * Rewrites only the planned lines, leaving every other byte of the file as it was. Returns false
- * when the file was left untouched.
- *
- * Each line is checked against the text the plan was built from before anything is replaced. A
- * mismatch means the file moved underneath the pass (Obsidian Sync, or an edit in another window),
- * so the whole file is skipped rather than half-written. The caller reports which files this hit,
- * because a skip that nothing mentions reads exactly like a success.
- */
-async function writeChangedLines({
-  absPath,
-  changes,
-}: {
-  absPath: string
-  changes: PlannedChange[]
-}): Promise<boolean> {
-  const content = await readFile(absPath, 'utf8')
-  const eol = content.includes('\r\n') ? '\r\n' : '\n'
-  const lines = content.split(/\r?\n/)
-
-  if (changes.some(change => lines[change.line - 1] !== change.before)) return false
-
-  for (const change of changes) lines[change.line - 1] = change.after
-  await writeFile(absPath, lines.join(eol), 'utf8')
-
-  return true
 }

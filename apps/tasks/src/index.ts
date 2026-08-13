@@ -1,17 +1,20 @@
-import { tmpdir } from 'node:os'
-import { join } from 'node:path'
 import { fatal, runWithLock } from '@personal-automation/common/cli'
 import { AppError } from '@personal-automation/common/errors'
 import { parseArgs } from './cli-args.js'
+import { runAbandon } from './commands/abandon.js'
 import { type MigrateResult, runMigrate } from './commands/migrate.js'
 import { renderMigrationReport } from './commands/migrate-report.js'
+import { runPromote } from './commands/promote.js'
+import {
+  renderAbandonResult,
+  renderPromoteResult,
+  renderScheduleResult,
+} from './commands/reports.js'
+import { runSchedule } from './commands/schedule.js'
 import { loadConfig } from './config.js'
+import { lockPathFor } from './locks.js'
 import { type RunResult, runDigest } from './run.js'
-import { DEFAULT_TODOS_FILE } from './tasks/obsidian/source.js'
-
-// One lock for every subcommand: the digest and the migration both read the same vault, and a
-// migration writing while a digest reads would show the digest a half-tagged vault.
-const LOCK_PATH = join(tmpdir(), 'tasks.lock')
+import { DEFAULT_TODOS_FILE } from './tasks/obsidian/vault.js'
 
 function printHelp(): void {
   console.log(`Usage: tsx src/index.ts <command> [options]
@@ -26,6 +29,19 @@ Commands:
     --scope <path>    Read this folder or file instead, relative to the
                       vault root. Most checkboxes elsewhere in a vault are
                       steps inside notes rather than tasks.
+
+  promote <title>     Tag one open task #active, up to the cap of
+                      TASKS_WIP_CAP. Any part of the title will do; no
+                      quoting needed.
+    --over-cap        Allow one more than the cap for this promotion
+
+  schedule <title> <date>
+                      Put a date on one task: YYYY-MM-DD or +Nd. A date
+                      past the TASKS_HORIZON_DAYS horizon moves it to
+                      #someday instead of pretending it is planned.
+
+  abandon <title>     Drop one task: cancels its checkbox and dates it.
+                      This is the supported way to make room.
 
   --help, -h          Show this help`)
 }
@@ -129,7 +145,7 @@ async function main(): Promise<void> {
 
   // Lock prevents overlapping manual + scheduled runs; a stale lock from a crashed run is claimed.
   await runWithLock({
-    lockPath: LOCK_PATH,
+    lockPath: lockPathFor(args.command),
     run: async () => {
       const config = loadConfig()
       if (args.command === 'digest') {
@@ -141,12 +157,52 @@ async function main(): Promise<void> {
       const vaultPath = config.obsidianVaultPath
       if (!vaultPath) {
         throw new AppError({
-          message: 'migrate needs OBSIDIAN_VAULT_PATH to point at your vault.',
+          message: `${args.command} needs OBSIDIAN_VAULT_PATH to point at your vault.`,
         })
       }
-      // TASK_LISTS by default, so the migration and the digest always agree on what a task is.
-      // An empty TASK_LISTS means the vault-root todos.md, matching the Obsidian source.
+      // TASK_LISTS by default, so every command agrees on what a task is. An empty TASK_LISTS
+      // means the vault-root todos.md, matching the Obsidian source.
       const configured = config.taskLists.length > 0 ? config.taskLists : [DEFAULT_TODOS_FILE]
+
+      if (args.command === 'promote') {
+        const promoted = await runPromote({
+          vaultPath,
+          scopes: configured,
+          query: args.query,
+          cap: config.wipCap,
+          isOverCap: args.isOverCap,
+        })
+        console.log(renderPromoteResult({ result: promoted, now: new Date() }))
+        // Anything but a promotion or a task that was already active left the request unfulfilled.
+        if (promoted.kind !== 'promoted' && promoted.kind !== 'already_active') {
+          process.exitCode = 1
+        }
+
+        return
+      }
+
+      if (args.command === 'schedule') {
+        const scheduled = await runSchedule({
+          vaultPath,
+          scopes: configured,
+          query: args.query,
+          dateInput: args.date,
+          horizonDays: config.horizonDays,
+        })
+        console.log(renderScheduleResult(scheduled))
+        if (scheduled.kind !== 'scheduled') process.exitCode = 1
+
+        return
+      }
+
+      if (args.command === 'abandon') {
+        const abandoned = await runAbandon({ vaultPath, scopes: configured, query: args.query })
+        console.log(renderAbandonResult(abandoned))
+        if (abandoned.kind !== 'abandoned') process.exitCode = 1
+
+        return
+      }
+
       const result = await runMigrate({
         vaultPath,
         isApply: args.isApply,

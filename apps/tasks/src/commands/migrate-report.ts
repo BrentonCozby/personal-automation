@@ -15,6 +15,7 @@ const LEAVE_NOTE: Record<LeaveReason, string> = {
   'already finished': 'the checkbox already says so',
   'already tagged': 'a second pass changes nothing',
   'unknown status': 'a checkbox character this app has no rule for',
+  'more than one state tag': 'contradictory, so only you can say which was meant',
 }
 
 const RULE = '─'.repeat(58)

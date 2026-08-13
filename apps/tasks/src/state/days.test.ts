@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, expect, test } from 'vitest'
-import { calendarDaysBetween } from './days.js'
+import { calendarDaysBetween, isTaskDateShape, localIsoDate, parseTaskDate } from './days.js'
 
 // Every threshold in this app is a count of local calendar days, so the tests have to pin a zone
 // rather than inherit the machine's. Los_Angeles is the current zone; the DST dates below are its
@@ -56,4 +56,49 @@ test('returns a negative count when the range runs backwards', () => {
   const to = new Date(2026, 4, 12)
 
   expect(calendarDaysBetween({ from, to })).toBe(-1)
+})
+
+// An evening in a negative-offset zone is already tomorrow in UTC, so toISOString would write the
+// wrong day into the vault.
+test('writes the local calendar date, not the UTC one', () => {
+  expect(localIsoDate(new Date(2026, 7, 20, 23, 30))).toBe('2026-08-20')
+})
+
+test('pads single-digit months and days', () => {
+  expect(localIsoDate(new Date(2026, 0, 5))).toBe('2026-01-05')
+})
+
+test('reads a full date as local midnight', () => {
+  const parsed = parseTaskDate({ input: '2026-08-20', now: new Date(2026, 7, 12) })
+
+  expect(parsed).toEqual(new Date(2026, 7, 20))
+})
+
+test('reads +Nd as that many days from today', () => {
+  const parsed = parseTaskDate({ input: '+7d', now: new Date(2026, 7, 12, 14, 30) })
+
+  expect(parsed).toEqual(new Date(2026, 7, 19))
+})
+
+test('counts +Nd across a month boundary', () => {
+  const parsed = parseTaskDate({ input: '+20d', now: new Date(2026, 7, 20) })
+
+  expect(parsed).toEqual(new Date(2026, 8, 9))
+})
+
+// The Date constructor rolls this forward into March rather than rejecting it, so a day that does
+// not exist has to be caught by round-tripping the parts.
+test('refuses a day that does not exist', () => {
+  expect(parseTaskDate({ input: '2026-02-30', now: new Date(2026, 7, 12) })).toBeUndefined()
+})
+
+test('refuses text that is not a date', () => {
+  expect(parseTaskDate({ input: 'next tuesday', now: new Date(2026, 7, 12) })).toBeUndefined()
+})
+
+test('recognises the two date shapes without needing a clock', () => {
+  expect(isTaskDateShape('2026-08-20')).toBe(true)
+  expect(isTaskDateShape('+7d')).toBe(true)
+  expect(isTaskDateShape('bike')).toBe(false)
+  expect(isTaskDateShape('7d')).toBe(false)
 })

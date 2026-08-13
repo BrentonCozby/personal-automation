@@ -1,7 +1,7 @@
 import type { LeaveReason } from '../../state/migration.js'
 import { migrationTargetFor } from '../../state/migration.js'
 import type { TaskState } from '../../state/types.js'
-import { parseTaskLine } from './lines.js'
+import { scanFileTasks } from './scan.js'
 import { withStateTag } from './tags.js'
 
 export type PlannedChange = {
@@ -39,16 +39,11 @@ export function planFileMigration({
   const counts: Partial<Record<TaskState, number>> = {}
   const skipped: Partial<Record<LeaveReason, number>> = {}
 
-  const lines = content.split(/\r?\n/)
-  for (let i = 0; i < lines.length; i++) {
-    const before = lines[i] ?? ''
-    const parsed = parseTaskLine(before)
-    if (!parsed) continue
-
+  for (const task of scanFileTasks({ path, content })) {
     const target = migrationTargetFor({
-      status: parsed.status,
-      isRecurring: parsed.isRecurring,
-      state: parsed.state,
+      status: task.status,
+      isRecurring: task.isRecurring,
+      states: task.states,
     })
     if (target.kind === 'leave') {
       skipped[target.reason] = (skipped[target.reason] || 0) + 1
@@ -58,9 +53,9 @@ export function planFileMigration({
     counts[target.state] = (counts[target.state] || 0) + 1
     changes.push({
       path,
-      line: i + 1,
-      before,
-      after: withStateTag({ line: before, state: target.state }),
+      line: task.lineNumber,
+      before: task.lineText,
+      after: withStateTag({ line: task.lineText, state: target.state }),
       state: target.state,
     })
   }

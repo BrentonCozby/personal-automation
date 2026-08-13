@@ -12,6 +12,11 @@ const schema = z.object({
   // coerce because process.env values are always strings
   DIGEST_MAX_ITEMS: z.coerce.number().pipe(z.int().positive()),
   STALE_THRESHOLD_DAYS: z.coerce.number().pipe(z.int().positive()),
+  // The three thresholds of the state model. They live here and nowhere else, so no part of the
+  // app can hold its own idea of how many days or how many commitments are too many.
+  TASKS_WIP_CAP: z.coerce.number().pipe(z.int().positive()),
+  TASKS_STALL_DAYS: z.coerce.number().pipe(z.int().positive()),
+  TASKS_HORIZON_DAYS: z.coerce.number().pipe(z.int().positive()),
   // Which backend to read tasks from. Selecting a provider is a config change, not a code one.
   TASK_PROVIDER: z.enum(TASK_PROVIDERS),
   TASK_LISTS: jsonValue.pipe(z.array(z.string())),
@@ -30,6 +35,15 @@ export type Config = {
   toEmail: string
   digestMaxItems: number
   staleThresholdDays: number
+  /** How many tasks may carry `#active` at once. Promotion past it needs `--over-cap`. */
+  wipCap: number
+  /** Days an `#active` task can go untouched before it counts as stalled. */
+  stallDays: number
+  /**
+   * How far ahead a date can honestly be seen. The decay threshold and the scheduling ceiling are
+   * the same number because they are the same claim: a date past it is routed to `#someday`.
+   */
+  horizonDays: number
   /** Which task backend to read from. */
   taskProvider: TaskProvider
   /** Task lists to read; empty = just todos.md. */
@@ -50,6 +64,9 @@ export function loadConfig(): Config {
     toEmail: parsed.TASKS_TO_EMAIL,
     digestMaxItems: parsed.DIGEST_MAX_ITEMS,
     staleThresholdDays: parsed.STALE_THRESHOLD_DAYS,
+    wipCap: parsed.TASKS_WIP_CAP,
+    stallDays: parsed.TASKS_STALL_DAYS,
+    horizonDays: parsed.TASKS_HORIZON_DAYS,
     taskProvider: parsed.TASK_PROVIDER,
     taskLists: parsed.TASK_LISTS,
     // Spread rather than assign undefined: exactOptionalPropertyTypes rejects `key: undefined`.

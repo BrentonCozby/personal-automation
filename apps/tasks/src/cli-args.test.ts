@@ -51,6 +51,76 @@ test('rejects an unknown flag rather than ignoring it', () => {
   expect(() => parseArgs(['migrate', '--force'])).toThrow(/--force/)
 })
 
+test('joins the words of a promote query, so a title needs no quoting', () => {
+  expect(parseArgs(['promote', 'fix', 'the', 'bike'])).toEqual({
+    command: 'promote',
+    query: 'fix the bike',
+    isOverCap: false,
+  })
+})
+
+test('reads a quoted promote query as one argument', () => {
+  expect(parseArgs(['promote', 'fix the bike'])).toEqual({
+    command: 'promote',
+    query: 'fix the bike',
+    isOverCap: false,
+  })
+})
+
+test('reads the over-cap flag from either side of the query', () => {
+  const expected = { command: 'promote', query: 'fix the bike', isOverCap: true }
+
+  expect(parseArgs(['promote', 'fix the bike', '--over-cap'])).toEqual(expected)
+  expect(parseArgs(['promote', '--over-cap', 'fix the bike'])).toEqual(expected)
+})
+
+test('rejects a promote with no query', () => {
+  expect(() => parseArgs(['promote'])).toThrow(/needs part of a task title/)
+  expect(() => parseArgs(['promote', '--over-cap'])).toThrow(/needs part of a task title/)
+})
+
+test('rejects an unknown promote flag rather than reading it as the query', () => {
+  expect(() => parseArgs(['promote', 'bike', '--force'])).toThrow(/--force/)
+})
+
+test('reads an abandon query', () => {
+  expect(parseArgs(['abandon', 'fix', 'the', 'bike'])).toEqual({
+    command: 'abandon',
+    query: 'fix the bike',
+  })
+})
+
+test('rejects a flag on abandon, which takes none', () => {
+  expect(() => parseArgs(['abandon', 'bike', '--force'])).toThrow(/--force/)
+})
+
+test('reads the date off the end of a schedule command', () => {
+  expect(parseArgs(['schedule', 'fix', 'the', 'bike', '2026-08-20'])).toEqual({
+    command: 'schedule',
+    query: 'fix the bike',
+    date: '2026-08-20',
+  })
+})
+
+test('reads a relative schedule date', () => {
+  expect(parseArgs(['schedule', 'bike', '+7d'])).toEqual({
+    command: 'schedule',
+    query: 'bike',
+    date: '+7d',
+  })
+})
+
+// Without this, a mistyped date reads as another word of the title and the error names the wrong
+// problem: "no task matches" rather than "that is not a date".
+test('rejects a schedule whose last argument is not a date', () => {
+  expect(() => parseArgs(['schedule', 'fix the bike', 'tuesday'])).toThrow(/needs a date last/)
+  expect(() => parseArgs(['schedule', 'fix the bike'])).toThrow(/needs a date last/)
+})
+
+test('rejects a schedule with a date but no title', () => {
+  expect(() => parseArgs(['schedule', '2026-08-20'])).toThrow(/needs part of a task title/)
+})
+
 test('rejects an unknown command', () => {
   expect(() => parseArgs(['sync'])).toThrow(/sync/)
 })

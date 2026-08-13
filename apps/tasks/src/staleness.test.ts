@@ -9,6 +9,7 @@ function task(overrides: Partial<Task> = {}): Task {
     id: 'r1',
     title: 'a task',
     notes: null,
+    raw: '- [ ] a task',
     created: null,
     lastModified: null,
     due: null,

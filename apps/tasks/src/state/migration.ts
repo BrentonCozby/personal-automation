@@ -7,6 +7,7 @@ export const LEAVE_REASONS = [
   'already finished',
   'recurring',
   'unknown status',
+  'more than one state tag',
 ] as const
 
 export type LeaveReason = (typeof LEAVE_REASONS)[number]
@@ -28,14 +29,17 @@ export type MigrationTarget =
 export function migrationTargetFor({
   status,
   isRecurring,
-  state,
+  states,
 }: {
   status: TaskStatus
   isRecurring: boolean
-  state: TaskState | undefined
+  states: readonly TaskState[]
 }): MigrationTarget {
+  // A line carrying two states is left for a person to resolve. Rewriting it would clear both and
+  // write one, which is a silent choice between two things the line says.
+  if (states.length > 1) return { kind: 'leave', reason: 'more than one state tag' }
   // Leaving tagged lines alone is what makes a second run a no-op.
-  if (state) return { kind: 'leave', reason: 'already tagged' }
+  if (states.length === 1) return { kind: 'leave', reason: 'already tagged' }
 
   switch (status) {
     case 'open':

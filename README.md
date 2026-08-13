@@ -39,7 +39,7 @@ Config is split: shared secrets and ids live in the root `.env`, and each app's 
 - **root `.env`** — `ANTHROPIC_API_KEY` (from [console.anthropic.com](https://console.anthropic.com), separate from Claude Pro), `YNAB_TOKEN` + `YNAB_BUDGET_ID`, `ALLOWED_ACCOUNT_IDS` (shared by both YNAB apps), and the `GMAIL_OAUTH_*` credentials apps send mail through. Mint `GMAIL_OAUTH_REFRESH_TOKEN` with `pnpm --filter @personal-automation/gmail bootstrap`, and re-run that after any Google password change — it revokes the token.
 - **`apps/ynab-categorize/.env`** — `LOOKBACK_DAYS`, `AUDIT_DIR`, `EXCLUDED_CATEGORY_GROUPS`, `CATEGORY_ROUTING_HINTS`, `YNAB_CATEGORIZER_ANTHROPIC_MODEL`.
 - **`apps/ynab-enrich-memos/.env`** — `AUDIT_DIR`, `ENRICH_LOOKBACK_DAYS`, `GMAIL_RECEIPT_WINDOW_DAYS`, `GMAIL_FROM_FILTER`, `ENRICH_MEMOS_ANTHROPIC_MODEL`.
-- **`apps/tasks/.env`** — `TASK_PROVIDER`, `TASK_LISTS`, `TASKS_SCHEDULE`, `TASKS_TO_EMAIL`, `TASKS_ANTHROPIC_MODEL`, and digest tuning (`DIGEST_MAX_ITEMS`, `STALE_THRESHOLD_DAYS`).
+- **`apps/tasks/.env`** — `TASK_PROVIDER`, `TASK_LISTS`, `TASKS_SCHEDULE`, `TASKS_TO_EMAIL`, `TASKS_ANTHROPIC_MODEL`, digest tuning (`DIGEST_MAX_ITEMS`, `STALE_THRESHOLD_DAYS`), and the state-model thresholds (`TASKS_WIP_CAP`, `TASKS_STALL_DAYS`, `TASKS_HORIZON_DAYS`).
 - **`apps/notify/.env`** — `NOTIFY_TO_EMAIL`.
 
 Requires Node 26+ and pnpm 11+.
@@ -64,6 +64,11 @@ pnpm --filter @personal-automation/ynab-enrich-memos ynab-enrich-memos
 
 # tasks — print the digest to the console without sending
 pnpm --filter @personal-automation/tasks test:tasks
+
+# tasks — act on one task (any part of the title, no quoting needed)
+pnpm --filter @personal-automation/tasks tasks promote fix the bike
+pnpm --filter @personal-automation/tasks tasks schedule fix the bike +7d
+pnpm --filter @personal-automation/tasks tasks abandon fix the bike
 ```
 
 ## ynab-categorize
@@ -94,7 +99,9 @@ A digest that reviews open tasks, classifies why each has stalled, and emails th
 
 The task backend is chosen by `TASK_PROVIDER`: tasks are read through a `TaskSource` (`src/tasks/types.ts`), and `createTaskSource` (`src/tasks/source.ts`) is the single switch point between providers. The implemented provider is `obsidian` (`src/tasks/obsidian/`); `google` (Google Tasks) is an un-implemented placeholder kept to show the seam stays open. Switching is a config change, not a code change.
 
-The `obsidian` provider reads Markdown todos from a vault on disk (`OBSIDIAN_VAULT_PATH`). With `TASK_LISTS=[]` it reads `todos.md` at the vault root; otherwise `TASK_LISTS` names files or folders (relative to the vault) and folders are walked for their `*.md`. It parses [Obsidian Tasks](https://publish.obsidian.md/tasks/) lines — only open `- [ ]` checkboxes count (done/cancelled/in-progress are skipped), `➕` sets the creation date that drives staleness for undated tasks, `📅` the due date, and recurring (`🔁`) tasks are kept and judged by their due date (the rule is stripped from the title). The read is read-only and doesn't pull, so it sees the last synced state on disk — keep the vault synced separately (Obsidian Sync or the Obsidian Git plugin). It works on any OS.
+The `obsidian` provider reads Markdown todos from a vault on disk (`OBSIDIAN_VAULT_PATH`). With `TASK_LISTS=[]` it reads `todos.md` at the vault root; otherwise `TASK_LISTS` names files or folders (relative to the vault) and folders are walked for their `*.md`. It parses [Obsidian Tasks](https://publish.obsidian.md/tasks/) lines — open `- [ ]` and in-progress `- [/]` checkboxes count as live (done and cancelled are skipped), `➕` sets the creation date that drives staleness for undated tasks, `📅` the due date, and recurring (`🔁`) tasks are kept and judged by their due date (the rule is stripped from the title). The read is read-only and doesn't pull, so it sees the last synced state on disk — keep the vault synced separately (Obsidian Sync or the Obsidian Git plugin). It works on any OS.
+
+The app also carries a state model: each task is tagged `#someday` or `#active` in the vault, and `#active` is capped at `TASKS_WIP_CAP`. `tasks migrate` gives every untagged task its first tag (dry by default, `--apply` writes). Three commands then act on one task at a time, each taking any part of its title: `promote` moves it to `#active` (refusing at the cap unless you pass `--over-cap`), `schedule <date>` puts a `📅` date on it (`YYYY-MM-DD` or `+Nd`, and a date past `TASKS_HORIZON_DAYS` sends it to `#someday` rather than pretending it is planned), and `abandon` drops it by cancelling its checkbox. Finishing and dropping are recorded by the checkbox rather than a tag, so a task you tick or cancel in Obsidian counts the same as one closed here. Since Obsidian has no per-task last-modified anywhere, a fingerprint of each task's text is kept in `apps/tasks/runs/touch-clock.json` so an edit can be read as a touch; the file is disposable and rebuilds itself. See `docs/task-state-model.md`.
 
 `TASKS_ANTHROPIC_MODEL` is a separate knob from `YNAB_CATEGORIZER_ANTHROPIC_MODEL`. Classifying *why* a task is stuck and naming its next physical step is harder judgment than picking a category id, so it starts on a Sonnet-tier model rather than Haiku. Each run logs its classifications to `apps/tasks/runs/` for tuning.
 

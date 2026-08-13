@@ -1,27 +1,36 @@
 import { expect, test } from 'vitest'
-import { readStateTag, stripStateTags, withStateTag } from './tags.js'
+import { readStateTags, stripStateTags, withStateTag } from './tags.js'
 
 test('reads a state tag from the task text', () => {
-  expect(readStateTag('heath ceramics second hand #someday ➕ 2025-05-23')).toBe('someday')
+  expect(readStateTags('heath ceramics second hand #someday ➕ 2025-05-23')).toEqual(['someday'])
 })
 
 test('reads no state when the text carries none', () => {
-  expect(readStateTag('heath ceramics second hand ➕ 2025-05-23')).toBeUndefined()
+  expect(readStateTags('heath ceramics second hand ➕ 2025-05-23')).toEqual([])
 })
 
 test('ignores tags that are not state tags', () => {
-  expect(readStateTag('call the plumber #home #errand')).toBeUndefined()
+  expect(readStateTags('call the plumber #home #errand')).toEqual([])
 })
 
 // Vault text is prose, so a state word in a title must not read as a state.
 test('ignores a state word that is not a tag', () => {
-  expect(readStateTag('keep the sourdough starter active')).toBeUndefined()
+  expect(readStateTags('keep the sourdough starter active')).toEqual([])
 })
 
 // Obsidian treats #someday and #someday-maybe as different tags, so a prefix match would
 // misread a nested or hyphenated tag as a state.
 test('ignores a longer tag that starts with a state name', () => {
-  expect(readStateTag('sort the garage #someday-maybe')).toBeUndefined()
+  expect(readStateTags('sort the garage #someday-maybe')).toEqual([])
+})
+
+// The states are mutually exclusive, so two on one line is a contradiction. Reporting both is what
+// lets the reader refuse rather than pick one by the order they happen to be typed in.
+test('reads every state tag on the line, in order', () => {
+  expect(readStateTags('condition leather shoes #someday #active ➕ 2025-06-07')).toEqual([
+    'someday',
+    'active',
+  ])
 })
 
 test('strips the state tag out of the text', () => {
