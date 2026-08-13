@@ -20,3 +20,10 @@ it('puts the three edits on one lock, so two of them cannot race', () => {
 it('keeps the digest and the migration on one lock', () => {
   expect(lockPathFor('migrate')).toBe(lockPathFor('digest'))
 })
+
+// The push writes single lines the same way promote and abandon do, and must not wait behind a
+// review holding tasks.lock for the length of a model call.
+it('puts alert on the edit lock', () => {
+  expect(lockPathFor('alert')).toBe(lockPathFor('promote'))
+  expect(lockPathFor('alert')).not.toBe(lockPathFor('digest'))
+})

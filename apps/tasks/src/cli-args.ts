@@ -4,6 +4,7 @@ import { isTaskDateShape } from './state/days.js'
 export type Args =
   | { command: 'help' }
   | { command: 'digest'; dryRun: boolean }
+  | { command: 'alert'; dryRun: boolean }
   | { command: 'migrate'; isApply: boolean; scope?: string }
   | { command: 'promote'; query: string; isOverCap: boolean }
   | { command: 'abandon'; query: string }
@@ -24,6 +25,10 @@ export function parseArgs(argv: string[]): Args {
       assertKnownFlags({ rest, known: ['--dry-run'] })
 
       return { command: 'digest', dryRun: rest.includes('--dry-run') }
+    case 'alert':
+      assertKnownFlags({ rest, known: ['--dry-run'] })
+
+      return { command: 'alert', dryRun: rest.includes('--dry-run') }
     case 'migrate':
       return parseMigrate(rest)
     case 'promote':

@@ -17,6 +17,9 @@ const RUN_LOCK = join(tmpdir(), 'tasks.lock')
  * only reads, and every write here re-reads its line and refuses if it moved. This lock exists only
  * to stop two edits racing each other over the touch clock, where the loser's timestamp would be
  * dropped without a word.
+ *
+ * The alert takes it too: it writes single lines the same way, and a due-date push must not wait
+ * behind a review holding the run lock for the length of a model call.
  */
 const EDIT_LOCK = join(tmpdir(), 'tasks-edit.lock')
 
@@ -26,6 +29,7 @@ export function lockPathFor(command: Args['command']): string {
     case 'promote':
     case 'schedule':
     case 'abandon':
+    case 'alert':
       return EDIT_LOCK
     case 'digest':
     case 'migrate':

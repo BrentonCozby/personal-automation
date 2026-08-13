@@ -2,6 +2,7 @@ import { fatal, runWithLock } from '@personal-automation/common/cli'
 import { AppError } from '@personal-automation/common/errors'
 import { parseArgs } from './cli-args.js'
 import { runAbandon } from './commands/abandon.js'
+import { type AlertResult, runAlert } from './commands/alert.js'
 import { type MigrateResult, runMigrate } from './commands/migrate.js'
 import { renderMigrationReport } from './commands/migrate-report.js'
 import { runPromote } from './commands/promote.js'
@@ -24,6 +25,11 @@ Commands:
                       gone quiet. Sends nothing when none has, or when
                       nothing is #active.
     --dry-run         Print it to the console instead of sending
+
+  alert               Push what is due or overdue to the phone, and move any
+                      #active task untouched for TASKS_HORIZON_DAYS to
+                      #someday. Pushes nothing when both are empty.
+    --dry-run         Print the push to the console instead of sending
 
   migrate             Give every task a state tag. Dry by default.
                       Reads the same files as the digest (TASK_LISTS).
@@ -74,6 +80,29 @@ function logDigestResult(result: RunResult): void {
     default: {
       const _exhaustive: never = result
       throw new AppError({ message: `Unhandled run result: ${JSON.stringify(_exhaustive)}` })
+    }
+  }
+}
+
+function logAlertResult(result: AlertResult): void {
+  switch (result.kind) {
+    case 'silent':
+      console.log('Nothing is due and nothing has gone cold. No push.')
+      break
+    case 'dry_run':
+      console.log(`\n${result.title}\n\n${result.message}\n`)
+      console.log(
+        `[dry run] ${result.dueCount} due, ${result.demotedCount} moved to someday. Not sent.`,
+      )
+      break
+    case 'sent':
+      console.log(
+        `Pushed: ${result.dueCount} due, ${result.demotedCount} moved to someday (request_id=${result.requestId}).`,
+      )
+      break
+    default: {
+      const _exhaustive: never = result
+      throw new AppError({ message: `Unhandled alert result: ${JSON.stringify(_exhaustive)}` })
     }
   }
 }
@@ -162,6 +191,14 @@ async function main(): Promise<void> {
       if (args.command === 'digest') {
         logDigestResult(
           await runDigest({ config, scopes: configured, opts: { dryRun: args.dryRun } }),
+        )
+
+        return
+      }
+
+      if (args.command === 'alert') {
+        logAlertResult(
+          await runAlert({ config, scopes: configured, opts: { dryRun: args.dryRun } }),
         )
 
         return
