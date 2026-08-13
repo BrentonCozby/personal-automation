@@ -105,16 +105,19 @@ The email's other half is the done list: what was finished and dropped in the la
 
 A raised cap (`promote --over-cap`) is recorded in `apps/tasks/runs/overrides.jsonl`. More than `TASKS_OVERRIDE_LIMIT` raises inside `TASKS_OVERRIDE_WINDOW_DAYS` days and the review adds a note suggesting you set `TASKS_WIP_CAP` to the most you actually carried, on the grounds that a limit you go around that often was set too low. Only raises recorded against the cap now in force count, so making the change silences the note. It rides along on a review that was already sending rather than being a third reason to send one.
 
-Every command reads the same vault on disk (`OBSIDIAN_VAULT_PATH`) through one scanner. With `TASK_LISTS=[]` it reads `todos.md` at the vault root; otherwise `TASK_LISTS` names files or folders (relative to the vault) and folders are walked for their `*.md`. It parses [Obsidian Tasks](https://publish.obsidian.md/tasks/) lines: open `- [ ]` and in-progress `- [/]` checkboxes count as live (done and cancelled are skipped), `📅` sets the due date, and recurring (`🔁`) tasks sit outside the state model entirely (the plugin manages them by their recurrence rule). Nothing pulls the vault, so it reads the last synced state on disk. Keep it synced separately (Obsidian Sync or the Obsidian Git plugin). It works on any OS.
+A second job runs every day, at each time in `TASKS_ALERT_TIMES` (e.g. `["08:00", "19:00"]`), and pushes what is due to your phone through Pushover at normal priority; tapping the push opens `TASKS_ALERT_URL`, an Obsidian deep link to your dashboard note. The rule is open, dated, and the date has arrived or gone by, and no state tag is read, so a dated `#someday` task alerts like a dated `#active` one. Recurring (`🔁`) chores are the case it exists for: the cap and the stall rule both exclude them, so the review can never mention one that was missed. A recurring task is pushed every day until it is ticked; a one-off is pushed for `TASKS_DUE_ALERT_DAYS` days from its due date and then left to the review. The same job demotes an `#active` task nothing has touched for `TASKS_HORIZON_DAYS` days to `#someday`, freeing its place on the active list, and names it in the push, so you learn it the moment it happens. `tasks alert --dry-run` prints the push instead of sending it, but still demotes and still writes the touch clock.
+
+Every command reads the same vault on disk (`OBSIDIAN_VAULT_PATH`) through one scanner. With `TASK_LISTS=[]` it reads `todos.md` at the vault root; otherwise `TASK_LISTS` names files or folders (relative to the vault) and folders are walked for their `*.md`. It parses [Obsidian Tasks](https://publish.obsidian.md/tasks/) lines: open `- [ ]` and in-progress `- [/]` checkboxes count as live (done and cancelled are skipped), `📅` sets the due date, and recurring (`🔁`) tasks sit outside the state model (the plugin manages them by their recurrence rule), so nothing tags them and the due-date alert is the one rule that reads them. Nothing pulls the vault, so it reads the last synced state on disk. Keep it synced separately (Obsidian Sync or the Obsidian Git plugin). It works on any OS.
 
 `TASKS_ANTHROPIC_MODEL` is a separate knob from `YNAB_CATEGORIZER_ANTHROPIC_MODEL`. Judging *why* a commitment went quiet and naming its next physical step is harder judgment than picking a category id, so it starts on a Sonnet-tier model rather than Haiku. Each run logs its classifications to `apps/tasks/runs/` for tuning.
 
 ## Production
 
-Three launchd agents:
+Four launchd agents:
 
 - `com.personal-automation.daily` runs `launchd/run.sh` daily at 12:00: each app in the `APPS` array in sequence (`ynab-enrich-memos` then `ynab-categorize`), then `notify`.
 - `com.personal-automation.tasks` runs the digest on its `TASKS_SCHEDULE` days/times.
+- `com.personal-automation.tasks-alert` runs `launchd/run-tasks-alert.sh` at each time in `TASKS_ALERT_TIMES`, every day: the due-date push, and the decay pass that goes with it.
 - `com.personal-automation.vault-backup` runs `launchd/run-vault-backup.sh` daily (09:00): a one-way `git push` of the Obsidian vault to its remote for offsite backup. Obsidian Sync is the live cross-device sync; this only snapshots to git, so it never conflicts. The vault path comes from `OBSIDIAN_VAULT_PATH` in `apps/tasks/.env`.
 
 Each is its own agent because launchd binds one agent to one program on one schedule: a plist's `StartCalendarInterval` can list many times, but they all run the same script. The agents are siblings grouped by schedule: `com.personal-automation` is just the shared namespace, not a job. An app gets its own agent only when it needs its own schedule; otherwise it's another entry in `run.sh`. Keeping them apart also means each gets its own logs and its own failure notification.
@@ -122,18 +125,20 @@ Each is its own agent because launchd binds one agent to one program on one sche
 All post a macOS notification on a non-zero exit.
 
 ```bash
-./launchd/setup.sh   # generates the plists (daily, tasks, vault-backup)
+./launchd/setup.sh   # generates the plists (daily, tasks, tasks-alert, vault-backup)
 cp launchd/com.personal-automation.daily.plist ~/Library/LaunchAgents/
 cp launchd/com.personal-automation.tasks.plist ~/Library/LaunchAgents/
+cp launchd/com.personal-automation.tasks-alert.plist ~/Library/LaunchAgents/
 cp launchd/com.personal-automation.vault-backup.plist ~/Library/LaunchAgents/
 launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.personal-automation.daily.plist
 launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.personal-automation.tasks.plist
+launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.personal-automation.tasks-alert.plist
 launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.personal-automation.vault-backup.plist
 ```
 
 Run `./launchd/run-vault-backup.sh` once by hand before relying on the schedule: it confirms the `git push` credential (the https token in your keychain) is reachable from a launchd context.
 
-Re-run `setup.sh` (and reload the digest agent, which prints the commands) whenever you change `TASKS_SCHEDULE`, since that regenerates the digest plist from the schedule.
+Re-run `setup.sh` (and reload the agent it names, which prints the commands) whenever you change `TASKS_SCHEDULE` or `TASKS_ALERT_TIMES`, since that is what regenerates the digest and alert plists from those settings.
 
 Optional log rotation (weekly, keeps 4 gzipped archives):
 
@@ -155,6 +160,7 @@ The quick check gives three columns: PID, last exit code, label. A label showing
 launchctl list | grep personal-automation
 # -  0  com.personal-automation.daily
 # -  0  com.personal-automation.tasks
+# -  0  com.personal-automation.tasks-alert
 
 # Same thing as an explicit OK / CHECK line per agent
 launchctl list | awk '/personal-automation/ {print ($2==0 ? "OK   " : "CHECK") "  " $3 "  (last exit " $2 ")"}'

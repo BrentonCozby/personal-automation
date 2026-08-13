@@ -45,7 +45,8 @@ Recurring tasks (those carrying a `🔁` rule) stay untagged, and no command wil
 date onto one. A recurring chore is a live commitment that the Tasks plugin already manages through
 its recurrence rule and due date, so none of the stored states describe it correctly and any date
 written by hand would fight the plugin for control of it. They never count toward the cap, never
-decay, and never stall.
+decay, and never stall. The one rule that does read them is the due-date alert, which reads the date
+the plugin manages and writes nothing (see [Due-date alerts](#due-date-alerts)).
 
 ## Identity
 
@@ -136,6 +137,7 @@ They all live in `apps/tasks/src/config.ts` and nowhere else.
 | `TASKS_STALL_DAYS` | 7 | The computed stalled state, which is what the review reports. |
 | `TASKS_HORIZON_DAYS` | 28 | Decay threshold and scheduling ceiling, read from this one value. |
 | `TASKS_DONE_WINDOW_DAYS` | 7 | How far back the done list reaches, counting today. |
+| `TASKS_DUE_ALERT_DAYS` | 7 | Days a dated one-off task keeps being pushed about. Recurring tasks ignore it. |
 | `TASKS_OVERRIDE_WINDOW_DAYS` | 30 | How far back the review counts raised caps, counting today. |
 | `TASKS_OVERRIDE_LIMIT` | 3 | Raises inside that window before the review suggests raising the cap for good. |
 
@@ -277,6 +279,72 @@ apart from that reconcile.
 Register: the email says "gone quiet" and "untouched for N days". It never says overdue, failing,
 behind, or should have. The model is given the same rule, because its reasoning is printed as
 written.
+
+## Due-date alerts
+
+A daily job pushes what is due to the phone, at each time in `TASKS_ALERT_TIMES`.
+
+The rule is: open, dated, and the date has arrived or gone by. No state tag is read, so a dated
+`#someday` task alerts exactly like a dated `#active` one. Putting a date on something is the reason
+to want reminding of it, and the holding pool is a claim about what you are carrying now, not about
+what a calendar already says.
+
+Recurring (`🔁`) tasks are in scope here and nowhere else in the model. The cap, the stall rule and
+decay all exclude them, so until this job existed the only thing the system ever said about a chore
+was congratulations: the done list reports recurring tasks that were completed, and nothing could
+report one that was missed. Closing that asymmetry is why this half exists.
+
+How long a task keeps being asked about depends on its kind. A recurring one is pushed every day
+until it is ticked, with no limit, because the Tasks plugin rolls its date forward only on the tick,
+so a date still in the past is exactly the signal that the chore was missed. Everything else is
+pushed for `TASKS_DUE_ALERT_DAYS` days from its due date and then left to the twice-weekly review,
+which is what stops a task dated months ago pushing daily forever.
+
+Two passes a day run the same query, and both are silent on an empty list. The evening one exists
+because a single morning banner is easy to dismiss half awake, which is how a dose gets missed. It
+names what is still not done.
+
+The channel is Pushover, at normal priority: one banner, one sound, no repeat. Two passes a day are
+the redundancy, and a task ticked in Obsidian drops off the next pass on its own. The message
+carries no HTML, because Pushover strips tags out of the notification and renders them only once the
+app is opened, and the notification is the only part that has to be readable. Items are separated by
+a `•` for the same reason: shown as one run of text, newlines alone do not read as separate items.
+Tapping the push opens `TASKS_ALERT_URL`, an Obsidian deep link to the dashboard note
+(`Todos/Dashboard.md` on this vault) rather than to `todos.md`, because the dashboard is what gets
+read, and opening the vault puts the rest of the active list in front of you.
+
+This half writes nothing. Nothing is tagged, dated or promoted because it came due. That holds the
+rule that nothing writes a tag onto a task you left alone, and it keeps a due date from pushing the
+active list past `TASKS_WIP_CAP` on a morning you had no say in.
+
+## Decay
+
+An `#active`, non-recurring, open task that nothing has touched for `TASKS_HORIZON_DAYS` days has
+`#active` stripped and `#someday` written in its place, which frees its slot against the cap.
+`tasks promote` puts it straight back.
+
+It demotes rather than closing the checkbox. Closing it is what `abandon` does, and doing that here
+would be the machine dropping a commitment you never agreed to drop; terminal states also refuse
+every command, so reviving one means editing the vault by hand. The other option was leaving the tag
+alone and just not reporting the task, and that keeps a task proven inactive holding a slot against
+the cap.
+
+A demotion is announced in the push, and is a reason to send one even when nothing is due. The
+machine changed something you did not ask it to change, so you learn it the moment it happens, on
+the one channel you read. Holding it for the twice-weekly review would delay the news by up to three
+days and would need a new section in the review to carry it.
+
+It runs on both passes, and the evening one is a no-op: a task demoted at 08:00 carries `#someday`
+by 19:00, and the threshold is calendar-day arithmetic that changes only at midnight.
+
+A line carrying two state tags is never demoted. It counts as neither state, so it holds no slot
+against the cap and there is nothing to free; resolving the two tags by hand is the fix, as it is
+for every command. A line that moved while the pass was reading it fails the line-match check, and
+the pass reports it and carries on to the next one rather than failing, because the push still has
+to go out. The next pass picks it up.
+
+Decay is not a touch. The rewritten line's fingerprint is stored against the timestamp already held,
+so the next run reads the line as unchanged (see [The touch clock](#the-touch-clock)).
 
 ## Migration
 
