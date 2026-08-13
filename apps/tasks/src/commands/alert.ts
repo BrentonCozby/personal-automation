@@ -100,7 +100,7 @@ export async function runAlert({
   })
 
   if (pass.due.length === 0 && pass.demoted.length === 0) {
-    logger.info({}, 'Nothing due and nothing demoted; no push.')
+    logger.info({ due: 0, demoted: 0 }, 'Nothing due and nothing demoted; no push.')
 
     return { kind: 'silent', reason: 'nothing_due' }
   }
@@ -166,8 +166,9 @@ async function demote({
 
   for (const entry of decayed({ tasks: aged, horizonDays: config.horizonDays, now })) {
     const { task } = entry
-    // Decay already requires open, `#active` and non-recurring, so the only refusal reachable here
-    // is a line carrying two state tags.
+    // Nothing reaches this today: every refusal `notEditable` reports is already excluded by
+    // `countsTowardCap`, including a line carrying two state tags, whose `state` is undefined. Kept
+    // because that exclusion lives in another file, so a change there would arrive here.
     const blocked = notEditable(task)
     if (blocked) {
       logger.warn(

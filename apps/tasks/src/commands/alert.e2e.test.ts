@@ -216,14 +216,30 @@ it('leaves a #someday task and a recurring task alone, but still decays a plain 
   expect(readTodos()).toContain('- [ ] fix the gate #someday')
 })
 
-// Two state tags on one line is a contradiction nothing here resolves, and every write clears the
-// old tags first, so acting on it would throw away whichever one was meant.
+// Two state tags on one line is a contradiction nothing here resolves, so the task has no state at
+// all and never counts as active. The push leaves it exactly where it is.
 it('leaves a line carrying two state tags alone', async () => {
   writeTodos(['- [ ] book india flights #active #someday'])
   await seedClock({ lastTouched: LONG_QUIET })
 
   expect(await run()).toEqual({ kind: 'silent', reason: 'nothing_due' })
   expect(readTodos()).toContain('- [ ] book india flights #active #someday')
+})
+
+// The alert half reads the due date and ignores the state tag; the decay half reads neither. A task
+// that satisfies both is named in both halves of the same push.
+it('reports a task that is both due and decayed in both halves', async () => {
+  writeTodos(['- [ ] fix the gate #active 📅 2026-08-18'])
+  await seedClock({ lastTouched: LONG_QUIET })
+
+  const result = await run()
+
+  expect(result).toMatchObject({ kind: 'dry_run', dueCount: 1, demotedCount: 1 })
+  if (result.kind !== 'dry_run') throw new Error('expected dry_run')
+  expect(result.title).toBe('Due or overdue (1)')
+  expect(result.message).toContain('• fix the gate\n')
+  expect(result.message).toContain('• fix the gate, untouched 31 days')
+  expect(readTodos()).toContain('- [ ] fix the gate #someday 📅 2026-08-18')
 })
 
 it('fails the run when Pushover refuses, rather than reporting a push nobody got', async () => {
