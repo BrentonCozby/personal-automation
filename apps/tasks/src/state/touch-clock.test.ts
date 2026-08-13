@@ -9,6 +9,7 @@ import {
   lastTouchedOf,
   readTouchClock,
   reconcileTouchClock,
+  recordFingerprint,
   recordTouch,
   type TouchClock,
   touchKey,
@@ -130,6 +131,35 @@ describe('recordTouch', () => {
 
     expect(lastTouchedOf({ clock, key: 'a' })).toEqual(FRIDAY)
     expect(lastTouchedOf({ clock, key: 'b' })).toEqual(MONDAY)
+  })
+})
+
+describe('recordFingerprint', () => {
+  it('takes the new line without moving the timestamp', () => {
+    const key = touchKey({ list: 'todos', title: 'book india flights' })
+    const clock = recordTouch({
+      clock: emptyTouchClock(),
+      key,
+      fingerprint: fingerprintOf('- [ ] book india flights #active'),
+      now: new Date('2026-07-01T12:00:00Z'),
+    })
+
+    const updated = recordFingerprint({
+      clock,
+      key,
+      fingerprint: fingerprintOf('- [ ] book india flights #someday'),
+    })
+
+    expect(updated.tasks[key]).toEqual({
+      fingerprint: fingerprintOf('- [ ] book india flights #someday'),
+      lastTouched: '2026-07-01T12:00:00.000Z',
+    })
+  })
+
+  it('leaves a clock that has never seen the task alone', () => {
+    const clock = emptyTouchClock()
+
+    expect(recordFingerprint({ clock, key: 'missing', fingerprint: 'sha256:x' })).toEqual(clock)
   })
 })
 

@@ -96,8 +96,10 @@ The file is rebuildable. Deleting it stamps every task as touched on the next ru
 stall window of signal and nothing else. It holds no data that does not exist elsewhere.
 
 When the app writes a state change itself, it records the touch directly rather than waiting to
-infer it from the next run's fingerprint. Promotion and scheduling count as touches. Decay does
-not, because the task is terminal by then.
+infer it from the next run's fingerprint. Promotion and scheduling count as touches. Decay does not,
+because the user did not touch it: stamping it would hide how long the task had been ignored. The
+decay write therefore stores the rewritten line's fingerprint against the timestamp already held, so
+the next run reads the line as unchanged.
 
 ### Cold start
 

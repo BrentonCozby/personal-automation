@@ -5,6 +5,7 @@ import {
   lastTouchedOf,
   readTouchClock,
   reconcileTouchClock,
+  recordFingerprint,
   recordTouch,
   type TouchClock,
   touchKey,
@@ -212,6 +213,29 @@ export function touchFor({
     key: keyOf(task),
     fingerprint: fingerprintOf(rawOf({ lineText: after, notes: task.notes })),
     now,
+  })
+}
+
+/**
+ * The clock with this task's fingerprint moved to the line as just written, and its timestamp left
+ * where it was.
+ *
+ * For a rewrite the user did not ask for, which today means decay. Without it the next scan would
+ * read the app's own edit as a touch and reset the age it was judging.
+ */
+export function fingerprintFor({
+  clock,
+  task,
+  after,
+}: {
+  clock: TouchClock
+  task: ScannedTask
+  after: string
+}): TouchClock {
+  return recordFingerprint({
+    clock,
+    key: keyOf(task),
+    fingerprint: fingerprintOf(rawOf({ lineText: after, notes: task.notes })),
   })
 }
 

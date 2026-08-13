@@ -111,8 +111,9 @@ export function reconcileTouchClock({
  * The clock with one task stamped as touched at `now`.
  *
  * Used when this app writes a state change itself, rather than waiting to infer the touch from the
- * next run's fingerprint. Promoting and scheduling are touches. Decay is not: the task is terminal
- * by the time it decays.
+ * next run's fingerprint. Promoting and scheduling are touches. Decay is not, because the user did
+ * not touch it: stamping it would hide how long the task had been ignored. Decay uses
+ * `recordFingerprint` instead.
  */
 export function recordTouch({
   clock,
@@ -128,6 +129,34 @@ export function recordTouch({
   return {
     version: VERSION,
     tasks: { ...clock.tasks, [key]: { fingerprint, lastTouched: now.toISOString() } },
+  }
+}
+
+/**
+ * The clock with one task's fingerprint replaced and its timestamp carried forward.
+ *
+ * This is how a rewrite that is not a touch stays that way. `reconcileTouchClock` stamps `now` on
+ * any task whose fingerprint has changed, so demoting a task by rewriting its line would make the
+ * next pass read the demotion as work the user did.
+ *
+ * A key the clock has never seen is left absent rather than invented: nothing that rewrites a line
+ * here can reach a task the clock does not already hold.
+ */
+export function recordFingerprint({
+  clock,
+  key,
+  fingerprint,
+}: {
+  clock: TouchClock
+  key: string
+  fingerprint: string
+}): TouchClock {
+  const stored = clock.tasks[key]
+  if (!stored) return clock
+
+  return {
+    version: VERSION,
+    tasks: { ...clock.tasks, [key]: { fingerprint, lastTouched: stored.lastTouched } },
   }
 }
 
