@@ -60,6 +60,43 @@ function parseSlot(entry: string): ScheduleSlot {
   return { day, weekday: weekdayValues.indexOf(day), hour, minute }
 }
 
+/** A time of day the alert fires, every day. */
+export type TimeSlot = {
+  hour: number
+  minute: number
+}
+
+/**
+ * Parses `TASKS_ALERT_TIMES` entries like "08:00" into launchd calendar slots. No day: the alert
+ * runs every day, so an entry carries a time and nothing else.
+ */
+export function parseAlertTimes(entries: readonly string[]): TimeSlot[] {
+  if (entries.length === 0) {
+    throw new AppError({
+      message: 'TASKS_ALERT_TIMES is empty. Add at least one "HH:MM" entry.',
+    })
+  }
+
+  return entries.map(parseTime)
+}
+
+function parseTime(entry: string): TimeSlot {
+  const match = /^\s*(\d{1,2}):(\d{2})\s*$/.exec(entry)
+  if (!match) {
+    throw new AppError({
+      message: `Invalid alert time "${entry}". Expected 24-hour HH:MM, e.g. "08:00".`,
+    })
+  }
+  const [, hourRaw = '', minuteRaw = ''] = match
+  const hour = Number(hourRaw)
+  const minute = Number(minuteRaw)
+  if (hour > 23 || minute > 59) {
+    throw new AppError({ message: `Invalid alert time "${entry}". Use 00:00 to 23:59.` })
+  }
+
+  return { hour, minute }
+}
+
 const PLIST_DOCTYPE =
   '<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">'
 
@@ -106,6 +143,56 @@ ${intervals}
     <string>${projectDir}/launchd/logs/tasks-digest.out.log</string>
     <key>StandardErrorPath</key>
     <string>${projectDir}/launchd/logs/tasks-digest.err.log</string>
+
+    <key>RunAtLoad</key>
+    <false/>
+</dict>
+</plist>
+`
+}
+
+/**
+ * Builds the launchd agent plist for the due-date alert. One agent covers every pass: they run the
+ * same command with the same arguments, and a `StartCalendarInterval` entry with no `Weekday` fires
+ * every day.
+ */
+export function buildTasksAlertPlist({
+  projectDir,
+  times,
+}: {
+  projectDir: string
+  times: TimeSlot[]
+}): string {
+  const intervals = times
+    .map(
+      slot => `    <dict>
+      <key>Hour</key><integer>${slot.hour}</integer>
+      <key>Minute</key><integer>${slot.minute}</integer>
+    </dict>`,
+    )
+    .join('\n')
+
+  return `<?xml version="1.0" encoding="UTF-8"?>
+${PLIST_DOCTYPE}
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.personal-automation.tasks-alert</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>${projectDir}/launchd/run-tasks-alert.sh</string>
+    </array>
+
+    <key>StartCalendarInterval</key>
+    <array>
+${intervals}
+    </array>
+
+    <key>StandardOutPath</key>
+    <string>${projectDir}/launchd/logs/tasks-alert.out.log</string>
+    <key>StandardErrorPath</key>
+    <string>${projectDir}/launchd/logs/tasks-alert.err.log</string>
 
     <key>RunAtLoad</key>
     <false/>

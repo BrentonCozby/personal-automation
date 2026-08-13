@@ -1,6 +1,11 @@
 import { AppError } from '@personal-automation/common/errors'
 import { describe, expect, it } from 'vitest'
-import { buildTasksDigestPlist, parseSchedule } from './schedule.js'
+import {
+  buildTasksAlertPlist,
+  buildTasksDigestPlist,
+  parseAlertTimes,
+  parseSchedule,
+} from './schedule.js'
 
 describe('parseSchedule', () => {
   it('parses full day names into launchd weekday numbers + time', () => {
@@ -55,5 +60,46 @@ describe('buildTasksDigestPlist', () => {
     expect(xml).toContain('<key>Minute</key><integer>30</integer>')
     const dictCount = xml.match(/<key>Weekday<\/key>/g) ?? []
     expect(dictCount.length).toBe(2)
+  })
+})
+
+describe('parseAlertTimes', () => {
+  it('parses 24-hour times', () => {
+    expect(parseAlertTimes(['08:00', '19:30'])).toEqual([
+      { hour: 8, minute: 0 },
+      { hour: 19, minute: 30 },
+    ])
+  })
+
+  it('rejects an empty list', () => {
+    expect(() => parseAlertTimes([])).toThrow(AppError)
+  })
+
+  it('rejects a time that is not HH:MM', () => {
+    expect(() => parseAlertTimes(['8am'])).toThrow(/8am/)
+  })
+
+  it('rejects an hour or minute out of range', () => {
+    expect(() => parseAlertTimes(['24:00'])).toThrow(/24:00/)
+    expect(() => parseAlertTimes(['08:60'])).toThrow(/08:60/)
+  })
+})
+
+describe('buildTasksAlertPlist', () => {
+  it('fires every day at each time, with no weekday', () => {
+    const plist = buildTasksAlertPlist({
+      projectDir: '/Users/me/personal-automation',
+      times: [
+        { hour: 8, minute: 0 },
+        { hour: 19, minute: 0 },
+      ],
+    })
+
+    expect(plist).toContain('<string>com.personal-automation.tasks-alert</string>')
+    expect(plist).toContain('/Users/me/personal-automation/launchd/run-tasks-alert.sh')
+    expect(plist).toContain('<key>Hour</key><integer>8</integer>')
+    expect(plist).toContain('<key>Hour</key><integer>19</integer>')
+    expect(plist).not.toContain('Weekday')
+    expect(plist).toContain('launchd/logs/tasks-alert.err.log')
   })
 })

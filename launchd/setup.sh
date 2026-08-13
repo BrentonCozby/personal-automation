@@ -5,6 +5,8 @@
 #
 # Generated files:
 #   com.personal-automation.daily.plist         : daily scheduled job (runs run.sh at 12:00)
+#   com.personal-automation.tasks.plist         : tasks digest, on TASKS_SCHEDULE's days/times
+#   com.personal-automation.tasks-alert.plist   : due-date alert, every day at TASKS_ALERT_TIMES
 #   com.personal-automation.vault-backup.plist  : daily Obsidian vault git backup (09:00)
 #   newsyslog.personal-automation.conf          : optional log rotation config
 
@@ -37,24 +39,30 @@ substitute \
   "$PROJECT_DIR/launchd/newsyslog.personal-automation.conf.template" \
   "$PROJECT_DIR/launchd/newsyslog.personal-automation.conf"
 
-# Generate the digest's dedicated launchd agent from TASKS_SCHEDULE (its days/times).
-echo "Generating the tasks digest schedule…"
+# Generate the digest's and the alert's dedicated launchd agents from TASKS_SCHEDULE (the
+# digest's days/times) and TASKS_ALERT_TIMES (the alert's times, every day).
+echo "Generating the tasks digest and alert schedules…"
 (cd "$PROJECT_DIR" && pnpm --filter @personal-automation/tasks generate-launchd-plist)
 
 cat <<EOF
 
-Next (load all three agents: the daily run, the digest, and the vault backup):
+Next (load all four agents: the daily run, the digest, the due-date alert, and the vault backup):
   cp $PROJECT_DIR/launchd/com.personal-automation.daily.plist ~/Library/LaunchAgents/
   cp $PROJECT_DIR/launchd/com.personal-automation.tasks.plist ~/Library/LaunchAgents/
+  cp $PROJECT_DIR/launchd/com.personal-automation.tasks-alert.plist ~/Library/LaunchAgents/
   cp $PROJECT_DIR/launchd/com.personal-automation.vault-backup.plist ~/Library/LaunchAgents/
   launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.personal-automation.daily.plist
   launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.personal-automation.tasks.plist
+  launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.personal-automation.tasks-alert.plist
   launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.personal-automation.vault-backup.plist
 
-Changed TASKS_SCHEDULE later? Re-run this script, then:
+Changed TASKS_SCHEDULE or TASKS_ALERT_TIMES later? Re-run this script, then:
   launchctl bootout gui/$(id -u)/com.personal-automation.tasks
   cp $PROJECT_DIR/launchd/com.personal-automation.tasks.plist ~/Library/LaunchAgents/
   launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.personal-automation.tasks.plist
+  launchctl bootout gui/$(id -u)/com.personal-automation.tasks-alert
+  cp $PROJECT_DIR/launchd/com.personal-automation.tasks-alert.plist ~/Library/LaunchAgents/
+  launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.personal-automation.tasks-alert.plist
 
 Optional log rotation (rotates the logs in launchd/logs/ weekly, keeps 4):
   sudo cp $PROJECT_DIR/launchd/newsyslog.personal-automation.conf /etc/newsyslog.d/
