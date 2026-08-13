@@ -4,9 +4,9 @@
 # Obsidian Sync is the live cross-device sync; this only snapshots the vault to GitHub for an
 # offsite backup. Nothing else writes to the remote, so the push is a clean fast-forward — no
 # pull/merge, so it can't conflict with Obsidian Sync. Posts a macOS notification on failure,
-# matching run.sh / run-stalled-tasks.sh.
+# matching run.sh / run-tasks-digest.sh.
 #
-# The vault path is read from apps/stalled-tasks/.env (OBSIDIAN_VAULT_PATH) — the one place it's
+# The vault path is read from apps/tasks/.env (OBSIDIAN_VAULT_PATH) — the one place it's
 # configured — rather than duplicated here.
 
 set -u
@@ -21,9 +21,9 @@ notify_fail() {
     -e "display notification \"$1\" with title \"Vault backup FAILED\" sound name \"Basso\""
 }
 
-vault="$(grep -E '^OBSIDIAN_VAULT_PATH=' "$PROJECT_DIR/apps/stalled-tasks/.env" 2>/dev/null | head -1 | cut -d= -f2-)"
+vault="$(grep -E '^OBSIDIAN_VAULT_PATH=' "$PROJECT_DIR/apps/tasks/.env" 2>/dev/null | head -1 | cut -d= -f2-)"
 if [ -z "${vault:-}" ] || [ ! -d "$vault" ]; then
-  notify_fail "OBSIDIAN_VAULT_PATH is unset or not a directory (checked apps/stalled-tasks/.env)."
+  notify_fail "OBSIDIAN_VAULT_PATH is unset or not a directory (checked apps/tasks/.env)."
   exit 1
 fi
 if [ ! -d "$vault/.git" ]; then
@@ -40,7 +40,8 @@ git add -A 2> >(tee -a "$err_log" >&2)
 if ! git diff --cached --quiet; then
   git commit -q -m "vault backup: $(date '+%Y-%m-%d %H:%M')" 2> >(tee -a "$err_log" >&2)
 fi
-git push 2> >(tee -a "$err_log" >&2)
+# Push HEAD to its branch on origin by name, so a missing upstream can't fail the backup.
+git push origin HEAD 2> >(tee -a "$err_log" >&2)
 exit_code=$?
 
 if [ "$exit_code" -ne 0 ]; then
