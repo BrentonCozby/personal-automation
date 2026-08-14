@@ -13,6 +13,7 @@ import {
 } from '../state/touch-clock.js'
 import type { TaskState } from '../state/types.js'
 import type { CapCandidate } from '../state/wip.js'
+import { withDroppedMarker } from '../tasks/obsidian/markers.js'
 import { rawOf, type ScannedTask, scanFileTasks } from '../tasks/obsidian/scan.js'
 import { resolveScopedFiles } from '../tasks/obsidian/vault.js'
 import { writeChangedLines } from '../tasks/obsidian/write.js'
@@ -74,7 +75,10 @@ export async function withTaskClock<T>({
     clock: TouchClock
   }) => Promise<{ result: T; clock: TouchClock }>
 }): Promise<T> {
-  const tasks = await readTasks({ vaultPath, scopes })
+  const tasks = await repairDroppedMarkers({
+    vaultPath,
+    tasks: await readTasks({ vaultPath, scopes }),
+  })
   const open = openOf(tasks)
   const clock = reconcileTouchClock({
     stored: await readTouchClock(clockPath),
@@ -86,6 +90,40 @@ export async function withTaskClock<T>({
   await writeTouchClock({ path: clockPath, clock: acted.clock })
 
   return acted.result
+}
+
+/**
+ * Corrects the closing marker on every dropped task in scope, and returns the tasks as they now
+ * read on disk.
+ *
+ * The Tasks plugin stamps `✅` on a dropped task, because the dropped status is typed `DONE` so that
+ * dropping one occurrence of a recurring task still carries its rule forward. Left alone, the vault
+ * would record a `✅` beside a cancelled checkbox.
+ *
+ * The touch clock is not involved: it holds open tasks only and prunes what it isn't given, so a
+ * dropped task has no entry for this rewrite to disturb.
+ *
+ * A line that moved while the pass was reading it is skipped and picked up next time, rather than
+ * failing whatever command asked for the read.
+ */
+export async function repairDroppedMarkers({
+  vaultPath,
+  tasks,
+}: {
+  vaultPath: string
+  tasks: ScannedTask[]
+}): Promise<ScannedTask[]> {
+  const repaired: ScannedTask[] = []
+  for (const task of tasks) {
+    const after = task.status === 'cancelled' ? withDroppedMarker(task.lineText) : task.lineText
+    if (after === task.lineText || !(await writeTaskLine({ vaultPath, task, after }))) {
+      repaired.push(task)
+      continue
+    }
+    repaired.push({ ...task, lineText: after, raw: rawOf({ lineText: after, notes: task.notes }) })
+  }
+
+  return repaired
 }
 
 /**
