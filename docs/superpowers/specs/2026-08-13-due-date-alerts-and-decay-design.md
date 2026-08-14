@@ -91,7 +91,7 @@ and its `url` opened Obsidian on the dashboard.
 ```
 POST https://api.pushover.net/1/messages.json
   token, user   from the monorepo-root .env
-  title         Due today (2)
+  title         Due (2)
   message       • give Dolly her meds
                 • water the schefflera
   url           obsidian://open?vault=iphone&file=Todos/Dashboard.md

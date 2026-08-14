@@ -26,9 +26,9 @@ Commands:
                       nothing is #active.
     --dry-run         Print it to the console instead of sending
 
-  alert               Push what is due or overdue to the phone, and move any
-                      #active task untouched for TASKS_HORIZON_DAYS to
-                      #someday. Pushes nothing when both are empty.
+  alert               Push what is due to the phone, and move any #active
+                      task untouched for TASKS_HORIZON_DAYS to #someday.
+                      Pushes nothing when both are empty.
     --dry-run         Print the push to the console instead of sending
 
   migrate             Give every task a state tag. Dry by default.

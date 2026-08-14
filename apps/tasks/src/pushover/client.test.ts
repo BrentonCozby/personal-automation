@@ -12,7 +12,7 @@ function client(): ReturnType<typeof createPushoverClient> {
 
 function message(): { title: string; message: string; url: string; urlTitle: string } {
   return {
-    title: 'Due today (1)',
+    title: 'Due (1)',
     message: '• give Dolly her meds',
     url: 'obsidian://open?vault=iphone&file=Todos/Dashboard.md',
     urlTitle: 'Open the dashboard',
@@ -33,7 +33,7 @@ it('posts the message as form fields and returns the request id', async () => {
   expect(received).toEqual({
     token: 'app-token',
     user: 'user-key',
-    title: 'Due today (1)',
+    title: 'Due (1)',
     message: '• give Dolly her meds',
     url: 'obsidian://open?vault=iphone&file=Todos/Dashboard.md',
     url_title: 'Open the dashboard',

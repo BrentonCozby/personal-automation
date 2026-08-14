@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Add a `tasks alert` command, run by launchd at 08:00 and 19:00, that pushes what is due or overdue to the phone through Pushover and demotes any `#active` task untouched for 28 days to `#someday`.
+**Goal:** Add a `tasks alert` command, run by launchd at 08:00 and 19:00, that pushes what is due to the phone through Pushover and demotes any `#active` task untouched for 28 days to `#someday`.
 
 **Architecture:** Two pure rules (`state/due.ts`, `state/decay.ts`) decide what to alert on and what to demote. One command (`commands/alert.ts`) runs both inside a single `withTaskClock` pass under `tasks-edit.lock`, so the vault is read once and the touch clock is saved once. A pure renderer (`alert-message.ts`) turns the two lists into a title and a message; a factory client (`pushover/client.ts`) POSTs it. The push happens after the clock is saved, so a Pushover failure cannot throw away the clock update that keeps a demotion from reading as a touch.
 
@@ -463,60 +463,26 @@ Co-Authored-By: Claude <noreply@anthropic.com>"
 - Test: `apps/tasks/src/alert-message.test.ts`
 
 **Interfaces:**
-- Consumes: `localIsoDate` from `./state/days.js`.
-- Produces: `type DueItem = { title: string; due: Date | null }`; `type DemotedItem = { title: string; untouchedDays: number }`; `type AlertMessage = { title: string; message: string }`; `buildAlertMessage({ due, demoted, now }): AlertMessage`. `DueItem` is a structural subset of `ScannedTask`, so Task 7 passes scan results in unchanged.
+- Produces: `type DueItem = { title: string }`; `type DemotedItem = { title: string; untouchedDays: number }`; `type AlertMessage = { title: string; message: string }`; `buildAlertMessage({ due, demoted }): AlertMessage`. `DueItem` is a structural subset of `ScannedTask`, so Task 7 passes scan results in unchanged.
 
-Two copy decisions this task locks in. The spec's example shows the title `Due today (2)`, which is wrong for an item three days overdue, so the title says `Due today (N)` only when every item is dated today and `Due or overdue (N)` otherwise. A push carrying only a demotion is titled `Moved to someday (N)`.
+One copy decision this task locks in. The title is `Due (N)` whatever the dates are, since a banner that named today would be a lie about an item three days overdue and there is nothing on a lock screen to check it against. A push carrying only a demotion is titled `Moved to someday (N)`.
 
 - [ ] **Step 1: Write the failing tests**
 
 Create `apps/tasks/src/alert-message.test.ts`:
 
 ```ts
-import { afterEach, beforeEach, expect, it } from 'vitest'
+import { expect, it } from 'vitest'
 import { buildAlertMessage } from './alert-message.js'
-
-// The title compares due dates against today, which is a local calendar date.
-const originalTz = process.env['TZ']
-
-beforeEach(() => {
-  process.env['TZ'] = 'America/Los_Angeles'
-})
-
-afterEach(() => {
-  process.env['TZ'] = originalTz
-})
-
-const NOW = new Date(2026, 7, 20, 8, 0)
-const TODAY = new Date(2026, 7, 20)
 
 it('lists what is due, one bulleted item per line', () => {
   const result = buildAlertMessage({
-    due: [
-      { title: 'give Dolly her meds', due: TODAY },
-      { title: 'water the schefflera', due: TODAY },
-    ],
+    due: [{ title: 'give Dolly her meds' }, { title: 'water the schefflera' }],
     demoted: [],
-    now: NOW,
   })
 
-  expect(result.title).toBe('Due today (2)')
+  expect(result.title).toBe('Due (2)')
   expect(result.message).toBe('• give Dolly her meds\n• water the schefflera')
-})
-
-// "Due today" would be a lie about a task dated last week, and the banner is the only place this
-// text is read.
-it('says overdue when something on the list is older than today', () => {
-  const result = buildAlertMessage({
-    due: [
-      { title: 'give Dolly her meds', due: new Date(2026, 7, 18) },
-      { title: 'water the schefflera', due: TODAY },
-    ],
-    demoted: [],
-    now: NOW,
-  })
-
-  expect(result.title).toBe('Due or overdue (2)')
 })
 
 // The machine is dropping a commitment the user did not drop, so they learn it when it happens.
@@ -524,7 +490,6 @@ it('announces a demotion on its own', () => {
   const result = buildAlertMessage({
     due: [],
     demoted: [{ title: 'book india flights', untouchedDays: 31 }],
-    now: NOW,
   })
 
   expect(result.title).toBe('Moved to someday (1)')
@@ -533,19 +498,18 @@ it('announces a demotion on its own', () => {
 
 it('puts the demotion under what is due when both have something', () => {
   const result = buildAlertMessage({
-    due: [{ title: 'give Dolly her meds', due: TODAY }],
+    due: [{ title: 'give Dolly her meds' }],
     demoted: [{ title: 'book india flights', untouchedDays: 31 }],
-    now: NOW,
   })
 
-  expect(result.title).toBe('Due today (1)')
+  expect(result.title).toBe('Due (1)')
   expect(result.message).toBe(
     '• give Dolly her meds\n\nMoved to someday:\n• book india flights, untouched 31 days',
   )
 })
 
 it('renders an empty pair as an empty message', () => {
-  expect(buildAlertMessage({ due: [], demoted: [], now: NOW })).toEqual({
+  expect(buildAlertMessage({ due: [], demoted: [] })).toEqual({
     title: 'Moved to someday (0)',
     message: '',
   })
@@ -556,27 +520,24 @@ it('renders an empty pair as an empty message', () => {
 it('drops whole items and names how many, rather than being cut mid-title', () => {
   const due = Array.from({ length: 60 }, (_, index) => ({
     title: `a task with a fairly long name, number ${index}`,
-    due: TODAY,
   }))
 
-  const result = buildAlertMessage({ due, demoted: [], now: NOW })
+  const result = buildAlertMessage({ due, demoted: [] })
 
   expect(Buffer.byteLength(result.message, 'utf8')).toBeLessThanOrEqual(1024)
   expect(result.message).toMatch(/\n• and \d+ more$/)
-  expect(result.title).toBe('Due today (60)')
+  expect(result.title).toBe('Due (60)')
 })
 
 // A demotion is news that arrives nowhere else, so it survives the truncation that trims the list.
 it('keeps the demotion when the due list is truncated', () => {
   const due = Array.from({ length: 60 }, (_, index) => ({
     title: `a task with a fairly long name, number ${index}`,
-    due: TODAY,
   }))
 
   const result = buildAlertMessage({
     due,
     demoted: [{ title: 'book india flights', untouchedDays: 31 }],
-    now: NOW,
   })
 
   expect(Buffer.byteLength(result.message, 'utf8')).toBeLessThanOrEqual(1024)
@@ -594,12 +555,9 @@ Expected: FAIL, cannot resolve `./alert-message.js`.
 Create `apps/tasks/src/alert-message.ts`:
 
 ```ts
-import { localIsoDate } from './state/days.js'
-
-/** One task on today's push. `due` is null only on a task no rule here can reach. */
+/** One task on today's push. */
 export type DueItem = {
   title: string
-  due: Date | null
 }
 
 /** One task the pass demoted, and how long it had been sitting. */
@@ -630,11 +588,9 @@ const MOVED_HEADING = 'Moved to someday'
 export function buildAlertMessage({
   due,
   demoted,
-  now,
 }: {
   due: readonly DueItem[]
   demoted: readonly DemotedItem[]
-  now: Date
 }): AlertMessage {
   const dueLines = due.map(item => `${BULLET} ${item.title}`)
   const tail =
@@ -646,29 +602,14 @@ export function buildAlertMessage({
           ...demoted.map(item => `${BULLET} ${item.title}, untouched ${item.untouchedDays} days`),
         ]
 
+  // With nothing due, the push exists only to announce the demotion, so the title says so rather
+  // than counting to zero.
+  const title = due.length === 0 ? `${MOVED_HEADING} (${demoted.length})` : `Due (${due.length})`
+
   return {
-    title: titleFor({ due, demoted, now }),
+    title,
     message: fitMessage({ dueLines, tail }),
   }
-}
-
-// A list dated today is the common case (the chores), so it gets the plainer wording. Anything older
-// on the list makes "today" untrue, and this text is read on a lock screen with nothing to check it
-// against.
-function titleFor({
-  due,
-  demoted,
-  now,
-}: {
-  due: readonly DueItem[]
-  demoted: readonly DemotedItem[]
-  now: Date
-}): string {
-  if (due.length === 0) return `${MOVED_HEADING} (${demoted.length})`
-  const today = localIsoDate(now)
-  const isAllToday = due.every(item => item.due !== null && localIsoDate(item.due) === today)
-
-  return `${isAllToday ? 'Due today' : 'Due or overdue'} (${due.length})`
 }
 
 // Whole lines are dropped from the end of the due list until the message fits, and the count that
@@ -755,7 +696,7 @@ function client() {
 
 function message() {
   return {
-    title: 'Due today (1)',
+    title: 'Due (1)',
     message: '• give Dolly her meds',
     url: 'obsidian://open?vault=iphone&file=Todos/Dashboard.md',
     urlTitle: 'Open the dashboard',
@@ -776,7 +717,7 @@ it('posts the message as form fields and returns the request id', async () => {
   expect(received).toEqual({
     token: 'app-token',
     user: 'user-key',
-    title: 'Due today (1)',
+    title: 'Due (1)',
     message: '• give Dolly her meds',
     url: 'obsidian://open?vault=iphone&file=Todos/Dashboard.md',
     url_title: 'Open the dashboard',
@@ -1348,7 +1289,7 @@ it('lists what is due, most overdue first', async () => {
 
   expect(result).toMatchObject({ kind: 'dry_run', dueCount: 2, demotedCount: 0 })
   if (result.kind !== 'dry_run') throw new Error('expected dry_run')
-  expect(result.title).toBe('Due or overdue (2)')
+  expect(result.title).toBe('Due (2)')
   expect(result.message).toBe('• give Dolly her meds\n• water the schefflera')
 })
 
@@ -1367,7 +1308,7 @@ it('sends the push with the deep link and normal priority', async () => {
 
   expect(result).toEqual({ kind: 'sent', requestId: 'req-1', dueCount: 1, demotedCount: 0 })
   expect(sent.body()).toMatchObject({
-    title: 'Due today (1)',
+    title: 'Due (1)',
     message: '• give Dolly her meds',
     url: 'obsidian://open?vault=iphone&file=Todos/Dashboard.md',
     priority: '0',
@@ -1561,7 +1502,7 @@ export async function runAlert({
 
   // Sent after the clock is saved rather than inside the pass: a refused push must not throw away
   // the fingerprint update that keeps a demotion from reading as a touch on the next run.
-  const rendered: AlertMessage = buildAlertMessage({ due: pass.due, demoted: pass.demoted, now })
+  const rendered: AlertMessage = buildAlertMessage({ due: pass.due, demoted: pass.demoted })
   if (opts.dryRun) {
     return {
       kind: 'dry_run',
@@ -1755,7 +1696,7 @@ import { type AlertResult, runAlert } from './commands/alert.js'
 Add to `printHelp`, after the `digest` block:
 
 ```text
-  alert               Push what is due or overdue to the phone, and move any
+  alert               Push what is due to the phone, and move any
                       #active task untouched for TASKS_HORIZON_DAYS to
                       #someday. Pushes nothing when both are empty.
     --dry-run         Print the push to the console instead of sending
@@ -2216,6 +2157,6 @@ Only if a gate produced an edit. Amend it into the task's own commit rather than
 
 **Spec coverage.** Every section of the spec maps to a task: the job and its two halves (Tasks 1, 2, 6), the push and its exact fields (Tasks 3, 4), the fingerprint rule and the two wrong doc comments (Task 5), config (Task 6), launchd (Task 8), errors (Task 4's throw plus Task 6's skip-and-continue on a conflict), testing (each task's tests plus Task 10's coverage check), and "what this does not do" (nothing here adds a state tag, a priority marker, or a write in the alert half).
 
-**Two things the spec left open, decided here.** The push title says `Due today (N)` only when every item is dated today, and `Due or overdue (N)` otherwise, because the spec's own example string would be a lie about an overdue item. The due list is ordered most overdue first with alphabetical ties. Both are in Tasks 1 and 3 and are easy to change if the user disagrees after reading the first real push.
+**Two things the spec left open, decided here.** The push title says `Due (N)` whatever the dates are, because a title naming today would be a lie about an overdue item. The due list is ordered most overdue first with alphabetical ties. Both are in Tasks 1 and 3 and are easy to change if the user disagrees after reading the first real push.
 
 **One accepted limit, new here.** If the Pushover POST fails after a demotion, the vault keeps the demotion and the clock keeps the honest fingerprint (the clock is saved before the push), so the next pass sees an already-demoted task and nothing to alert about. The failure surfaces through the launchd wrapper's notification.

@@ -136,7 +136,7 @@ it('lists what is due, most overdue first', async () => {
 
   expect(result).toMatchObject({ kind: 'dry_run', dueCount: 2, demotedCount: 0 })
   if (result.kind !== 'dry_run') throw new Error('expected dry_run')
-  expect(result.title).toBe('Due or overdue (2)')
+  expect(result.title).toBe('Due (2)')
   expect(result.message).toBe('• give Dolly her meds\n• water the schefflera')
 })
 
@@ -155,7 +155,7 @@ it('sends the push with the deep link and normal priority', async () => {
 
   expect(result).toEqual({ kind: 'sent', requestId: 'req-1', dueCount: 1, demotedCount: 0 })
   expect(sent.body()).toMatchObject({
-    title: 'Due today (1)',
+    title: 'Due (1)',
     message: '• give Dolly her meds',
     url: 'obsidian://open?vault=iphone&file=Todos/Dashboard.md',
     priority: '0',
@@ -230,7 +230,7 @@ it('reports a task that is both due and decayed in both halves', async () => {
 
   expect(result).toMatchObject({ kind: 'dry_run', dueCount: 1, demotedCount: 1 })
   if (result.kind !== 'dry_run') throw new Error('expected dry_run')
-  expect(result.title).toBe('Due or overdue (1)')
+  expect(result.title).toBe('Due (1)')
   expect(result.message).toContain('• fix the gate\n')
   expect(result.message).toContain('• fix the gate, untouched 31 days')
   expect(readTodos()).toContain('- [ ] fix the gate #someday 📅 2026-08-18')

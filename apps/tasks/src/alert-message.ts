@@ -1,9 +1,6 @@
-import { localIsoDate } from './state/days.js'
-
-/** One task on today's push. `due` is null only on a task no rule here can reach. */
+/** One task on today's push. */
 export type DueItem = {
   title: string
-  due: Date | null
 }
 
 /** One task the pass demoted, and how long it had been sitting. */
@@ -34,11 +31,9 @@ const MOVED_HEADING = 'Moved to someday'
 export function buildAlertMessage({
   due,
   demoted,
-  now,
 }: {
   due: readonly DueItem[]
   demoted: readonly DemotedItem[]
-  now: Date
 }): AlertMessage {
   const dueLines = due.map(item => `${BULLET} ${item.title}`)
   const demotedLines =
@@ -49,29 +44,14 @@ export function buildAlertMessage({
           ...demoted.map(item => `${BULLET} ${item.title}, untouched ${item.untouchedDays} days`),
         ]
 
+  // With nothing due, the push exists only to announce the demotion, so the title says so rather
+  // than counting to zero.
+  const title = due.length === 0 ? `${MOVED_HEADING} (${demoted.length})` : `Due (${due.length})`
+
   return {
-    title: titleFor({ due, demoted, now }),
+    title,
     message: fitMessage({ dueLines, demotedLines }),
   }
-}
-
-// A list dated today is the common case (the chores), so it gets the plainer wording. Anything older
-// on the list makes "today" untrue, and this text is read on a lock screen with nothing to check it
-// against.
-function titleFor({
-  due,
-  demoted,
-  now,
-}: {
-  due: readonly DueItem[]
-  demoted: readonly DemotedItem[]
-  now: Date
-}): string {
-  if (due.length === 0) return `${MOVED_HEADING} (${demoted.length})`
-  const today = localIsoDate(now)
-  const isAllToday = due.every(item => item.due !== null && localIsoDate(item.due) === today)
-
-  return `${isAllToday ? 'Due today' : 'Due or overdue'} (${due.length})`
 }
 
 // Whole lines are dropped until the message fits, and the count that went is named, so nothing is

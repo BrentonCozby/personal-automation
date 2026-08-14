@@ -104,7 +104,7 @@ export async function runAlert({
 
   // Sent after the clock is saved rather than inside the pass: a refused push must not throw away
   // the fingerprint update that keeps a demotion from reading as a touch on the next run.
-  const rendered: AlertMessage = buildAlertMessage({ due: pass.due, demoted: pass.demoted, now })
+  const rendered: AlertMessage = buildAlertMessage({ due: pass.due, demoted: pass.demoted })
   if (opts.dryRun) {
     return {
       kind: 'dry_run',
