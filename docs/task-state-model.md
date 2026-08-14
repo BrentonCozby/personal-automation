@@ -338,8 +338,9 @@ machine changed something you did not ask it to change, so you learn it the mome
 the one channel you read. Holding it for the twice-weekly review would delay the news by up to three
 days and would need a new section in the review to carry it.
 
-It runs on both passes, and the evening one is a no-op: a task demoted at 08:00 carries `#someday`
-by 19:00, and the threshold is calendar-day arithmetic that changes only at midnight.
+It runs on both passes, and the evening one is a no-op: a task demoted in the morning carries
+`#someday` by the evening, and the threshold is calendar-day arithmetic that changes only at
+midnight.
 
 A line carrying two state tags is never demoted. It counts as neither state, so it holds no slot
 against the cap and there is nothing to free; resolving the two tags by hand is the fix, as it is
