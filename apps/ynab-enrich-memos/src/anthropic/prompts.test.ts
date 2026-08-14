@@ -26,6 +26,9 @@ describe('buildEnrichPrompt', (): void => {
     // Each email is numbered, and the model is told to report which index it matched.
     expect(prompt).toContain('"index": 0')
     expect(prompt).toContain('matched_email_index')
+    // Memos are written to YNAB, which follows the repo's no-em-dash rule. buildMemo swaps any
+    // that survive, but asking here is what keeps the swap from firing in the first place.
+    expect(prompt).toContain('Never use an em dash')
   })
 
   it('neutralizes attempts to close the <emails> block or inject newlines', (): void => {
