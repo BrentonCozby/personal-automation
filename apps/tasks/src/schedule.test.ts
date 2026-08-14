@@ -1,6 +1,7 @@
 import { AppError } from '@personal-automation/common/errors'
 import { describe, expect, it } from 'vitest'
 import {
+  assertNoScheduleCollision,
   buildTasksAlertPlist,
   buildTasksDigestPlist,
   parseAlertTimes,
@@ -107,5 +108,27 @@ describe('buildTasksAlertPlist', () => {
     )
     expect(plist).not.toContain('Weekday')
     expect(plist).toContain('launchd/logs/tasks-alert.err.log')
+  })
+})
+
+describe('assertNoScheduleCollision', () => {
+  // Two agents holding different locks are not serialized, and each saves the whole touch clock, so
+  // the same minute costs whichever timestamps the loser had written.
+  it('refuses an alert time the review already uses, naming it', () => {
+    expect(() =>
+      assertNoScheduleCollision({
+        schedule: parseSchedule(['Sunday 08:00', 'Wednesday 08:00']),
+        times: parseAlertTimes(['08:00', '19:00']),
+      }),
+    ).toThrow(/Sunday 08:00/)
+  })
+
+  it('allows the two a minute apart', () => {
+    expect(() =>
+      assertNoScheduleCollision({
+        schedule: parseSchedule(['Sunday 08:00', 'Wednesday 08:00']),
+        times: parseAlertTimes(['08:05', '19:00']),
+      }),
+    ).not.toThrow()
   })
 })

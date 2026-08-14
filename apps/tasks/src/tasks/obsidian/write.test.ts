@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import { mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, expect, it } from 'vitest'
@@ -43,6 +43,18 @@ it('writes nothing when any one line no longer matches what was read', async () 
 
   expect(isWritten).toBe(false)
   expect(await readFile(absPath, 'utf8')).toBe(['- [ ] one', '- [ ] two'].join('\n'))
+})
+
+// The write goes through a temporary file so a killed run cannot truncate the vault. Leaving that
+// file behind would put a second copy of the task list in the folder Obsidian reads.
+it('leaves no temporary file in the folder it wrote to', async () => {
+  await writeFile(absPath, '- [ ] one')
+  await writeChangedLines({
+    absPath,
+    changes: [{ line: 1, before: '- [ ] one', after: '- [ ] one #active' }],
+  })
+
+  expect(await readdir(dir)).toEqual(['todos.md'])
 })
 
 it('keeps CRLF line endings', async () => {

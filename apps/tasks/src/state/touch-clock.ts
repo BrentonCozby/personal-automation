@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto'
 import { mkdir, readFile, rename, writeFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { AppError } from '@personal-automation/common/errors'
+import { AppError, isFileNotFound } from '@personal-automation/common/errors'
 import { z } from 'zod'
 import { RUNS_DIR_NAME } from '../constants.js'
 
@@ -180,7 +180,7 @@ export async function readTouchClock(path: string): Promise<TouchClock> {
   try {
     content = await readFile(path, 'utf8')
   } catch (err) {
-    if (isNotFound(err)) return emptyTouchClock()
+    if (isFileNotFound(err)) return emptyTouchClock()
     throw err
   }
 
@@ -225,8 +225,4 @@ function parseTouchClock({ content, path }: { content: string; path: string }): 
 
 function unreadableMessage(path: string): string {
   return `The touch clock at ${path} is not readable as one. Delete it and it rebuilds on the next run, at the cost of one stall window: every task will read as touched today.`
-}
-
-function isNotFound(err: unknown): boolean {
-  return err instanceof Error && 'code' in err && err.code === 'ENOENT'
 }

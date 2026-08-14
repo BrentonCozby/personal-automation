@@ -97,6 +97,37 @@ function parseTime(entry: string): TimeSlot {
   return { hour, minute }
 }
 
+/** 24-hour HH:MM, zero-padded. */
+export function formatTimeOfDay({ hour, minute }: { hour: number; minute: number }): string {
+  return `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`
+}
+
+/**
+ * Refuses a configuration where the alert fires in the same minute as the review.
+ *
+ * The two agents hold different locks, so nothing serializes them, and each one saves the whole
+ * touch clock: at the same minute the later save wins and drops what the other recorded. No run can
+ * detect that afterwards, so it is checked here, before the plists that would schedule it exist.
+ */
+export function assertNoScheduleCollision({
+  schedule,
+  times,
+}: {
+  schedule: readonly ScheduleSlot[]
+  times: readonly TimeSlot[]
+}): void {
+  const collision = schedule.find(slot =>
+    times.some(time => time.hour === slot.hour && time.minute === slot.minute),
+  )
+  if (!collision) return
+
+  const time = formatTimeOfDay(collision)
+
+  throw new AppError({
+    message: `TASKS_ALERT_TIMES names ${time}, which TASKS_SCHEDULE already uses (${collision.day} ${time}). Move one of them by a minute: the review and the alert both save the touch clock, and the later save replaces the whole file.`,
+  })
+}
+
 const PLIST_DOCTYPE =
   '<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">'
 

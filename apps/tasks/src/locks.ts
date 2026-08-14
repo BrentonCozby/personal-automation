@@ -23,7 +23,8 @@ const RUN_LOCK = join(tmpdir(), 'tasks.lock')
  * What the split does not cover: two commands, one under each lock, can save the touch clock at the
  * same moment, and the later save wins whole. Every command writes lines now, since `withTaskClock`
  * repairs dropped markers, so keeping the two agents apart is the schedules' job: no time in
- * `TASKS_ALERT_TIMES` may name a minute `TASKS_SCHEDULE` also names.
+ * `TASKS_ALERT_TIMES` may name a minute `TASKS_SCHEDULE` also names. `assertNoScheduleCollision`
+ * refuses such a pair when the plists are generated, which is the only moment either one is read.
  */
 const EDIT_LOCK = join(tmpdir(), 'tasks-edit.lock')
 

@@ -191,7 +191,7 @@ async function review({
     })
   }
 
-  const analyses = await analyze({ quiet, config, analyzer, logger })
+  const analyses = await analyze({ quiet, config, analyzer, logger, now })
   const items = joinAnalyses({ analyses, quiet })
   const unanalyzed = quiet.length - items.length
   if (unanalyzed > 0) {
@@ -349,11 +349,13 @@ async function analyze({
   config,
   analyzer,
   logger,
+  now,
 }: {
   quiet: Quiet[]
   config: Config
   analyzer: TasksAnalyzer
   logger: pino.Logger
+  now: Date
 }): Promise<TaskAnalysis[]> {
   const promptTasks: PromptTask[] = quiet.map(entry => ({
     title: entry.task.title,
@@ -362,7 +364,9 @@ async function analyze({
     untouchedDays: entry.untouchedDays,
     isDatePassed: entry.isDatePassed,
   }))
-  const prompt = buildAnalysisPrompt({ tasks: promptTasks, today: todayIso() })
+  // The local calendar date, not `todayIso`: every day count the prompt carries was measured in
+  // local days, and on an evening run the UTC date is already tomorrow.
+  const prompt = buildAnalysisPrompt({ tasks: promptTasks, today: localIsoDate(now) })
 
   // The slow step: one Anthropic call that returns everything at once. Log it (so launchd output and
   // the terminal both show the wait) and spin so the run never looks stuck.

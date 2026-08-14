@@ -44,8 +44,12 @@ fi
 # mask real failures from another app in the same run.
 /bin/zsh -lc "pnpm --filter @personal-automation/notify notify" || true
 
-# Trim audit + run-log JSONL older than 90 days so those dirs don't grow forever.
-find "$PROJECT_DIR/apps"/*/audit "$PROJECT_DIR/apps"/*/runs -name '*.jsonl' -mtime +90 -delete 2>/dev/null || true
+# Trim audit + run-log JSONL older than 90 days so those dirs don't grow forever. overrides.jsonl
+# lives in the same directory but is a ledger, not a dated log: it is appended to only when someone
+# runs `promote --over-cap`, nothing rebuilds it, and one file holds every entry, so an mtime sweep
+# would delete the whole history rather than rotate it.
+find "$PROJECT_DIR/apps"/*/audit "$PROJECT_DIR/apps"/*/runs \
+  -name '*.jsonl' ! -name 'overrides.jsonl' -mtime +90 -delete 2>/dev/null || true
 
 if [ "$overall_exit" -ne 0 ]; then
   last_err="$(tail -3 "$err_log" | tr '\n' ' ' | sed 's/"/\\"/g')"

@@ -216,6 +216,10 @@ already refuses to overwrite anything it didn't read.
 rather than written, and a day that doesn't exist (`2026-02-30`, which the Date constructor would
 quietly roll into March) is refused too.
 
+The scanner reads the vault's own `📅` markers through the same check, so a day typed by hand in
+Obsidian that does not exist leaves the task undated rather than alerting on the day it rolls into.
+The task still reaches the review once it goes quiet.
+
 A date inside the horizon leaves the task where it is, holding its place on the active list if it
 had one: naming a day inside the next few weeks is a commitment, not a deferral. A date beyond the
 horizon is not a plan, so the task moves to `#someday`, which frees its place if it had one.
@@ -417,7 +421,9 @@ Raising the cap for a single invocation is a legitimate use of the system. It re
 prints no warning, and is not an error.
 
 Each override appends one line to `apps/tasks/runs/overrides.jsonl`, carrying the cap in force at the
-time and how many tasks were already active. More than `TASKS_OVERRIDE_LIMIT` of them inside
+time and how many tasks were already active. One file holds every entry, so the nightly sweep that
+trims JSONL older than 90 days skips it by name: an mtime rule would delete the whole ledger rather
+than rotate it. More than `TASKS_OVERRIDE_LIMIT` of them inside
 `TASKS_OVERRIDE_WINDOW_DAYS` days and the review suggests raising the default cap, on the grounds
 that a rule routed around this often is a rule that does not fit. It never suggests trying harder.
 

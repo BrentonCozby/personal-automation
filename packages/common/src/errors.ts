@@ -53,6 +53,16 @@ export class YnabApiError extends AppError {
   }
 }
 
+/**
+ * True when a filesystem call failed because the path does not exist.
+ *
+ * For a state file whose absence is a normal cold start, so the caller can return empty state and
+ * still rethrow every other failure (a permission error, a directory where a file was expected).
+ */
+export function isFileNotFound(err: unknown): boolean {
+  return err instanceof Error && 'code' in err && err.code === 'ENOENT'
+}
+
 export function isRetryableHttpStatus(status: number): boolean {
   // 408 timeout, 425 too-early, 429 rate-limited, and any 5xx are transient.
   if (status === 408 || status === 425 || status === 429) return true

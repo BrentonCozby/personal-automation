@@ -99,13 +99,13 @@ function makeConfig(overrides: Partial<Config> = {}): Config {
 }
 
 function run(
-  overrides: { config?: Config; dryRun?: boolean; analyzer?: TasksAnalyzer } = {},
+  overrides: { config?: Config; dryRun?: boolean; analyzer?: TasksAnalyzer; now?: Date } = {},
 ): Promise<RunResult> {
   return runDigest({
     config: overrides.config ?? makeConfig(),
     scopes: SCOPES,
     opts: { dryRun: overrides.dryRun ?? true },
-    now: NOW,
+    now: overrides.now ?? NOW,
     clockPath,
     runsDir,
     logger: silentLogger,
@@ -439,4 +439,38 @@ it('fails the run rather than undercounting an override log it cannot read', asy
   writeFileSync(join(runsDir, 'overrides.jsonl'), 'not json\n')
 
   await expect(run()).rejects.toThrow(/overrides\.jsonl/)
+})
+
+// Every day count in the prompt is a local calendar count, so the date beside them has to be the
+// local one. 20:00 in Los Angeles is already tomorrow in UTC, which is where this used to disagree.
+it('tells the model the local date on an evening run', async () => {
+  const originalTz = process.env['TZ']
+  process.env['TZ'] = 'America/Los_Angeles'
+  try {
+    writeTodos(['- [ ] book india flights #active'])
+    await seedClock({ lastTouched: QUIET_SINCE })
+    let sent = ''
+    server.use(
+      http.post(ANTHROPIC_MESSAGES_URL, async ({ request }) => {
+        sent = JSON.stringify(await request.json())
+
+        return HttpResponse.json({
+          id: 'msg_test',
+          type: 'message',
+          role: 'assistant',
+          content: [{ type: 'text', text: JSON.stringify({ tasks: [analysis()] }) }],
+          model: 'claude-sonnet-5',
+          stop_reason: 'end_turn',
+          stop_sequence: null,
+          usage: { input_tokens: 200, output_tokens: 80 },
+        })
+      }),
+    )
+
+    await run({ now: new Date('2026-06-03T03:00:00Z') })
+
+    expect(sent).toContain('Today is 2026-06-02')
+  } finally {
+    process.env['TZ'] = originalTz
+  }
 })

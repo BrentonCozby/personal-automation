@@ -28,6 +28,15 @@ it('reads the date a task was finished or dropped', () => {
   expect(dropped?.closed?.getDate()).toBe(10)
 })
 
+// A date JS would roll forward instead of reject, which would alert on a day the vault never named.
+it('leaves the due date null when the numbers name no real day', () => {
+  const [february] = scan('- [ ] renew passport 📅 2026-02-30')
+  const [month] = scan('- [ ] renew passport 📅 2026-13-01')
+
+  expect(february?.due).toBeNull()
+  expect(month?.due).toBeNull()
+})
+
 it('leaves the closed date null on an open task', () => {
   const [task] = scan('- [ ] book india flights ➕ 2025-05-20')
 

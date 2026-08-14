@@ -1,4 +1,5 @@
-import { readFile, writeFile } from 'node:fs/promises'
+import { readFile, rename, writeFile } from 'node:fs/promises'
+import { basename, dirname, join } from 'node:path'
 
 /** One line to replace, matched on `before` so a stale plan can't overwrite a newer edit. */
 export type LineChange = {
@@ -32,7 +33,11 @@ export async function writeChangedLines({
   if (changes.some(change => lines[change.line - 1] !== change.before)) return false
 
   for (const change of changes) lines[change.line - 1] = change.after
-  await writeFile(absPath, lines.join(eol), 'utf8')
+  // Renamed over the file rather than written in place, so a run killed part-way through leaves the
+  // vault's previous copy whole. The dot prefix keeps Obsidian from showing the temporary file.
+  const temporaryPath = join(dirname(absPath), `.${basename(absPath)}.tmp`)
+  await writeFile(temporaryPath, lines.join(eol), 'utf8')
+  await rename(temporaryPath, absPath)
 
   return true
 }

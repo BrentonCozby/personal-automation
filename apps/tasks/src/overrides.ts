@@ -1,7 +1,7 @@
 import { appendFileSync, mkdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { AppError } from '@personal-automation/common/errors'
+import { AppError, isFileNotFound } from '@personal-automation/common/errors'
 import { z } from 'zod'
 import { RUNS_DIR_NAME } from './constants.js'
 
@@ -57,7 +57,7 @@ export function readOverrides({ dir = DEFAULT_RUNS_DIR }: { dir?: string } = {})
   try {
     content = readFileSync(path, 'utf8')
   } catch (err) {
-    if (isNotFound(err)) return []
+    if (isFileNotFound(err)) return []
     throw err
   }
 
@@ -86,8 +86,4 @@ function parseLine({ line, path }: { line: string; path: string }): OverrideEntr
 // error. Losing it costs the suggestion to raise the cap, and nothing else.
 function unreadableMessage(path: string): string {
   return `The override log at ${path} has a line that is not readable as one. Delete the file: it only feeds the review's suggestion to raise the cap, and it fills up again as you use --over-cap.`
-}
-
-function isNotFound(err: unknown): boolean {
-  return err instanceof Error && 'code' in err && err.code === 'ENOENT'
 }

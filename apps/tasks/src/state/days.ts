@@ -61,18 +61,14 @@ export function isTaskDateShape(input: string): boolean {
 }
 
 /**
- * A date typed on the command line, as local midnight: either `YYYY-MM-DD` or `+Nd` days from
- * today. Undefined when the text isn't one of those, or names a day that doesn't exist.
+ * A `YYYY-MM-DD` date as local midnight. Undefined when the text isn't that shape, or names a day
+ * that doesn't exist.
  *
- * The round-trip check is what catches `2026-02-30`, which the Date constructor would silently
- * roll forward into March rather than reject.
+ * The round-trip check is what catches `2026-02-30`, which the Date constructor would silently roll
+ * forward into March rather than reject. Both the command line and the vault scanner read dates
+ * through this, so a day the app refuses to write is also a day it refuses to read.
  */
-export function parseTaskDate({ input, now }: { input: string; now: Date }): Date | undefined {
-  const ahead = input.match(DAYS_AHEAD)
-  if (ahead) {
-    return new Date(now.getFullYear(), now.getMonth(), now.getDate() + Number(ahead[1]))
-  }
-
+export function parseIsoDate(input: string): Date | undefined {
   const parts = input.match(ISO_DATE)
   if (!parts) return undefined
   const year = Number(parts[1])
@@ -83,4 +79,17 @@ export function parseTaskDate({ input, now }: { input: string; now: Date }): Dat
     date.getFullYear() === year && date.getMonth() === month - 1 && date.getDate() === day
 
   return isReal ? date : undefined
+}
+
+/**
+ * A date typed on the command line, as local midnight: either `YYYY-MM-DD` or `+Nd` days from
+ * today. Undefined when the text isn't one of those, or names a day that doesn't exist.
+ */
+export function parseTaskDate({ input, now }: { input: string; now: Date }): Date | undefined {
+  const ahead = input.match(DAYS_AHEAD)
+  if (ahead) {
+    return new Date(now.getFullYear(), now.getMonth(), now.getDate() + Number(ahead[1]))
+  }
+
+  return parseIsoDate(input)
 }

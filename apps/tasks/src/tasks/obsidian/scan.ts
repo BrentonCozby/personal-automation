@@ -1,4 +1,5 @@
 import { basename } from 'node:path'
+import { parseIsoDate } from '../../state/days.js'
 import type { TaskState, TaskStatus } from '../../state/types.js'
 import { parseTaskLine } from './lines.js'
 import { stripStateTags } from './tags.js'
@@ -162,12 +163,15 @@ function cleanTitle(text: string): string {
     .trim()
 }
 
+/**
+ * A `YYYY-MM-DD` marker as local midnight, or null when it names no real day.
+ *
+ * The patterns above guarantee the shape but not the day, and a mistyped `2026-02-30` would
+ * otherwise be read as March 2, a date nothing in the vault says. Such a line is left undated: the
+ * alert says nothing about it, and the review still reports it once it goes quiet.
+ */
 function parseLocalDate(value: string | undefined): Date | null {
   if (!value) return null
-  const parts = value.split('-')
-  const year = Number(parts[0])
-  const month = Number(parts[1])
-  const day = Number(parts[2])
 
-  return new Date(year, month - 1, day)
+  return parseIsoDate(value) ?? null
 }
