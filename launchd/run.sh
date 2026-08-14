@@ -5,8 +5,10 @@
 # Add new apps by appending to APPS below; they'll run in sequence.
 
 set -u
-PROJECT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
-cd "$PROJECT_DIR"
+# Guarded twice: a failed substitution leaves PROJECT_DIR empty, and `cd ""` is a no-op that would
+# run pnpm from launchd's own directory. Both the exit code and the shell's message reach the logs.
+PROJECT_DIR="$(cd "$(dirname "$0")/.." && pwd)" || exit 1
+cd "$PROJECT_DIR" || exit 1
 
 # Both YNAB apps are paused. Amazon stopped putting product names in its order
 # emails (only a generic category like "1 Beverages item" remains), so

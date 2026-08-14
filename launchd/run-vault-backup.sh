@@ -14,7 +14,7 @@ set -u
 # credentials (the https token) from the login keychain, available in the gui launchd domain.
 export PATH="/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin"
 
-PROJECT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
+PROJECT_DIR="$(cd "$(dirname "$0")/.." && pwd)" || exit 1
 
 notify_fail() {
   /usr/bin/osascript \
@@ -31,7 +31,10 @@ if [ ! -d "$vault/.git" ]; then
   exit 1
 fi
 
-cd "$vault"
+cd "$vault" || {
+  notify_fail "Could not enter the vault at $vault."
+  exit 1
+}
 err_log="$(mktemp -t personal-automation-vault-backup.XXXXXX)"
 trap 'rm -f "$err_log"' EXIT
 
