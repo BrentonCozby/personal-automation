@@ -5,7 +5,7 @@ import {
   MONO_FONT_STACK,
 } from '@personal-automation/common/html'
 import type { Classification } from './anthropic/schemas.js'
-import { CLI_INVOCATION, ENV_FILE, SUBJECT_PREFIX } from './constants.js'
+import { ENV_FILE, SUBJECT_PREFIX } from './constants.js'
 import type { CapSuggestion } from './state/cap-suggestion.js'
 import { localIsoDate } from './state/days.js'
 import type { DoneEntry, DoneList } from './state/done.js'
@@ -49,16 +49,14 @@ const RULE = '═'.repeat(41)
 const START_HERE_PREFIX = 'Start here →  '
 const NO_ACTION = '(no single step; fit it into the right context.)'
 const ALTERNATIVES = 'Or give it a date, or drop it:'
+const DUE_MARKER = '📅'
+const POSTPONE_BUTTON = '⏩'
 const NOTHING_QUIET = 'Nothing has gone quiet. Here is what the last few days produced.'
 const CAP_HEADING = 'The cap'
 // The one conclusion this note is allowed to reach. A cap gone around this often is a number that
 // was set wrong, and saying anything else here would turn a record of your own choices into a
 // complaint about them.
 const CAP_TOO_LOW = 'A limit you go around that often is set too low.'
-
-// A stand-in date for the printed command, not a recommendation: the point is a runnable line the
-// reader edits. Well inside TASKS_HORIZON_DAYS, so pasting it as-is keeps the task active.
-const SUGGESTED_DELAY = '+7d'
 
 /**
  * The email: the tasks that have gone quiet, and the record of what the last few days produced.
@@ -133,33 +131,17 @@ function dateNote(item: DigestItem): string | undefined {
   return `Its date, ${item.passedDueDate}, has gone by.`
 }
 
-/** The two commands offered beside each quiet task, ready to paste from the repo root. */
-function commandsFor(item: DigestItem): string[] {
-  const title = shellArgument(item.title)
-
+/**
+ * The two ways out offered beside each quiet task, written as things to do in Obsidian.
+ *
+ * This email is read on a phone, where no shell exists, and the vault is where tasks are edited.
+ * A pasteable command would name an action the reader cannot take from what they are holding.
+ */
+function alternativesFor(): string[] {
   return [
-    `${CLI_INVOCATION} schedule ${title} ${SUGGESTED_DELAY}`,
-    `${CLI_INVOCATION} abandon ${title}`,
+    `Give it a date: open it in Obsidian and set a ${DUE_MARKER} date, or tap ${POSTPONE_BUTTON} beside it on the dashboard.`,
+    'Drop it: set its status to Dropped. It is recorded as dropped, never as finished.',
   ]
-}
-
-/**
- * Characters a shell would act on rather than pass through: quoting, expansion, globbing,
- * redirection, job control, history, and a leading `#` comment. Spaces are absent on purpose: the
- * CLI joins its remaining arguments, so a multi-word title needs no quoting.
- */
-const SHELL_SPECIAL = /[!"#$&'()*;<>?[\\\]`{|}~]/
-
-/**
- * The title as a shell argument: bare when nothing in it needs quoting, which is the ordinary case
- * and the form the README documents.
- */
-function shellArgument(text: string): string {
-  if (!SHELL_SPECIAL.test(text)) return text
-
-  // Single quotes protect everything except a single quote, which has to close the quoting, be
-  // escaped, and reopen it. Without that the pasted line would not run.
-  return `'${text.replaceAll("'", "'\\''")}'`
 }
 
 // The first item that has a next step, so the lead line is always something to do. Ordering is the
@@ -301,7 +283,7 @@ function renderItem(item: DigestItem): string {
   const note = dateNote(item)
   if (note) lines.push(`  ${valueIndent}${note}`)
   lines.push(`  ${label('Do next')}${item.suggestedNextAction ?? NO_ACTION}`)
-  lines.push('', `  ${ALTERNATIVES}`, ...commandsFor(item).map(command => `    ${command}`))
+  lines.push('', `  ${ALTERNATIVES}`, ...alternativesFor().map(line => `    ${line}`))
 
   return lines.join('\n')
 }
@@ -314,6 +296,9 @@ const HTML_LABEL =
   'font-size:11px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;color:#80868b;'
 const QUIET_PILL =
   'display:inline-block;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.03em;padding:1px 7px;border-radius:10px;background:#e8eaed;color:#5f6368;margin-left:6px;vertical-align:middle;'
+// The two ways out are sentences, not a runnable line, so they are set in the body face.
+const ALTERNATIVE_BLOCK =
+  'font-size:13px;color:#3c4043;margin-top:6px;white-space:pre-wrap;line-height:1.5;'
 const COMMAND_BLOCK = `font-family:${MONO_FONT_STACK};font-size:12px;color:#3c4043;background:#f8f9fa;border-radius:4px;padding:8px 10px;margin-top:8px;white-space:pre-wrap;word-break:break-all;`
 
 function renderHtml({
@@ -403,7 +388,7 @@ function htmlItem(item: DigestItem): string {
   const dateLine = note
     ? `<div style="font-size:13px;color:#5f6368;margin-bottom:4px;">${escapeHtml(note)}</div>`
     : ''
-  const commands = commandsFor(item).map(escapeHtml).join('\n')
+  const commands = alternativesFor().map(escapeHtml).join('\n')
 
-  return `<div style="padding:14px 0;border-top:1px solid #ececec;"><div style="margin-bottom:6px;"><span style="font-size:16px;font-weight:600;">${escapeHtml(item.title)}</span><span style="${QUIET_PILL}">quiet ${escapeHtml(quietFor(item.untouchedDays))}</span><span style="font-size:13px;color:#80868b;"> · ${escapeHtml(item.list)}</span></div><div style="font-size:14px;color:#3c4043;margin-bottom:4px;">${escapeHtml(item.classification)}: ${escapeHtml(item.reasoning)}</div>${dateLine}<div style="font-size:14px;color:#202124;"><span style="${HTML_LABEL}">Do next</span>&nbsp;&nbsp;${action}</div><div style="font-size:13px;color:#5f6368;margin-top:10px;">${escapeHtml(ALTERNATIVES)}</div><div style="${COMMAND_BLOCK}">${commands}</div></div>`
+  return `<div style="padding:14px 0;border-top:1px solid #ececec;"><div style="margin-bottom:6px;"><span style="font-size:16px;font-weight:600;">${escapeHtml(item.title)}</span><span style="${QUIET_PILL}">quiet ${escapeHtml(quietFor(item.untouchedDays))}</span><span style="font-size:13px;color:#80868b;"> · ${escapeHtml(item.list)}</span></div><div style="font-size:14px;color:#3c4043;margin-bottom:4px;">${escapeHtml(item.classification)}: ${escapeHtml(item.reasoning)}</div>${dateLine}<div style="font-size:14px;color:#202124;"><span style="${HTML_LABEL}">Do next</span>&nbsp;&nbsp;${action}</div><div style="font-size:13px;color:#5f6368;margin-top:10px;">${escapeHtml(ALTERNATIVES)}</div><div style="${ALTERNATIVE_BLOCK}">${commands}</div></div>`
 }

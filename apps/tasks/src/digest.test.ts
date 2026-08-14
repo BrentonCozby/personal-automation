@@ -139,30 +139,20 @@ it('prints a placeholder when the model found no single next step', () => {
   expect(digest.body).toContain('Do next:  (no single step; fit it into the right context.)')
 })
 
-it('prints the schedule and abandon commands for each task', () => {
+it('offers the two ways out as things to do in Obsidian', () => {
   const digest = build([item({ title: 'book india flights' })])
 
-  expect(digest.body).toContain(
-    'pnpm --filter @personal-automation/tasks tasks schedule book india flights +7d',
-  )
-  expect(digest.body).toContain(
-    'pnpm --filter @personal-automation/tasks tasks abandon book india flights',
-  )
+  expect(digest.body).toContain('Give it a date: open it in Obsidian and set a 📅 date')
+  expect(digest.body).toContain('Drop it: set its status to Dropped')
 })
 
-// The CLI joins its remaining arguments, so a plain title needs no quotes. One carrying a character
-// the shell acts on does, or the pasted command would not run.
-it('quotes a title the shell would otherwise act on', () => {
-  const digest = build([item({ title: 'sort out T&C (again)' })])
+// This email is read on a phone. A pasteable shell command would name an action the reader cannot
+// take from what they are holding.
+it('names no command to run', () => {
+  const digest = build([item({ title: 'book india flights' })])
 
-  expect(digest.body).toContain("tasks schedule 'sort out T&C (again)' +7d")
-  expect(digest.body).toContain("tasks abandon 'sort out T&C (again)'")
-})
-
-it('closes and reopens the quoting around an embedded quote', () => {
-  const digest = build([item({ title: "fix Heidi's laptop" })])
-
-  expect(digest.body).toContain("tasks abandon 'fix Heidi'\\''s laptop'")
+  expect(digest.body).not.toContain('pnpm')
+  expect(digest.html).not.toContain('pnpm')
 })
 
 // The whole point of the model is to remove the deficit feeling, so the app's own words never
@@ -186,14 +176,14 @@ it('never uses the accusatory register in its own text', () => {
   }
 })
 
-it('renders an HTML body with the Start here callout, the quiet count, and the commands', () => {
+it('renders an HTML body with the Start here callout, the quiet count, and the ways out', () => {
   const digest = build([item({ title: 'fix the gate', suggestedNextAction: 'buy the hinge' })])
 
   expect(digest.html).toContain('Start here')
   expect(digest.html).toContain('buy the hinge')
   expect(digest.html).toContain('fix the gate')
   expect(digest.html).toContain('quiet 9 days')
-  expect(digest.html).toContain('tasks abandon fix the gate')
+  expect(digest.html).toContain('set its status to Dropped')
 })
 
 it('HTML-escapes user content so titles and reasoning cannot break the markup', () => {

@@ -244,6 +244,10 @@ Each reported task gets three ways out, and the email prints all three: do the n
 (the model names it), give the task a date, or drop it. Not promotion, which would make no sense for
 a task already on the active list.
 
+All three are written as things to do in Obsidian, not as commands to paste. The email is read on a
+phone, where there is no shell, and the vault is where tasks are edited in the first place. A
+runnable line would name an action the reader cannot take from what they are holding.
+
 Only the quiet tasks are sent to the model, so at most `TASKS_WIP_CAP` tasks are analysed instead of
 every open task in the vault.
 
