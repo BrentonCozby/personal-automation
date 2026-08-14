@@ -7,7 +7,7 @@ import pino from 'pino'
 import { type AnalyzeResult, createAnalyzer, type TasksAnalyzer } from './anthropic/client.js'
 import { buildAnalysisPrompt, type PromptTask } from './anthropic/prompts.js'
 import type { TaskAnalysis } from './anthropic/schemas.js'
-import { toCandidate, withTaskClock } from './commands/task-io.js'
+import { type ScannedCandidate, toCandidate, withTaskClock } from './commands/task-io.js'
 import type { Config } from './config.js'
 import { buildDigest, type Digest, type DigestItem, type DoneSummary } from './digest.js'
 import { readOverrides } from './overrides.js'
@@ -17,7 +17,7 @@ import { dueStatus, localIsoDate } from './state/days.js'
 import { closedSince, countMoved } from './state/done.js'
 import { isStalled, untouchedDays } from './state/stall.js'
 import { defaultTouchClockPath, type TouchClock } from './state/touch-clock.js'
-import { type CapCandidate, countsTowardCap, orderByClosestToDone } from './state/wip.js'
+import { countsTowardCap, orderByClosestToDone } from './state/wip.js'
 import type { ScannedTask } from './tasks/obsidian/scan.js'
 
 export type RunOptions = {
@@ -49,8 +49,6 @@ export type RunResult =
     }
 
 /** A task as both the state model reads it and the vault holds it, so one pass can do both. */
-type Reviewed = CapCandidate & { task: ScannedTask }
-
 /** One quiet task with everything computed about it locally, before the model sees anything. */
 type Quiet = {
   task: ScannedTask
@@ -322,8 +320,8 @@ function partition({
   clock: TouchClock
   stallDays: number
   now: Date
-}): { active: Reviewed[]; quiet: Quiet[] } {
-  const reviewed: Reviewed[] = open.map(task => ({ ...toCandidate({ task, clock }), task }))
+}): { active: ScannedCandidate[]; quiet: Quiet[] } {
+  const reviewed: ScannedCandidate[] = open.map(task => ({ ...toCandidate({ task, clock }), task }))
   const active = reviewed.filter(countsTowardCap)
   const stalled = orderByClosestToDone(active.filter(task => isStalled({ task, stallDays, now })))
 

@@ -1,12 +1,4 @@
-import {
-  existsSync,
-  mkdirSync,
-  mkdtempSync,
-  readdirSync,
-  readFileSync,
-  rmSync,
-  writeFileSync,
-} from 'node:fs'
+import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { AppError } from '@personal-automation/common/errors'
@@ -23,7 +15,7 @@ import type { Config } from './config.js'
 import { appendOverride } from './overrides.js'
 import { type RunResult, runDigest } from './run.js'
 import type { RunLogEntry } from './run-log.js'
-import { fingerprintOf, touchKey } from './state/touch-clock.js'
+import { fingerprintOf, readTouchClock, touchKey } from './state/touch-clock.js'
 
 const ANTHROPIC_MESSAGES_URL = 'https://api.anthropic.com/v1/messages'
 const NOW = new Date('2026-06-02T12:00:00Z')
@@ -78,7 +70,7 @@ async function seedClock({
     ]),
   )
   // Merged rather than replaced, so two calls can stamp two sets of tasks on different days.
-  const stored = existsSync(clockPath) ? readClock().tasks : {}
+  const stored = (await readTouchClock(clockPath)).tasks
   writeFileSync(clockPath, JSON.stringify({ version: 1, tasks: { ...stored, ...seeded } }))
 }
 
@@ -160,12 +152,6 @@ function readRunLog(): RunLogEntry[] {
   }
 
   return entries
-}
-
-function readClock(): { tasks: Record<string, { fingerprint: string; lastTouched: string }> } {
-  return JSON.parse(readFileSync(clockPath, 'utf8')) as {
-    tasks: Record<string, { fingerprint: string; lastTouched: string }>
-  }
 }
 
 // Nothing committed to means nothing to report. A digest about not having chosen anything is the
@@ -392,7 +378,7 @@ it('brings the touch clock up to date, and forgets a task that has been finished
 
   await run()
 
-  const clock = readClock()
+  const clock = await readTouchClock(clockPath)
   expect(Object.keys(clock.tasks)).toEqual([
     touchKey({ list: 'todos', title: 'book india flights' }),
   ])

@@ -1,4 +1,4 @@
-import { expect, it, test } from 'vitest'
+import { expect, test } from 'vitest'
 import { parseArgs } from './cli-args.js'
 
 test('reads the digest command', () => {
@@ -121,12 +121,12 @@ test('rejects a schedule with a date but no title', () => {
   expect(() => parseArgs(['schedule', '2026-08-20'])).toThrow(/needs part of a task title/)
 })
 
-it('parses alert', () => {
+test('parses alert', () => {
   expect(parseArgs(['alert'])).toEqual({ command: 'alert', dryRun: false })
   expect(parseArgs(['alert', '--dry-run'])).toEqual({ command: 'alert', dryRun: true })
 })
 
-it('rejects an unknown flag on alert', () => {
+test('rejects an unknown flag on alert', () => {
   expect(() => parseArgs(['alert', '--force'])).toThrow(/Unknown argument: --force/)
 })
 

@@ -90,15 +90,21 @@ describe('buildTasksAlertPlist', () => {
     const plist = buildTasksAlertPlist({
       projectDir: '/Users/me/personal-automation',
       times: [
-        { hour: 8, minute: 0 },
+        { hour: 8, minute: 5 },
         { hour: 19, minute: 0 },
       ],
     })
 
     expect(plist).toContain('<string>com.personal-automation.tasks-alert</string>')
     expect(plist).toContain('/Users/me/personal-automation/launchd/run-tasks-alert.sh')
-    expect(plist).toContain('<key>Hour</key><integer>8</integer>')
-    expect(plist).toContain('<key>Hour</key><integer>19</integer>')
+    // Both parts of each time, since a minute dropped in the template would still fire the agent,
+    // just at the wrong time.
+    expect(plist).toContain(
+      '<key>Hour</key><integer>8</integer>\n      <key>Minute</key><integer>5</integer>',
+    )
+    expect(plist).toContain(
+      '<key>Hour</key><integer>19</integer>\n      <key>Minute</key><integer>0</integer>',
+    )
     expect(plist).not.toContain('Weekday')
     expect(plist).toContain('launchd/logs/tasks-alert.err.log')
   })

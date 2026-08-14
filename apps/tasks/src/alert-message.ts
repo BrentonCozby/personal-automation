@@ -97,19 +97,22 @@ function fitMessage({
 
   // Reached only when the demotion list fills the message on its own. Its heading is line one, so
   // trimming stops at one line rather than zero.
-  for (let kept = demotedLines.length - 1; kept >= 1; kept -= 1) {
+  const dueOverflow = overflowed({ lines: dueLines, kept: 0, suffix: 'more' })
+  for (let kept = demotedLines.length - 1; kept >= 2; kept -= 1) {
     const candidate = joined({
-      dueLines: overflowed({ lines: dueLines, kept: 0, suffix: 'more' }),
-      demotedLines: overflowed({
-        lines: demotedLines,
-        kept,
-        suffix: 'more moved to someday',
-      }),
+      dueLines: dueOverflow,
+      demotedLines: overflowed({ lines: demotedLines, kept, suffix: 'more moved to someday' }),
     })
     if (byteLength(candidate) <= MESSAGE_LIMIT) return candidate
   }
 
-  return `${MOVED_HEADING}: ${demotedLines.length} tasks`
+  // The floor: one overflow line for each half, plus the heading. Every part of it is a fixed
+  // string, so it fits whatever the tasks were called, and returning it beats a last candidate that
+  // could only be the same thing.
+  return joined({
+    dueLines: dueOverflow,
+    demotedLines: overflowed({ lines: demotedLines, kept: 1, suffix: 'more moved to someday' }),
+  })
 }
 
 // The lines that survived, plus one line naming how many did not. An empty list stays empty rather

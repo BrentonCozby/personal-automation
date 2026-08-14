@@ -126,3 +126,17 @@ it('trims the demotion list when it fills the message on its own', () => {
   expect(result.message).toMatch(/• and \d+ more moved to someday$/)
   expect(result.message).toContain('Moved to someday:')
 })
+
+// The floor of the trim: one demotion whose title alone is longer than the whole message. Nothing
+// is left to drop but the task itself, and what is sent still has to say one task moved.
+it('names the count when a single demotion is longer than the message', () => {
+  const result = buildAlertMessage({
+    due: [{ title: 'give Dolly her meds', due: TODAY }],
+    demoted: [{ title: 'x'.repeat(1200), untouchedDays: 31 }],
+    now: NOW,
+  })
+
+  expect(Buffer.byteLength(result.message, 'utf8')).toBeLessThanOrEqual(1024)
+  expect(result.message).toContain('• and 1 more moved to someday')
+  expect(result.message).not.toContain('xxx')
+})

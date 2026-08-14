@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { setupMswServer } from '@personal-automation/common/test-msw'
@@ -6,7 +6,7 @@ import { HttpResponse, http } from 'msw'
 import pino from 'pino'
 import { afterEach, beforeEach, expect, it } from 'vitest'
 import type { Config } from '../config.js'
-import { fingerprintOf, touchKey } from '../state/touch-clock.js'
+import { fingerprintOf, readTouchClock, touchKey } from '../state/touch-clock.js'
 import { type AlertResult, runAlert } from './alert.js'
 import { readOpenTasks } from './task-io.js'
 
@@ -61,14 +61,8 @@ async function seedClock({
       { fingerprint: fingerprintOf(task.raw), lastTouched: lastTouched.toISOString() },
     ]),
   )
-  const stored = existsSync(clockPath) ? readClock().tasks : {}
+  const stored = (await readTouchClock(clockPath)).tasks
   writeFileSync(clockPath, JSON.stringify({ version: 1, tasks: { ...stored, ...seeded } }))
-}
-
-function readClock(): { tasks: Record<string, { fingerprint: string; lastTouched: string }> } {
-  return JSON.parse(readFileSync(clockPath, 'utf8')) as {
-    tasks: Record<string, { fingerprint: string; lastTouched: string }>
-  }
 }
 
 function makeConfig(overrides: Partial<Config> = {}): Config {
@@ -195,7 +189,7 @@ it('keeps the demoted task at the age it decayed at', async () => {
   await run({ dryRun: false })
 
   const key = touchKey({ list: 'todos', title: 'book india flights' })
-  const entry = readClock().tasks[key]
+  const entry = (await readTouchClock(clockPath)).tasks[key]
   expect(entry?.lastTouched).toBe(LONG_QUIET.toISOString())
   expect(entry?.fingerprint).toBe(fingerprintOf('- [ ] book india flights #someday'))
 })

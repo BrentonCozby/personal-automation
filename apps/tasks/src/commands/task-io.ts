@@ -281,6 +281,15 @@ export function keyOf(task: ScannedTask): string {
   return touchKey({ list: task.list, title: task.title })
 }
 
+/**
+ * A task as both the state model reads it and the vault holds it.
+ *
+ * What every rule that judges a task and then rewrites its line needs: `toCandidate` drops the file
+ * and line number the write has to have, so the scan result is carried alongside rather than
+ * looked up again.
+ */
+export type ScannedCandidate = CapCandidate & { task: ScannedTask }
+
 export function toCandidate({
   task,
   clock,

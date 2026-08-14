@@ -12,12 +12,12 @@ import { decayed } from '../state/decay.js'
 import { dueForAlert } from '../state/due.js'
 import { untouchedDays } from '../state/stall.js'
 import { defaultTouchClockPath, type TouchClock } from '../state/touch-clock.js'
-import type { CapCandidate } from '../state/wip.js'
 import type { ScannedTask } from '../tasks/obsidian/scan.js'
 import { withStateTag } from '../tasks/obsidian/tags.js'
 import {
   fingerprintFor,
   notEditable,
+  type ScannedCandidate,
   toCandidate,
   withTaskClock,
   writeTaskLine,
@@ -42,9 +42,6 @@ export type AlertResult =
       dueCount: number
       demotedCount: number
     }
-
-/** A task as both the state model reads it and the vault holds it, so one pass can do both. */
-type Aged = CapCandidate & { task: ScannedTask }
 
 /** What one read of the vault produced. */
 type Pass = {
@@ -160,7 +157,7 @@ async function demote({
   now: Date
   logger: pino.Logger
 }): Promise<{ clock: TouchClock; items: DemotedItem[] }> {
-  const aged: Aged[] = open.map(task => ({ ...toCandidate({ task, clock }), task }))
+  const aged: ScannedCandidate[] = open.map(task => ({ ...toCandidate({ task, clock }), task }))
   const items: DemotedItem[] = []
   let updated = clock
 
