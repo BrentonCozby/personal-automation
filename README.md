@@ -1,27 +1,17 @@
 # personal-automation
 
-A catch-all monorepo for my personal automation: a pnpm workspace of small scheduled jobs and the shared libraries they build on. There's no "main" app: each automation is its own app on top of shared packages, and the list grows as I add more.
+A catch-all monorepo for my personal automation: a pnpm workspace of small scheduled jobs and the shared libraries they build on. There's no "main" app: each automation is its own app on top of shared packages.
 
 - **`apps/ynab-categorize`**: daily CLI that auto-categorizes Amazon transactions using the Anthropic API (Claude Haiku by default).
 - **`apps/ynab-enrich-memos`**: reads Amazon receipt emails, parses the product list, and PATCHes it into the `memo` of matching YNAB transactions so the categorizer has real item names to work from. Runs before `ynab-categorize` in the daily run.
 - **`apps/notify`**: emails an error digest after the daily run when any app's audit log shows errors.
-- **`apps/tasks`**: a state model over Obsidian todos, with a scheduled review that emails the committed tasks that have gone quiet (one next action each) plus a record of what was finished and dropped.
+- **`apps/tasks`**: a state model over Obsidian todos, with a scheduled review that emails the committed tasks that have gone quiet (one next action each) plus a record of what was finished and dropped, and a daily job that pushes what is due to the phone.
 - **`packages/anthropic`**: shared Claude API client (`messages.parse` + `zodOutputFormat`).
 - **`packages/ynab`**: shared YNAB API client (zod-validated) + schemas + types + milliunits helpers.
 - **`packages/gmail`**: Gmail API client (OAuth + send, optional multipart HTML), zod-validated.
 - **`packages/common`**: shared helpers: pino-based logger, AppError + retry, PID lockfile, ora spinner, plus tiny utilities (json, chunks, date).
 
 Commit messages follow [Conventional Commits](https://www.conventionalcommits.org/), enforced via a husky `commit-msg` hook running commitlint.
-
-## Contents
-
-- [Setup](#setup)
-- [Run](#run)
-- [ynab-categorize](#ynab-categorize)
-- [ynab-enrich-memos](#ynab-enrich-memos)
-- [tasks](#tasks)
-- [Production](#production)
-- [Checking status](#checking-status)
 
 ## Setup
 
@@ -34,19 +24,18 @@ cp apps/tasks/.env.example apps/tasks/.env
 cp apps/notify/.env.example apps/notify/.env
 ```
 
-Config is split: shared secrets and ids live in the root `.env`, and each app's own config sits beside it in `apps/<app>/.env`. At startup an app loads the root `.env` then its own `.env` on top; every variable it needs is required (config loaders throw if any are missing), so only fill in the apps you actually run. Each `.env` has a `.env.example` next to it:
+Config is split: shared secrets and ids live in the root `.env`, and each app's own tuning sits beside it in `apps/<app>/.env`. At startup an app loads the root `.env` then its own `.env` on top; every variable it needs is required (config loaders throw if any are missing), so only fill in the apps you actually run. Each `.env.example` lists exactly what its `.env` has to set, and is the file to read for the current list.
 
-- **root `.env`**: `ANTHROPIC_API_KEY` (from [console.anthropic.com](https://console.anthropic.com), separate from Claude Pro), `YNAB_TOKEN` + `YNAB_BUDGET_ID`, `ALLOWED_ACCOUNT_IDS` (shared by both YNAB apps), and the `GMAIL_OAUTH_*` credentials apps send mail through. Mint `GMAIL_OAUTH_REFRESH_TOKEN` with `pnpm --filter @personal-automation/gmail bootstrap`, and re-run that after any Google password change, which revokes the token.
-- **`apps/ynab-categorize/.env`**: `LOOKBACK_DAYS`, `AUDIT_DIR`, `EXCLUDED_CATEGORY_GROUPS`, `CATEGORY_ROUTING_HINTS`, `YNAB_CATEGORIZER_ANTHROPIC_MODEL`.
-- **`apps/ynab-enrich-memos/.env`**: `AUDIT_DIR`, `ENRICH_LOOKBACK_DAYS`, `GMAIL_RECEIPT_WINDOW_DAYS`, `GMAIL_FROM_FILTER`, `ENRICH_MEMOS_ANTHROPIC_MODEL`.
-- **`apps/tasks/.env`**: `OBSIDIAN_VAULT_PATH`, `TASK_LISTS`, `TASKS_SCHEDULE`, `TASKS_TO_EMAIL`, `TASKS_ANTHROPIC_MODEL`, and the state-model thresholds (`TASKS_WIP_CAP`, `TASKS_STALL_DAYS`, `TASKS_HORIZON_DAYS`, `TASKS_DONE_WINDOW_DAYS`, `TASKS_OVERRIDE_WINDOW_DAYS`, `TASKS_OVERRIDE_LIMIT`).
-- **`apps/notify/.env`**: `NOTIFY_TO_EMAIL`.
+Two of them need more than a value pasted in:
+
+- `ANTHROPIC_API_KEY` comes from [console.anthropic.com](https://console.anthropic.com) and is separate from a Claude Pro subscription.
+- `pnpm --filter @personal-automation/gmail bootstrap` mints `GMAIL_OAUTH_REFRESH_TOKEN`. Re-run it after any Google password change, which revokes the token.
 
 Requires Node 26+ and pnpm 11+.
 
 ## Run
 
-Each app is a workspace package; run its scripts with `pnpm --filter`. No app is privileged at the root. The pattern is the same for every one:
+Each app is a workspace package; run its scripts with `pnpm --filter`. No app is privileged at the root:
 
 ```bash
 pnpm --filter @personal-automation/<app> <script>
@@ -69,6 +58,12 @@ pnpm --filter @personal-automation/tasks test:tasks
 pnpm --filter @personal-automation/tasks tasks promote fix the bike
 pnpm --filter @personal-automation/tasks tasks schedule fix the bike +7d
 pnpm --filter @personal-automation/tasks tasks abandon fix the bike
+
+# tasks: give every untagged task its first tag (prints a diff; --apply writes)
+pnpm --filter @personal-automation/tasks tasks migrate
+
+# tasks: print the due-date push instead of sending it
+pnpm --filter @personal-automation/tasks tasks alert --dry-run
 ```
 
 ## ynab-categorize
@@ -88,26 +83,19 @@ The categorizer always appends a JSONL audit line per decision to `apps/ynab-cat
 
 Runs before `ynab-categorize` so the categorizer reasons from real item names instead of an empty memo. Appends a JSONL audit line per attempt to `apps/ynab-enrich-memos/audit/ynab-enrich-memos-YYYY-MM-DD.jsonl`. Design notes in [apps/ynab-enrich-memos/plan.md](apps/ynab-enrich-memos/plan.md).
 
-1. Loads transactions per allowed account `since ENRICH_LOOKBACK_DAYS` and keeps only Amazon, non-transfer rows whose `memo` is empty. A non-empty memo (yours or a prior run's) is never touched.
-2. For each eligible transaction (`ENRICH_CONCURRENCY` in parallel), searches Gmail for receipts from `GMAIL_FROM_FILTER` senders within ±`GMAIL_RECEIPT_WINDOW_DAYS` of the charge date, drops any that fail DMARC, and asks Claude to match the order whose total equals the charge to the cent.
-3. Verifies the returned order total against the charge in code: a mismatch is rejected (fails closed). On a match, prefixes the memo with `auto-gen:` and queues a memo-only PATCH (no flag, so the categorizer still runs on it).
-4. Bulk PATCHes in batches of 10.
+Only Amazon, non-transfer rows with an empty `memo` are eligible, so a memo you typed or a prior run wrote is never touched. For each, it searches Gmail for receipts from `GMAIL_FROM_FILTER` senders within ±`GMAIL_RECEIPT_WINDOW_DAYS` of the charge, drops any that fail DMARC, and asks Claude for the order whose total equals the charge to the cent. That total is re-checked in code, so an unverifiable match is dropped rather than written. What lands is a memo-only PATCH prefixed `auto-gen:`, with no flag, leaving the row for the categorizer.
 
 ## tasks
 
-A twice-weekly review of the few tasks you have committed to. It emails the ones that have gone quiet, with one next action each, and the record of what you finished and dropped. It runs on its own launchd schedule: the days/times in `TASKS_SCHEDULE` (e.g. `["Sunday 08:00", "Wednesday 08:00"]`), so twice or three times a week is just more entries.
+A state model over the todos in an [Obsidian](https://publish.obsidian.md/tasks/) vault, plus two scheduled jobs on top of it. Each task is tagged `#someday` or `#active`, and `#active` is capped at `TASKS_WIP_CAP`. What the states mean, and why the model is shaped this way, is in [docs/task-state-model.md](docs/task-state-model.md); [Run](#run) has the invocations.
 
-The app carries a state model: each task is tagged `#someday` or `#active` in the vault, and `#active` is capped at `TASKS_WIP_CAP`. `tasks migrate` gives every untagged task its first tag (dry by default, `--apply` writes). Three commands then act on one task at a time, each taking any part of its title: `promote` moves it to `#active` (refusing at the cap unless you pass `--over-cap`), `schedule <date>` puts a `📅` date on it (`YYYY-MM-DD` or `+Nd`, and a date past `TASKS_HORIZON_DAYS` sends it to `#someday` rather than pretending it is planned), and `abandon` drops it by cancelling its checkbox. Finishing and dropping are recorded by the checkbox rather than a tag, so a task you tick or cancel in Obsidian counts the same as one closed here. Since Obsidian has no per-task last-modified anywhere, a fingerprint of each task's text is kept in `apps/tasks/runs/touch-clock.json` so an edit can be read as a touch; the file is disposable and rebuilds itself. See `docs/task-state-model.md`.
+**The review** has its own launchd agent, on the days and times in `TASKS_SCHEDULE` (e.g. `["Sunday 08:00", "Wednesday 08:00"]`, so three times a week is just another entry). It emails the `#active` tasks that have gone quiet, one next physical step each, alongside the record of what you finished and dropped in the last `TASKS_DONE_WINDOW_DAYS` days.
 
-The review covers `#active` tasks only. One counts as gone quiet when nothing has touched it for `TASKS_STALL_DAYS` and it carries no date still ahead of it: a date means it is scheduled, and the Tasks plugin surfaces it on the day. Only those tasks reach the model, which says why each went quiet and names its next physical step; the email prints that step plus the two other ways out (give it a date, or set its status to Dropped), written as things to do in Obsidian rather than commands to run, since the email is read on a phone; tasks are listed closest-to-done first rather than quietest first, because finishing one thing beats resuming everything.
+**The alert** runs every day, at each time in `TASKS_ALERT_TIMES` (e.g. `["08:05", "19:00"]`). It pushes what is due to your phone through Pushover, and demotes anything `#active` that has gone `TASKS_HORIZON_DAYS` days untouched. The plist generator refuses an alert time on a minute `TASKS_SCHEDULE` names: both agents write the whole touch-clock file, so whichever saved second would discard the other's entries.
 
-The email's other half is the done list: what was finished and dropped in the last `TASKS_DONE_WINDOW_DAYS` days, read straight from the `✅`/`❌` dates, plus how many of the tasks you are carrying moved at all. It sends on its own, with no model call, on a week when nothing has gone quiet, because a to-do list can only ever show the shortfall. Dropping something on purpose is reported as a result, not a gap. The review is silent only when both halves are empty: nothing quiet, and nothing closed inside the window.
+`tasks migrate` gives every untagged task its first tag. Then `promote` (refusing at the cap unless you pass `--over-cap`), `schedule` and `abandon` act on one task at a time, each taking any part of its title. `tasks alert --dry-run` prints the push instead of sending it, but is not read-only: it still demotes, and it still writes the touch clock.
 
-A raised cap (`promote --over-cap`) is recorded in `apps/tasks/runs/overrides.jsonl`. More than `TASKS_OVERRIDE_LIMIT` raises inside `TASKS_OVERRIDE_WINDOW_DAYS` days and the review adds a note suggesting you set `TASKS_WIP_CAP` to the most you actually carried, on the grounds that a limit you go around that often was set too low. Only raises recorded against the cap now in force count, so making the change silences the note. It rides along on a review that was already sending rather than being a third reason to send one.
-
-A second job runs every day, at each time in `TASKS_ALERT_TIMES` (e.g. `["08:05", "19:00"]`, which the plist generator refuses to put on a minute `TASKS_SCHEDULE` names, so the two agents never save the touch clock at once), and pushes what is due to your phone through Pushover at normal priority; tapping the push opens `TASKS_ALERT_URL`, an Obsidian deep link to your dashboard note. The rule is open, dated, and the date has arrived or gone by, and no state tag is read, so a dated `#someday` task alerts like a dated `#active` one. Recurring (`🔁`) chores are the case it exists for: the cap and the stall rule both exclude them, so the review can never mention one that was missed. A recurring task is pushed every day until it is ticked; a one-off is pushed for `TASKS_DUE_ALERT_DAYS` days from its due date and then left to the review. The same job demotes an `#active` task nothing has touched for `TASKS_HORIZON_DAYS` days to `#someday`, freeing its place on the active list, and names it in the push, so you learn it the moment it happens. `tasks alert --dry-run` prints the push instead of sending it, but still demotes and still writes the touch clock.
-
-Every command reads the same vault on disk (`OBSIDIAN_VAULT_PATH`) through one scanner. With `TASK_LISTS=[]` it reads `todos.md` at the vault root; otherwise `TASK_LISTS` names files or folders (relative to the vault) and folders are walked for their `*.md`. It parses [Obsidian Tasks](https://publish.obsidian.md/tasks/) lines: open `- [ ]` and in-progress `- [/]` checkboxes count as live (done and cancelled are skipped), `📅` sets the due date, and recurring (`🔁`) tasks sit outside the state model (the plugin manages them by their recurrence rule), so nothing tags them and the due-date alert is the one rule that reads them. Nothing pulls the vault, so it reads the last synced state on disk. Keep it synced separately (Obsidian Sync or the Obsidian Git plugin). It works on any OS.
+`TASK_LISTS` names the files or folders to read, relative to `OBSIDIAN_VAULT_PATH`, and folders are walked for their `*.md`. An empty list means `todos.md` at the vault root. Nothing pulls the vault, so every command reads the last synced state on disk; keep it synced separately, with Obsidian Sync or the Obsidian Git plugin.
 
 `TASKS_ANTHROPIC_MODEL` is a separate knob from `YNAB_CATEGORIZER_ANTHROPIC_MODEL`. Judging *why* a commitment went quiet and naming its next physical step is harder judgment than picking a category id, so it starts on a Sonnet-tier model rather than Haiku. Each run logs its classifications to `apps/tasks/runs/` for tuning.
 
@@ -120,25 +108,21 @@ Four launchd agents:
 - `com.personal-automation.tasks-alert` runs `launchd/run-tasks-alert.sh` at each time in `TASKS_ALERT_TIMES`, every day: the due-date push, and the decay pass that goes with it.
 - `com.personal-automation.vault-backup` runs `launchd/run-vault-backup.sh` daily (09:00): a one-way `git push` of the Obsidian vault to its remote for offsite backup. Obsidian Sync is the live cross-device sync; this only snapshots to git, so it never conflicts. The vault path comes from `OBSIDIAN_VAULT_PATH` in `apps/tasks/.env`.
 
-Each is its own agent because launchd binds one agent to one program on one schedule: a plist's `StartCalendarInterval` can list many times, but they all run the same script. The agents are siblings grouped by schedule: `com.personal-automation` is just the shared namespace, not a job. An app gets its own agent only when it needs its own schedule; otherwise it's another entry in `run.sh`. Keeping them apart also means each gets its own logs and its own failure notification.
+Each is its own agent because launchd binds one agent to one program on one schedule: a plist's `StartCalendarInterval` can list many times, but they all run the same script. So an app gets its own agent only when it needs its own schedule, and is otherwise another entry in `run.sh`. Keeping them apart also gives each its own logs and its own failure notification. `com.personal-automation` is the shared namespace, not a job.
 
 All post a macOS notification on a non-zero exit.
 
 ```bash
 ./launchd/setup.sh   # generates the plists (daily, tasks, tasks-alert, vault-backup)
-cp launchd/com.personal-automation.daily.plist ~/Library/LaunchAgents/
-cp launchd/com.personal-automation.tasks.plist ~/Library/LaunchAgents/
-cp launchd/com.personal-automation.tasks-alert.plist ~/Library/LaunchAgents/
-cp launchd/com.personal-automation.vault-backup.plist ~/Library/LaunchAgents/
-launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.personal-automation.daily.plist
-launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.personal-automation.tasks.plist
-launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.personal-automation.tasks-alert.plist
-launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.personal-automation.vault-backup.plist
+for agent in daily tasks tasks-alert vault-backup; do
+  cp "launchd/com.personal-automation.$agent.plist" ~/Library/LaunchAgents/
+  launchctl bootstrap "gui/$(id -u)" ~/Library/LaunchAgents/"com.personal-automation.$agent.plist"
+done
 ```
 
 Run `./launchd/run-vault-backup.sh` once by hand before relying on the schedule: it confirms the `git push` credential (the https token in your keychain) is reachable from a launchd context.
 
-Re-run `setup.sh` (and reload the agent it names, which prints the commands) whenever you change `TASKS_SCHEDULE` or `TASKS_ALERT_TIMES`, since that is what regenerates the digest and alert plists from those settings.
+Re-run `setup.sh` whenever you change `TASKS_SCHEDULE` or `TASKS_ALERT_TIMES`, then reload the agent it names; it prints those commands.
 
 Optional log rotation (weekly, keeps 4 gzipped archives):
 
@@ -150,11 +134,9 @@ Each app that can run more than once at a time guards itself with a PID lockfile
 
 ## Checking status
 
-Quick commands to see whether the scheduled jobs are healthy and what the last run did.
-
 ### Are the agents loaded and OK?
 
-The quick check gives three columns: PID, last exit code, label. A label showing up means it's loaded; a `0` in the middle means the last run was clean. A `-` PID means "not running this instant," which is the normal, healthy state for a scheduled job. It only shows a real PID during the seconds it's actually running.
+The quick check gives three columns: PID, last exit code, label. A label showing up means it's loaded; a `0` in the middle means the last run was clean. A `-` PID means "not running this instant," which is the normal, healthy state for a scheduled job: a real PID shows only during the seconds it runs.
 
 ```bash
 launchctl list | grep personal-automation
@@ -194,15 +176,17 @@ A non-empty `*.err.log` isn't always a failure: pnpm and progress spinners write
 Each YNAB app appends one JSONL line per transaction to `apps/<app>/audit/<app>-YYYY-MM-DD.jsonl`; `tasks` logs its classifications to `apps/tasks/runs/run-YYYY-MM-DD.jsonl`. With `jq`:
 
 ```bash
-# Today's categorizer decisions, status counts (ok / error / skipped_for_no_match)
+# Today's categorizer decisions, status counts (categorized / fallback / error)
 jq -r .status "apps/ynab-categorize/audit/ynab-categorize-$(date +%F).jsonl" | sort | uniq -c
 
 # Today's enrichment results: did each transaction get a memo, and did the PATCH land?
-jq -r '[.status, .patch_status, (.new_memo // "-")] | @tsv' \
+jq -r '[.status, .outcome, (.new_memo // "-")] | @tsv' \
   "apps/ynab-enrich-memos/audit/ynab-enrich-memos-$(date +%F).jsonl"
 
-# Only the failures across both YNAB apps today
-jq -c 'select(.status != "ok")' apps/*/audit/*-"$(date +%F)".jsonl
+# Only the failures across both YNAB apps today. `outcome` is the shared field every app
+# writes; `status` is per-app, so it can't be queried across both.
+jq -c 'select(.outcome == "failed" or .outcome == "failed_upstream")' \
+  apps/*/audit/*-"$(date +%F)".jsonl
 
 # Today's task review: which tasks went quiet, and why the model thinks so
 jq -r '[.untouched_days, .classification, .title] | @tsv' "apps/tasks/runs/run-$(date +%F).jsonl"
@@ -225,7 +209,7 @@ To run an app by hand without launchd (and without the failure notification), us
 
 ### Stuck lock?
 
-A crashed run can leave a stale lockfile; the next run claims it automatically, but you can inspect or clear it:
+The next run claims a stale lockfile on its own, but you can inspect or clear one:
 
 ```bash
 ls -l "$TMPDIR"/ynab-categorize.lock "$TMPDIR"/tasks.lock 2>/dev/null

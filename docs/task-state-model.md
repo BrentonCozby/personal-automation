@@ -18,7 +18,7 @@ and a sixth is the absence of a tag.
 | stalled | computed | An `#active` task with no touch inside the stall window. |
 | untagged | absence | Ignored by every part of the system. Permanently valid. |
 
-Finishing and dropping are recorded by the checkbox, not by a tag. A ticked or cancelled box already
+The checkbox records finishing and dropping; no tag does. A ticked or cancelled box already
 says the task is over, the counts read its `✅` or `❌` date, and the cap only ever looks at open
 boxes, so a tag beside the box would state the same fact twice. It also has to work the other way
 round: a task you tick or cancel directly in Obsidian has to count exactly like one this app closed,
@@ -43,7 +43,7 @@ writes a tag onto a task you left alone.
 
 Recurring tasks (those carrying a `🔁` rule) stay untagged, and no command will write a state or a
 date onto one. A recurring chore is a live commitment that the Tasks plugin already manages through
-its recurrence rule and due date, so none of the stored states describe it correctly and any date
+its recurrence rule and due date, so none of the stored states describe it, and any date
 written by hand would fight the plugin for control of it. They never count toward the cap, never
 decay, and never stall. The one rule that does read them is the due-date alert, which reads the date
 the plugin manages and writes nothing (see [Due-date alerts](#due-date-alerts)).
@@ -151,7 +151,7 @@ record of what you did stays worth reading.
 ## Scope
 
 `TASK_LISTS` decides which files hold tasks, for the migration and the digest alike. Both read the
-same setting, so neither can decide a checkbox is a task while the other decides it isn't.
+same setting, so neither can look at a file the other ignores.
 
 Most checkboxes in a vault are not tasks. Of the 718 in this one, 643 sit inside working documents:
 steps in a design doc under `Projects/`, research sub-items in the notes linked from a todo, a list
@@ -174,7 +174,7 @@ confirms the line still matches the text it was read as. A mismatch means Obsidi
 edit moved it, so nothing in that file is written and the caller reports a conflict. Both Sync and
 the Git plugin are live on this vault, so a write can always land underneath a concurrent edit.
 
-There is no provider seam above them. Every reader and writer here is Obsidian-specific, and the
+No provider seam sits above them. Every reader and writer here is Obsidian-specific, and the
 state model is Obsidian-shaped throughout: tags on the line, checkbox statuses, `✅`/`❌` dates. A
 provider-neutral task type in front of that would be a seam holding nothing, because a second
 backend would have to reproduce the whole model rather than supply a list of tasks. The scanner and
@@ -201,7 +201,7 @@ Abandoning is not a touch: the box is closed, so the clock drops the task on the
 than carrying a timestamp nothing will read. Promoting and scheduling are touches, which is what
 lets scheduling answer a stalled task.
 
-There is deliberately no command that clears a stall without changing anything. A stalled task is
+No command clears a stall without changing anything, deliberately. A stalled task is
 answered by naming a date, by dropping it, or by actually working on it, since an edit to the line
 or its notes is itself a touch. A bare reset button would be the cheapest possible answer, and a
 signal that can be dismissed for free stops being a signal.
@@ -234,9 +234,8 @@ A task is reported when it is `#active`, has no touch inside the stall window, a
 still ahead of it. The date rule and the stall rule cannot fight each other, because scheduling is
 itself a touch: naming a day both resets the window and puts the date in the future.
 
-Quiet tasks are listed **closest to done first**, the same order the cap reports, and the email names
-the proxy. Longest-untouched-first was tried and reversed: it points at the task hardest to restart,
-when finishing one thing beats resuming everything. Nothing else about the order is a ranking, and
+Quiet tasks are listed **closest to done first**, the same order the cap reports (see [Ordering by
+closest to done](#ordering-by-closest-to-done)). Nothing else about the order is a ranking, and
 nothing asks the model for one.
 
 **There is no ask to make in two cases.** No task is `#active`, or nothing has gone quiet. A message
@@ -274,9 +273,9 @@ Dropping is reported as a result rather than a gap, because choosing what not to
 mechanism the cap runs on. A count of zero is left out rather than printed as a zero, since a row of
 noughts is a scorecard, and there are no streaks, no percentages, and no count of `#someday`.
 
-It is read straight from the `✅` and `❌` dates on the line, so a task ticked or cancelled by hand in
-Obsidian counts exactly like one closed by `abandon`, and no extra state has to be kept anywhere. A
-task can appear in two consecutive reviews when the windows overlap. That is accepted: seeing a win
+The done list comes straight from the `✅` and `❌` dates on the line, so no extra state has to be
+kept anywhere (see [States](#states)). A task can appear in two consecutive reviews when the windows
+overlap. That is accepted: seeing a win
 twice costs nothing, and the alternative is a stored last-reviewed date that the vault can already
 answer for itself.
 
@@ -290,7 +289,12 @@ written.
 
 ## Due-date alerts
 
-A daily job pushes what is due to the phone, at each time in `TASKS_ALERT_TIMES`.
+A daily job pushes what is due to the phone, at each time in `TASKS_ALERT_TIMES`. It reads the vault
+once and saves the touch clock once per pass, under `tasks-edit.lock`: the lock the one-line commands
+already take, and deliberately not the review's `tasks.lock`, so a pass cannot race a `promote` or an
+`abandon`. Holding a different lock from the review means nothing stops the two agents saving the
+clock at the same second, and each save writes the whole file, so the plist generator refuses an
+alert time on a minute `TASKS_SCHEDULE` already names. The schedules are what keep them apart.
 
 The rule is: open, dated, and the date has arrived or gone by. No state tag is read, so a dated
 `#someday` task alerts exactly like a dated `#active` one. Putting a date on something is the reason
@@ -313,13 +317,30 @@ because a single morning banner is easy to dismiss half awake, which is how a do
 names what is still not done.
 
 The channel is Pushover, at normal priority: one banner, one sound, no repeat. Two passes a day are
-the redundancy, and a task ticked in Obsidian drops off the next pass on its own. The message
+the redundancy, and a task ticked in Obsidian drops off the next pass on its own. Pushover's
+priority 2, which repeats until acknowledged, was tested and rejected on those grounds. The message
 carries no HTML, because Pushover strips tags out of the notification and renders them only once the
-app is opened, and the notification is the only part that has to be readable. Items are separated by
-a `•` for the same reason: shown as one run of text, newlines alone do not read as separate items.
+app is opened, and the notification is the only part that has to be readable. A `•` separates the
+items for the same reason: shown as one run of text, newlines alone do not read as separate items.
+The limits are 1024 UTF-8 bytes for the message and 250 for the title, and a list too long to fit is
+truncated with a final line naming the count left out, rather than cut mid-title.
+
 Tapping the push opens `TASKS_ALERT_URL`, an Obsidian deep link to the dashboard note
 (`Todos/Dashboard.md` on this vault) rather than to `todos.md`, because the dashboard is what gets
-read, and opening the vault puts the rest of the active list in front of you.
+read, and opening the vault puts the rest of the active list in front of you. The link is an
+`obsidian://open` one rather than `obsidian://adv-uri`: both were tested and work, and `open` needs
+no plugin installed in the phone's vault.
+
+ntfy was the original choice and was rejected after testing on the real phone. Three pushes landed
+inside the ntfy iOS app and none produced an iOS banner, with notifications enabled, and the fix
+ntfy documents (unsubscribe, then re-subscribe) changed nothing. Its own iOS improvement plan
+(https://github.com/binwiederhier/ntfy/issues/1680) lists silent delivery failure as affecting every
+user and only probably fixed, and no sound on iOS 26+ as reproducible and open. This phone runs
+iOS 26+.
+
+A failed Pushover POST fails the run, so the wrapper's macOS notification fires. A silently dropped
+meds alert is the worst outcome this half has, worse than a noisy failure. The job also runs from
+launchd on the Mac, so an alert fires on wake rather than on time if the Mac is asleep.
 
 This half writes nothing. Nothing is tagged, dated or promoted because it came due. That holds the
 rule that nothing writes a tag onto a task you left alone, and it keeps a due date from pushing the
@@ -344,16 +365,16 @@ days and would need a new section in the review to carry it.
 
 It runs on both passes, and the evening one is a no-op: a task demoted in the morning carries
 `#someday` by the evening, and the threshold is calendar-day arithmetic that changes only at
-midnight.
+midnight. A `--with-decay` flag was designed and dropped: it bought nothing, and it would have forced
+a second launchd agent to carry the different arguments.
 
-A line carrying two state tags is never demoted. It counts as neither state, so it holds no slot
-against the cap and there is nothing to free; resolving the two tags by hand is the fix, as it is
-for every command. A line that moved while the pass was reading it fails the line-match check, and
+A line carrying two state tags is never demoted: it holds no slot against the cap, so there is
+nothing to free (see [States](#states)). A line that moved while the pass was reading it fails the
+line-match check, and
 the pass reports it and carries on to the next one rather than failing, because the push still has
 to go out. The next pass picks it up.
 
-Decay is not a touch. The rewritten line's fingerprint is stored against the timestamp already held,
-so the next run reads the line as unchanged (see [The touch clock](#the-touch-clock)).
+Decay is not a touch (see [The touch clock](#the-touch-clock)).
 
 ## Migration
 
@@ -382,14 +403,14 @@ Scope is `TASK_LISTS`. Within it, dot-prefixed folders and everything that is no
 which covers `.trash/` (Obsidian's deleted copies, whose tasks would otherwise come back), and
 `.obsidian/`.
 
-Before writing, the pass checks that each file it would modify is tracked by git and has no
+Before writing, the pass checks that git tracks each file it would modify and that none of them has
 unstaged changes, then reports the ones that fail and exits without writing. The check is per file
 rather than whole-tree, because `.obsidian/plugins/` carries permanent uncommitted churn and a
 whole-tree cleanliness check would never pass. Per-file tracking is also what makes the revert a
 scoped `git checkout` rather than one that would discard plugin state.
 
 Quit Obsidian before applying. Writing across dozens of files while Sync is live invites conflicts
-that the per-line fingerprint check will correctly refuse, leaving the pass half-applied.
+that the per-line fingerprint check will refuse, leaving the pass half-applied.
 
 ## Tag placement
 
@@ -406,9 +427,10 @@ The title parser strips state tags, so they never reach the digest or the task's
 
 Two places use one order: promotion at the cap names the current `#active` items, and the review
 lists the quiet ones. Both put the most recently touched first, with the soonest due date breaking
-ties.
+ties. Longest-untouched-first was tried and reversed: it points at the task hardest to restart, when
+finishing one thing beats resuming everything.
 
-There is no completion data to work from. The vault contains no subtasks anywhere, so no completion
+No completion data exists to work from. The vault contains no subtasks anywhere, so no completion
 fraction exists, and no task carries an effort estimate. Momentum is the only signal the data
 actually holds: the task you touched yesterday is the one you are part way through. Asking the model
 for an estimate would put a call taking tens of seconds inside an interactive command.
@@ -436,9 +458,8 @@ every entry written under the old value and the count starts again from zero. Th
 the suggestion, and it is why nothing has to store the fact that the suggestion was made. Setting the
 cap back down brings the old entries back into the count for the rest of the window.
 
-The suggestion rides along on a review that was already sending, and is never a third reason to send
-one. A line the reader cannot parse fails the run rather than being skipped: an undercount would show
-up only as a suggestion that never arrives, which is not something anyone would notice.
+A line the reader cannot parse fails the run rather than being skipped: an undercount would show up
+only as a suggestion that never arrives, which is not something anyone would notice.
 
 Override records must stay out of `apps/*/audit/`. The `notify` app globs that path and would mail
 them to you as failures.

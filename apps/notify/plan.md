@@ -1,59 +1,67 @@
 # notify plan
 
-Sends an email digest after `launchd/run.sh` finishes if today's audit logs
-contain any per-row errors. The existing `osascript` "tail -3 of stderr"
-notification still fires on any non-zero exit and acts as the floor if notify
-itself can't send.
+Sends an email digest after `launchd/run.sh` finishes, whenever today's audit
+logs show the run did something: any row applied, or any row failed. The
+`osascript` "tail -3 of stderr" notification
+fires on any non-zero exit, so a run still surfaces a failure when notify itself
+cannot send.
 
 Runs **after** every app in `launchd/run.sh`'s `APPS` loop. Reads the JSONL
-audit files those apps just wrote and groups by `patch_status`.
+audit files those apps just wrote and groups them by `outcome`.
+
+> Status: **implemented.** This file is the design doc; the code under `src/` is
+> the source of truth. Update both together.
 
 ## Trigger rules
 
 Audit-log content is the only signal. Notify runs unconditionally from the
 launchd wrapper; the wrapper does not pre-gate on exit codes.
 
-Send an email if today's audit rows across all apps contain any of:
+The shared `outcome` field on every audit row decides everything, and
+[packages/common/src/logger.ts:16-37](../../packages/common/src/logger.ts#L16-L37)
+is where the writer and this reader agree on it:
 
-- `patch_status: 'error'`
-- `patch_status: 'skipped_for_upstream_error'`
+| `outcome` | Digest treatment |
+|---|---|
+| `applied` | a success |
+| `failed` | an error: the write was attempted and failed |
+| `failed_upstream` | an error: something threw before the write, so none was attempted |
+| `skipped_for_dry_run` | neither |
+| `skipped_for_no_match` | neither |
 
-(Both are real failures; see [packages/common/src/logger.ts:16-26](../../packages/common/src/logger.ts#L16-L26).
-`skipped_for_dry_run` is not a failure and is ignored.)
+Send an email whenever the run did something, meaning at least one `applied`,
+`failed` or `failed_upstream` row across all apps. A digest that arrives on a
+clean day is the point: it doubles as the daily confirmation that
+categorization and memo-enrichment still work. Skip only when nothing was
+applied and nothing failed, which means an empty run or one that was all skips.
 
-This also naturally handles the lock-held case
-([apps/ynab-categorize/src/index.ts:56](../../apps/ynab-categorize/src/index.ts#L56)
-exits 2 before writing any audit rows), so notify produces nothing for
-overlap-skipped apps without explicit gating.
+This also handles the lock-held case without explicit gating: a second run
+exits 2 from the shared `runCli`
+([packages/common/src/cli.ts:20-22](../../packages/common/src/cli.ts#L20-L22))
+before writing any audit rows, so notify sees nothing for that app.
 
 No suppression for repeat failures. One email per day, even repeated, keeps
 unresolved errors visible.
 
 ## Pipeline
 
-1. Resolve the project root the same way `loadRootEnv` does
-   ([packages/common/src/env.ts:11](../../packages/common/src/env.ts#L11),
-   three levels up from `import.meta.url`). Glob
-   `<root>/apps/*/audit/*-${YYYY-MM-DD}.jsonl` (today, local date, the same
-   scheme as `createLogger`). **Don't** consult notify's own `AUDIT_DIR`;
-   `AUDIT_DIR=audit` is relative and resolves per-package via `cwd`, so
-   each app writes under `apps/<app>/audit/` while notify's resolution would
-   point at the wrong dir.
-2. Derive each file's app name by stripping `-${YYYY-MM-DD}.jsonl` from the
-   filename. (`baseAuditSchema` does not declare an `app` field: each app
-   adds its own `app: z.literal(...)`, so the filename is the only
-   schema-agnostic source.) Skip any file where the derived app name is
-   `notify` (defensive: notify isn't supposed to write audits, but don't
-   self-feed if some future change adds them).
+1. List `apps/` for its directory names, then build each one's audit path from
+   `AUDIT_DIR_NAME` + `auditFileName` in
+   `@personal-automation/common/audit-path`: `apps/<app>/audit/<app>-<today>.jsonl`,
+   today in the local date. That shared module is what keeps the writer and this
+   reader from drifting, and it is why the path is never resolved from notify's
+   own working directory.
+2. The directory name is the app name. (`baseAuditSchema` declares no `app`
+   field: each app adds its own `app: z.literal(...)`, so the layout is the only
+   schema-agnostic source.) Skip `notify` itself, so a future change that gave it
+   an audit log could not make it self-feed.
 3. Parse each line with `baseAuditSchema` from
    `@personal-automation/common/logger`. Notify is schema-agnostic across apps:
    per-app fields (`app`, `status`, etc.) are read as untyped extras. Adding
    a new app must not require an edit to notify.
-4. Bucket rows by `patch_status` for each app:
-   - errors = `error` + `skipped_for_upstream_error`
-   - successes = `success`
-   - skipped = `skipped_for_dry_run` (excluded from both counts)
-5. If zero error rows across all apps, exit 0 without sending.
+4. Bucket rows by `outcome` per app, the way the trigger rules above split them:
+   errors, successes, and the two skips in neither.
+5. If both counts are zero across all apps, exit 0 without sending.
 6. Otherwise build the email and send via `packages/gmail/`.
 
 ## Email shape
@@ -62,55 +70,56 @@ unresolved errors visible.
 convey load without opening. Don't include the date, since Gmail shows it
 already. Gmail threads consecutive emails by the matching subject prefix.
 
-**Body** (plain text, no HTML): one section per app that ran today, each
-showing its error / success counts and one block per failed row. Blank lines
-between rows for breathing room.
+**Body**: multipart. One `buildDigest` call produces a plain-text part and an
+HTML part, and `sendMessage` sends both. Clients that render HTML get the card
+layout; anything else falls back to the text. One section per app, alphabetical
+so the email reads the same day to day, each with its error and success counts,
+then its error rows, then its success rows.
+
+An error row carries the transaction id, date, payee, amount, `outcome` and the
+error string. A success row is one to three lines: payee, amount and date, then
+the `memo` the decision read, then `result_summary`, which is the category name
+for ynab-categorize and the written memo for ynab-enrich-memos.
 
 ```text
-ynab-categorize: 3 errors, 47 successes
-═══════════════════════════════════
+ynab-categorize: 1 error, 2 successes
+═════════════════════════════════════
 
   Transaction abc123
+    Date:    Aug 12, 2026
     Payee:   Amazon
     Amount:  -$42.10
-    Status:  error
+    Outcome: failed_upstream
     Reason:  rate_limit_error: 429 from anthropic
 
-  Transaction def456
-    Payee:   Costco
-    Amount:  -$118.00
-    Status:  skipped_for_upstream_error
-    Reason:  AnthropicError: timeout after 30000ms
+  Successes:
+    Amazon  -$23.45  Aug 12, 2026
+      memo: auto-gen: AA batteries, USB-C cable
+      →  Household Goods
 
-
-ynab-enrich-memos: 1 error, 11 successes
-════════════════════════════════════
-
-  Transaction ghi789
-    Payee:   Amazon
-    Amount:  -$23.45
-    Status:  error
-    Reason:  YnabApiError: 409 Conflict
+ynab-enrich-memos: 0 errors, 11 successes
+═════════════════════════════════════════
 ```
 
-The `Amount` column uses `formatDollars` from
-`@personal-automation/ynab/milliunits`, the same helper ynab-categorize already uses for
-its logs.
+Three shapes deviate from that:
 
-Counts:
-
-- **errors** = rows with `patch_status` of `error` or
-  `skipped_for_upstream_error`
-- **successes** = rows with `patch_status: 'success'`
-- `patch_status: 'skipped_for_dry_run'` rows are excluded from both
-  counts. (Dry runs are an explicit user action; if errors show up in a dry
-  run, notify still runs but the success-vs-error counts shouldn't be
-  diluted by skipped rows.)
+- **A run that dies before processing anything** writes one row under the
+  reserved transaction id `RUN_ABORTED_SENTINEL` (`<run-aborted>`), which the
+  digest renders as a `RUN ABORTED` block carrying only the reason.
+- **Apps in `SUMMARY_ONLY_SUCCESS_APPS`** (`ynab-enrich-memos` today) keep their
+  success count in the section header but drop the per-transaction success rows,
+  because the transactions they enrich are already listed under ynab-categorize.
+  Their errors always show in full, which is why the section above has a header
+  and nothing under it.
+- **An app whose rows are all skips** still gets a section, reading
+  `(nothing to report)`, so the digest says what ran rather than only what broke.
 
 Quote the `Reason` string verbatim. No truncation: these are personal-account
-emails, not paged ops. If an app produced zero error rows but is present in
-the audit dir for today, include its `0 errors, N successes` section as
-positive confirmation that it ran.
+emails, not paged ops.
+
+`amount_dollars` is already in dollars, while `formatDollars` in
+`@personal-automation/ynab/milliunits` takes milliunits, so `digest.ts` formats
+the amount inline rather than multiplying by 1000 to reuse that helper.
 
 ## Module layout
 
@@ -119,19 +128,19 @@ apps/notify/
   package.json        # { "scripts": { "notify": "tsx src/index.ts" } } so
                       # `pnpm --filter @personal-automation/notify notify` works
   src/
-    index.ts          # CLI entrypoint (no args; reads audit dir from env)
-    config.ts         # zod-validated loadConfig
-    constants.ts      # SUBJECT_PREFIX
-    notify.ts         # runNotify({ config, today }): the pipeline above + tests
-    digest.ts         # buildDigest(rows), pure: rows → { subject, body } + tests
+    index.ts          # CLI entrypoint, no args
+    config.ts
+    constants.ts      # SUBJECT_PREFIX, SELF_APP_NAME, SUMMARY_ONLY_SUCCESS_APPS
+    notify.ts         # runNotify({ config, today }): the pipeline above
+    digest.ts         # buildDigest(rows), pure: rows → { subject, body }
 ```
 
 No `gmail/` subdir: the shared package owns the client.
 
 ## Shared package: `packages/gmail/`
 
-Create alongside `packages/ynab/`. Mirrors that shape: factory function
-`createGmailClient`, zod schemas, derived types.
+Mirrors `packages/ynab/`: factory function `createGmailClient`, zod schemas,
+derived types.
 
 ```text
 packages/gmail/
@@ -144,10 +153,8 @@ packages/gmail/
     bootstrap.ts      # one-time refresh-token helper (see below)
 ```
 
-`sendMessage({ to, subject, body })` is all notify needs, and notify ships
-**before** ynab-enrich-memos, so the initial `packages/gmail/` commit lands
-`createGmailClient`, `auth.ts`, schemas/types for send, and `sendMessage`.
-`listMessages` / `getMessage` are added later when ynab-enrich-memos is built.
+`sendMessage({ to, subject, body })` is all notify needs; `listMessages` and
+`getMessage` are there for ynab-enrich-memos.
 
 **OAuth scopes**: `gmail.send` (notify) and `gmail.readonly` (ynab-enrich-memos).
 The same refresh token covers both if consented to up front. The bootstrap
@@ -162,40 +169,27 @@ outbound HTTP.
 **MIME encoding (impl note for `sendMessage`)**: the Gmail API
 `users.messages.send` endpoint expects a base64url-encoded RFC 5322 message
 in the `raw` field. The message body must declare
-`Content-Type: text/plain; charset=utf-8` so the digest's `═` and `─` chars
-render correctly. Wrong content-type = garbled output.
+`Content-Type: text/plain; charset=utf-8`, or the digest's `═` and `─` chars
+arrive as the wrong characters.
 
 ### Bootstrap helper
 
-One-time script to get the initial `GMAIL_OAUTH_REFRESH_TOKEN`. Runs locally
-on the user's machine, asks Google for permission, prints the token to
-paste into `.env`. Triggered via:
+`packages/gmail/src/bootstrap.ts` mints the initial
+`GMAIL_OAUTH_REFRESH_TOKEN`: it runs a one-shot `node:http` server for the
+redirect, opens the Google consent URL, exchanges the `code`, and prints the
+token to paste into the root `.env`.
 
 ```bash
 pnpm --filter @personal-automation/gmail bootstrap
 ```
 
-`packages/gmail/src/bootstrap.ts` does:
+Two things about the consent URL are not obvious from the code:
 
-1. Read `GMAIL_OAUTH_CLIENT_ID` and `GMAIL_OAUTH_CLIENT_SECRET` from `.env`.
-2. Start a one-shot HTTP server on `http://localhost:53682` (or any free
-   port; matches the `redirect_uris` registered with the GCP OAuth client;
-   `http://localhost` accepts any port).
-3. Open the Google consent URL in the default browser
-   (`open` on macOS) with scopes `gmail.send` + `gmail.readonly` and
-   `access_type=offline` + `prompt=consent` (the latter forces Google to
-   re-issue a refresh token even if the user has consented before).
-4. Capture the `code` query param from Google's redirect.
-5. POST to `https://oauth2.googleapis.com/token` exchanging
-   `code` → `{ access_token, refresh_token }`.
-6. Print the `refresh_token` to stdout with an instruction: paste this into
-   `.env` as `GMAIL_OAUTH_REFRESH_TOKEN`.
-7. Shut down the HTTP server, exit 0.
-
-Plain HTTP server (`node:http`) and `fetch` are enough, with no `googleapis`
-package needed for the bootstrap. README setup section documents the
-sequence and the `redirect_uris` value the GCP console must have
-(`http://localhost`).
+- `prompt=consent` (with `access_type=offline`) is what forces Google to
+  re-issue a refresh token even for a user who has consented before. Without
+  it a repeat run prints nothing usable.
+- The GCP OAuth client registers `http://localhost` as its redirect URI, which
+  accepts any port, so the local server does not need a fixed one.
 
 ## Configuration additions
 
@@ -211,134 +205,79 @@ GMAIL_OAUTH_CLIENT_SECRET=
 GMAIL_OAUTH_REFRESH_TOKEN=
 ```
 
-The Gmail vars are the same three ynab-enrich-memos will use, defined in one place
-so both apps load from the same source. ynab-enrich-memos's plan already lists
-them; they move to a shared block when notify lands first.
+The three Gmail vars sit in the root `.env` because ynab-enrich-memos uses the
+same ones, so both apps load them from a single source.
 
-Reuses `AUDIT_DIR` from the existing config. Notify's `loadConfig` parses
-exactly the vars above plus `AUDIT_DIR`.
+## `launchd/run.sh`
 
-## `launchd/run.sh` changes
-
-Append after the `for app in APPS` loop, before the `find … -delete`
+Notify is invoked after the `for app in APPS` loop, before the `find … -delete`
 cleanup:
 
 ```bash
-# Always invoke notify. It reads today's audit logs and decides whether to
-# send. `|| true` so a notify failure doesn't poison $overall_exit.
 /bin/zsh -lc "pnpm --filter @personal-automation/notify notify" || true
 ```
 
-- No exit-code gating. `$overall_exit` is the *last* non-zero app exit
-  ([launchd/run.sh:24](../../launchd/run.sh#L24)), so if app A exits 1 and
-  app B exits 2 in the same run, gating on `-eq 1` would mask A's real
-  failures. Audit-log content is the source of truth instead. Lock-held
-  apps wrote no audit rows so notify naturally produces nothing for them.
-- The existing `osascript` notification stays as-is. It still fires for any
-  non-zero exit and is the floor for "notify itself failed to send."
+The comment above that line in `run.sh` carries the reasoning: `|| true` keeps a
+notify failure out of `$overall_exit`, and there is no exit-code gating because
+`$overall_exit` holds only the *last* non-zero app exit, so gating on any one
+value would mask an earlier app's failure.
 
-Also widen the audit-log cleanup `find` from `ynab-categorize-*.jsonl` to
-`*.jsonl` so notify's read targets are also rotated. (This is the same change
-ynab-enrich-memos's plan calls out as open question 3: single line, lands here.)
+The cleanup `find` below it matches `*.jsonl`, not just `ynab-categorize-*.jsonl`,
+so notify's read targets rotate too.
 
 ## Shared-package contracts notify relies on
 
 - `packages/common/src/logger.ts`: `baseAuditSchema` exposes the fields
-  notify reads: `patch_status`, `transaction_id`, `payee_name`,
-  `amount_dollars`, `error`. Notify does **not** reach into per-app
-  `status` fields; the base is enough for the digest.
-- `packages/gmail/src/client.ts`: `sendMessage({ to, subject, body })`
-  returns void on success, throws on transport / API failure. Errors extend
-  `AppError` so they format the same way as the rest of the codebase.
+  notify reads: `outcome`, `transaction_id`, `payee_name`, `amount_dollars`,
+  `memo`, `transaction_date`, `result_summary` and `error`, plus the
+  `RUN_ABORTED_SENTINEL` id. Notify does **not** reach into per-app `status`
+  fields; the base is enough for the digest.
+- `packages/gmail/src/client.ts`: `sendMessage({ to, subject, body, html })`
+  resolves to the sent message (notify reads its `id` for the log line) and
+  throws on transport or API failure. `body` is the plain-text part and becomes
+  the fallback when `html` is also given. Errors extend `AppError` so they
+  format the same way as the rest of the codebase.
 
 Notify does not write an audit log of its own, so it does **not** call
 `createLogger` (which requires an `auditSchema`). It uses `pino` directly for
-the two or three lines of stdout/stderr it produces: "sent digest to X",
-"no errors today, skipping send", "Gmail send failed: ...".
+the two or three lines of stdout/stderr it produces: "Digest sent.", "No
+activity in today's audit logs; skipping email.", and a Gmail send failure.
 
 ## Failure modes and edge cases
 
-- **Notify can't reach Gmail.** Bubbles up as a non-zero exit from notify,
-  swallowed by `|| true` in the wrapper. The `osascript` notification from
-  the original app failure still fires. Acceptable; the email is best-effort.
-- **Refresh token expired.** Same as above. The README should call out that a
-  Gmail-API outage looks like a silent missing email, so check `osascript`
-  notifications as the source of truth.
+- **Notify can't reach Gmail, or the refresh token expired.** Bubbles up as a
+  non-zero exit from notify, swallowed by `|| true` in the wrapper. The email is
+  best-effort, so this looks exactly like a silent missing email: the `osascript`
+  notification from the original app failure is the signal to trust.
 - **Audit JSONL missing.** App didn't run today, crashed before writing, or
   exited 2 on lock collision. Notify treats a missing file as zero rows for
   that app, that app's section is omitted from the email.
 - **Audit JSONL malformed line.** `baseAuditSchema.safeParse` per line; on
   failure, log a `warn` to stderr and skip the line. Don't fail the whole
   digest because one row is bad.
-- **`status: 'fallback'` rows** ([apps/ynab-categorize/src/ynab-categorize.ts:33](../../apps/ynab-categorize/src/ynab-categorize.ts#L33))
+- **`status: 'fallback'` rows** ([apps/ynab-categorize/src/categorize.ts:34](../../apps/ynab-categorize/src/categorize.ts#L34))
   are a soft warning from ynab-categorize (default category used because no good
-  match). They land with `patch_status: 'success'`, so notify counts them as
+  match). They land with `outcome: 'applied'`, so notify counts them as
   successes. Not an error condition. Per-app `status` fields are not
   consulted by notify: the email reflects PATCH outcomes only.
 - **Day-boundary spillover.** If a run starts at 23:58 and writes audit rows
   after midnight, today's rows split across two date-named files. Notify
   reads only today's local date, so late-write rows from yesterday's run
-  would be missed. Acceptable in v1: runs take well under a minute and the
-  daily launchd schedule is set well clear of midnight. If this changes,
-  pass the run's start date to notify as a CLI arg.
+  would be missed. Accepted: runs take well under a minute and the daily
+  launchd schedule sits well clear of midnight. If either changes, pass the
+  run's start date to notify as a CLI arg.
 - **Mixed dry-run + scheduled rows in the same date file.** If a user runs
   `pnpm --filter @personal-automation/ynab-categorize test:ynab-categorize` interactively earlier in the day and the
-  daily launchd run follows, today's file contains both. `patch_status` is
-  the only signal, so `skipped_for_dry_run` rows are excluded and counts
-  remain correct. (Note: notify is invoked only by `launchd/run.sh`, not by
+  daily launchd run follows, today's file contains both. `outcome` is the only
+  signal, so `skipped_for_dry_run` rows fall in neither bucket and the counts
+  stay right. (Note: notify is invoked only by `launchd/run.sh`, not by
   manual `pnpm` invocations.)
 
-## Monorepo wiring
+## Testing
 
-This work adds two new workspace members (`packages/gmail/`, `apps/notify/`).
-The TypeScript project-reference graph needs updating in three places:
-
-- **Root [tsconfig.json](../../tsconfig.json)**: add both new packages to
-  `references`.
-- **`packages/gmail/tsconfig.json`**: new file, no internal references
-  (Gmail package depends only on third-party + node built-ins).
-- **`apps/notify/tsconfig.json`**: new file, references
-  `../../packages/common` and `../../packages/gmail`.
-- **`apps/notify/package.json`**: declares `workspace:*` deps on `common`
-  and `gmail`, plus the `notify` and `test` scripts.
-- **`packages/gmail/package.json`**: declares the `bootstrap` script
-  pointing at `tsx src/bootstrap.ts`.
-
-After the additions, `pnpm typecheck` (which runs `tsc -b`) must succeed
-from a clean state.
-
-Coverage thresholds from the root [vitest.config.ts](../../vitest.config.ts)
-(80/80/80/75) apply to the new code:
-
-- `digest.ts` is the highest-leverage test target (pure, deterministic input
-  → output). Aim for full coverage there.
-- `notify.ts` needs an e2e-style test that fakes the audit-log filesystem
-  reads (tmp dir with sample JSONL files) and mocks Gmail send via msw.
-- `packages/gmail/`'s `sendMessage` needs msw coverage of the send endpoint
-  and the OAuth token-refresh endpoint
-  (`https://oauth2.googleapis.com/token`).
-- `bootstrap.ts` is one-time interactive infra, so exclude it from coverage
-  (add to vitest config's coverage `exclude` glob) rather than chase
-  contrived tests for it.
-
-## Done when
-
-- A run with at least one `patch_status: 'error'` row generates a single
-  email to `NOTIFY_TO_EMAIL` with one section per failing app.
-- A clean run (no error rows) sends no email.
-- A run that exits 2 (lock held) sends no email; the `osascript` floor
-  notification still fires.
-- `packages/gmail/` exists with `createGmailClient` and `sendMessage`.
-- `apps/notify/` has unit tests for `digest.ts` (rows → subject/body) and an
-  e2e test using msw to mock Gmail send. `packages/gmail/` has msw coverage
-  of the send and token-refresh endpoints. No live API calls in CI.
-- `pnpm typecheck`, `pnpm check`, and `pnpm test` all pass from a clean
-  state. Coverage stays at or above the root thresholds.
-- `pnpm --filter @personal-automation/gmail bootstrap` walks the user through
-  the consent flow and prints a working `GMAIL_OAUTH_REFRESH_TOKEN`.
-- `.env.example` lists the new vars under a `--- Notify ---` and
-  `--- Gmail ---` block.
-- `launchd/run.sh` invokes notify on exit 1, leaves exit 2 alone, and the
-  audit-log cleanup glob is widened to `*.jsonl`.
-- README setup section documents the OAuth scopes (`gmail.send` plus
-  `gmail.readonly` for later ynab-enrich-memos use).
+`bootstrap.ts` is one-time interactive infra, so it sits in the root
+[vitest.config.ts](../../vitest.config.ts) coverage `exclude` glob rather than
+carrying contrived tests. Everything else meets the 80/80/80/75 thresholds, and
+no test reaches a live API: `notify.ts`'s end-to-end test writes sample JSONL
+into a tmp dir and mocks Gmail send with msw, and `packages/gmail` mocks both
+the send and the OAuth token-refresh endpoints.

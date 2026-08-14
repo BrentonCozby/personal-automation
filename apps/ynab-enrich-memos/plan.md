@@ -9,7 +9,7 @@ packages and the same monorepo-root secrets.
 
 Shape borrowed from a community n8n workflow: fetch transactions, filter to empty-memo Amazon
 rows, query Gmail for receipts within a ± window of the transaction date, hand the emails to an
-LLM, PATCH the memo. Differences are called out inline below.
+LLM, PATCH the memo.
 
 > Status: **implemented.** This file is the design doc; the code under `src/` is the source of
 > truth. Update both together.
@@ -30,21 +30,20 @@ the only memo it ever reasons from is one we wrote (or the empty one). There's n
 check to maintain.
 
 Every generated memo starts with `auto-gen:` (plus a space) so you can see in YNAB which memos
-came from this job. The prefix is now purely a visual marker: to regenerate a memo, **clear it**
-in YNAB and the next run re-enriches it.
-
-This replaces the n8n workflow's hardcoded `No valid purchase information found.` marker, the same
-idea (a sentinel that prevents an LLM-call loop), more useful in practice.
+came from this job. The prefix is a visual marker only: to regenerate a memo, **clear it**
+in YNAB and the next run re-enriches it. It takes the place of the n8n workflow's hardcoded
+`No valid purchase information found.` marker, which was the same idea (a sentinel that prevents an
+LLM-call loop) and less useful in practice.
 
 ## Pipeline (`runEnrich` in `enrich.ts`)
 
 1. Load transactions for each allowed account, `since ENRICH_LOOKBACK_DAYS` ago.
 2. Apply the eligibility filter.
-3. For each eligible transaction (`ENRICH_CONCURRENCY` at a time, since Gmail + Anthropic are
-   independent calls, so this fans out cleanly):
+3. For each eligible transaction (`ENRICH_CONCURRENCY` at a time, since the Gmail and Anthropic
+   calls for one transaction do not depend on any other transaction's):
    1. Query Gmail (`buildReceiptQuery`) for messages from any `GMAIL_FROM_FILTER` sender within
       ± `GMAIL_RECEIPT_WINDOW_DAYS` of the transaction date, newest first, capped at
-      `MAX_EMAILS_PER_TXN`. Hitting the cap is recorded (`emails_capped`); see "Candidate cap".
+      `MAX_EMAILS_PER_TXN`; see "Candidate cap".
    2. **No messages** → leave memo unchanged, audit row `status: 'no_emails'`. We do **not**
       write a "no info found" marker. The n8n workflow does, to prevent re-runs; we rely on the
       date window expiring instead, so receipts that arrive late still get picked up.
@@ -52,11 +51,10 @@ idea (a sentinel that prevents an LLM-call loop), more useful in practice.
       that fail DMARC (`isAuthentic` in `trust.ts`; see "Sender authenticity"). If none survive,
       treat it as `no_emails`.
    4. Build the prompt (`buildEnrichPrompt`) from the surviving emails and call the Anthropic API
-      via the shared client using `messages.parse()` with `receiptResponseSchema`. The model
-      matches on the charge **amount** (exact to the cent) and returns the matched `order_total`
-      separately; see "Amount matching".
-   5. **`receipt_found: false`, empty summary, or an `order_total` that doesn't match the charge**
-      → leave memo unchanged, audit row `status: 'no_receipt'`.
+      via the shared client using `messages.parse()` with `receiptResponseSchema`; see
+      "Amount matching".
+   5. **`receipt_found: false`, an empty summary, or an unverifiable amount** → leave memo
+      unchanged, audit row `status: 'no_receipt'`.
    6. **Otherwise** → `buildMemo` sanitizes (collapse whitespace, strip wrapping quotes),
       prepends the `auto-gen:` marker and a space, clamps to `MAX_MEMO_LENGTH` (500, YNAB's
       limit), and queues a memo-only PATCH.
@@ -76,8 +74,8 @@ typed object instead, matching how ynab-categorize and tasks already work:
 ```
 
 `receipt_found: false` (or a blank `item_summary`) is the "no receipt" signal; the wrapper in
-`anthropic/client.ts` collapses both to `summary: null`. `order_total` is returned separately so
-the caller can verify the amount in code; see "Amount matching".
+`anthropic/client.ts` collapses both to `summary: null`. `order_total` is a separate field so the
+caller can verify the amount in code.
 
 ### Amount matching
 
@@ -87,9 +85,8 @@ charge and to never settle for the closest one, and to return that order's `orde
 `enrich.ts` verifies it deterministically: if `order_total` is missing or differs from the
 charge by more than `ORDER_TOTAL_TOLERANCE_DOLLARS`, the match is rejected as `no_receipt`. This
 **fails closed**: an unverifiable match is dropped, so a wrong-amount memo can't be written no
-matter what the model returns. (A real mis-match happened in practice: the right receipt was
-truncated by an undersized fetch cap and the model picked a wrong-amount one; this guard plus the
-larger cap fix it.)
+matter what the model returns. It exists because a wrong-amount memo was written once, for the
+reason in "Candidate cap".
 
 ### Sender authenticity
 
@@ -117,32 +114,30 @@ match stays visible after the fact. If `emails_capped` still shows up, raise the
 ```text
 apps/ynab-enrich-memos/
   src/
-    index.ts          # entrypoint + CLI args (--dry-run, --verbose, --lookback-days), lockfile
-    config.ts         # zod-validated loadConfig
+    index.ts          # CLI args (--dry-run, --verbose, --lookback-days), lockfile
+    config.ts
     constants.ts      # MEMO_PREFIX, concurrency, batch sizes, length + fetch caps
-    enrich.ts         # runEnrich (pipeline above), isEligible, audit schema + tests
-    memo.ts           # buildMemo + tests
-    trust.ts          # isAuthentic: DMARC-fail sender gate + tests
+    enrich.ts         # runEnrich (pipeline above), isEligible, audit schema
+    memo.ts           # buildMemo
+    trust.ts          # isAuthentic: the DMARC-fail sender gate
     gmail/
-      query.ts        # buildReceiptQuery: Amazon-specific Gmail search string + tests
+      query.ts        # buildReceiptQuery: the Amazon-specific Gmail search string
     anthropic/
-      client.ts       # thin wrapper over @personal-automation/anthropic (receipt schema)
-      prompts.ts      # user-message builder + email sanitizer + tests
+      client.ts       # thin wrapper over @personal-automation/anthropic
+      prompts.ts      # user-message builder + email sanitizer
       schemas.ts      # receiptResponseSchema
 ```
 
-This no longer carries its own Gmail client/auth/schemas: the shared `packages/gmail/` provides
-them. **Reading** Gmail (`listMessages` + `getMessage`, with MIME-tree decode) was added to that
-package for this app; the readonly scope was already requested at bootstrap. The Anthropic
-client is the shared `packages/anthropic/`. So the only Gmail-specific code here is the search
-query builder.
+The Gmail client, auth and schemas are the shared `packages/gmail/`, and the Anthropic client is
+the shared `packages/anthropic/`, so the only Gmail-specific code here is the query builder.
+**Reading** Gmail (`listMessages` + `getMessage`, with MIME-tree decode) was added to that package
+for this app; the readonly scope was already requested at bootstrap.
 
 ## Configuration
 
 App-specific config in `apps/ynab-enrich-memos/.env` (mirrored by `.env.example`):
 
 ```bash
-AUDIT_DIR=audit
 ENRICH_LOOKBACK_DAYS=5
 GMAIL_RECEIPT_WINDOW_DAYS=5
 GMAIL_FROM_FILTER=["auto-confirm@amazon.com","shipment-tracking@amazon.com"]  # JSON array
@@ -153,15 +148,8 @@ Shared secrets and ids (`YNAB_TOKEN`, `YNAB_BUDGET_ID`, `ALLOWED_ACCOUNT_IDS`,
 `ANTHROPIC_API_KEY`, `GMAIL_OAUTH_*`) come from the monorepo-root `.env`; `loadAppEnv` loads
 root then app on top.
 
-Deviations from the original plan, to match current repo patterns:
-
-- **Per-app model var.** `ENRICH_MEMOS_ANTHROPIC_MODEL`, not a reused
-  `YNAB_CATEGORIZER_ANTHROPIC_MODEL`: model env vars are per-app now.
-- **`GMAIL_FROM_FILTER` is a JSON array**, not a comma-separated string, since list-valued env vars
-  use `jsonValue.pipe(z.array(...))` across the repo.
-- **`ALLOWED_ACCOUNT_IDS` lives in the root `.env`** (shared by ynab-categorize and this app),
-  not duplicated per-app: it's a shared id, and an app only loads its own `.env` plus root.
-  `AUDIT_DIR` stays per-app (it resolves from the app's CWD).
+`ALLOWED_ACCOUNT_IDS` is in the root `.env` rather than duplicated here, because ynab-categorize
+reads the same account list and an app loads only the root `.env` plus its own.
 
 ## Shared-package contracts this app relies on
 
@@ -175,23 +163,32 @@ Deviations from the original plan, to match current repo patterns:
 
 ## Audit + notify interaction
 
-One audit row per attempt: `app: 'ynab-enrich-memos'`, `status` of `ok` / `no_emails` /
-`no_receipt` / `error`, and a `patch_status`. notify auto-discovers the rows (any
-`apps/*/audit/*-<date>.jsonl` validated against `baseAuditSchema`).
+One audit row per attempt, carrying two status fields. `status` is this app's own
+(`enriched` / `no_emails` / `no_receipt` / `error`) and notify never reads it. `outcome` is the
+shared field from `baseAuditFields` that the digest buckets on. notify auto-discovers the rows at
+`apps/<app>/audit/<app>-<date>.jsonl` and validates them against `baseAuditSchema`.
 
-Status → patch_status mapping:
+`status` → `outcome`:
 
-- `ok` → `success` (or `skipped_for_dry_run` on a dry run).
-- `no_emails` / `no_receipt` → `skipped_for_no_match`: benign "nothing to enrich", **excluded**
-  from notify's error count. A charge with no receipt yet is re-checked daily until it falls
-  out of the date window, so this keeps those normal misses out of the digest.
-- `error` (Gmail / Anthropic threw) → `skipped_for_upstream_error`: a real failure, **counts**
-  as a digest error.
-- fatal run abort → a `<run-aborted>` row with `patch_status: 'error'`.
+| `status` | `outcome` | In the digest |
+|---|---|---|
+| `enriched` | `applied`, set by the shared patch stage in `packages/ynab/src/patch.ts` | a success |
+| `enriched`, dry run | `skipped_for_dry_run` | neither |
+| `no_emails` / `no_receipt` | `skipped_for_no_match` | neither |
+| `error` (Gmail or Anthropic threw) | `failed_upstream` | an error |
+| PATCH rejected or the id is missing from YNAB's response | `failed` | an error |
+| fatal run abort | `failed`, on a row whose `transaction_id` is `RUN_ABORTED_SENTINEL` | an error |
+
+`no_emails` and `no_receipt` are deliberately not failures: a charge with no receipt yet is
+re-checked daily until it falls out of the date window, so treating those as errors would put a
+normal miss in the digest every morning.
 
 App-specific audit fields beyond `baseAuditFields`: `emails_found` (trusted candidates handed to
-the model), `emails_capped`, `untrusted_dropped`, and `new_memo`. These ride along in the JSONL
-(durable) but notify ignores them.
+the model), `emails_capped`, `untrusted_dropped`, `new_memo`, `order_total`, and the
+`matched_email_url` / `matched_email_subject` / `matched_email_date` trio for spot-checking which
+receipt the model used. These ride along in the JSONL (durable) but notify ignores them. The two
+base fields the digest does show for this app are `result_summary` (the memo written) and
+`transaction_date`.
 
 ## Open questions
 
@@ -205,17 +202,3 @@ the model), `emails_capped`, `untrusted_dropped`, and `new_memo`. These ride alo
    HTML, which would starve the model. Needs validation against **real** Amazon receipt emails
    before changing the rule (e.g. prefer the longer of the two, or always include both). Same
    real-email test should confirm `MAX_EMAILS_PER_TXN` is large enough (watch `emails_capped`).
-3. ~~Where to put the shared Anthropic client.~~ Resolved: `packages/anthropic/` already exists.
-4. ~~`launchd/run.sh` audit cleanup.~~ Resolved: `run.sh` already trims `*.jsonl` (not just
-   `ynab-categorize-*`), so this app's audits rotate too.
-
-## Done
-
-- [x] Eligible empty-memo Amazon transactions get a memo prefixed `auto-gen:`.
-- [x] Patch is memo-only, so ynab-categorize runs after and sees the populated memo.
-- [x] Audit log: one row per attempt with the statuses above.
-- [x] Unit tests cover the eligibility filter (empty-only, manual-note preservation), the memo
-  builder, the prompt builder, the Gmail query builder, and the DMARC trust gate. The e2e test
-  uses msw to mock YNAB + Google OAuth + Gmail (list/get) + Anthropic, including a forged-sender
-  drop.
-- [x] `launchd/run.sh` has `ynab-enrich-memos` before `ynab-categorize` in `APPS`.

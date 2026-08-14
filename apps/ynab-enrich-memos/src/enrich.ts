@@ -46,7 +46,7 @@ export const enrichMemosAuditSchema = z.object({
   untrusted_dropped: z.number().optional(),
   /** The memo written (prefix included), or null when nothing was written. */
   new_memo: z.string().nullable().optional(),
-  /** The matched order's total (dollars), verified equal to the charge. Present on `ok` rows. */
+  /** The matched order's total (dollars), verified equal to the charge. Present on `enriched` rows. */
   order_total: z.number().optional(),
   /** Gmail deep-link to the matched receipt email, for spot-checking the source. */
   matched_email_url: z.string().optional(),
