@@ -1298,28 +1298,58 @@ it('walks Enter from the directory field to start, once the browser has let go',
   expect(document.activeElement).toBe(panel.querySelector('.start-go'))
 })
 
-it('closes when focus leaves it for the page behind', async () => {
+it('closes when the page behind it is pressed', async () => {
+  render(boardWith([aRow({ name: 'perf' })]))
+  await openStartPanel('Bug week')
+
+  document.body.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }))
+
+  expect(startPanel()).toBe(null)
+})
+
+it('closes when the keyboard walks focus out of it', async () => {
   render(boardWith([aRow({ name: 'perf' })]))
   await openStartPanel('Bug week')
 
   startPanel()
     .querySelectorAll('input.edit')[0]
-    .dispatchEvent(new FocusEvent('focusout', { bubbles: true, relatedTarget: null }))
+    .dispatchEvent(
+      new FocusEvent('focusout', {
+        bubbles: true,
+        relatedTarget: document.getElementById('count'),
+      }),
+    )
 
   expect(startPanel()).toBe(null)
+})
+
+it('keeps what was typed when its own empty space is pressed', async () => {
+  render(boardWith([aRow({ name: 'perf' })]))
+  await openStartPanel('Bug week')
+
+  const panel = startPanel()
+  const name = panel.querySelectorAll('input.edit')[0]
+  name.value = 'review-perf'
+  // What the browser gives for a press on anything that cannot take focus: the
+  // panel's own padding, the row of buttons between them. Measured in Chrome,
+  // where it also took the panel away mid-press, so the click never arrived.
+  panel
+    .querySelector('.start-actions')
+    .dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }))
+  name.dispatchEvent(new FocusEvent('focusout', { bubbles: true, relatedTarget: null }))
+
+  expect(startPanel()?.querySelectorAll('input.edit')[0].value).toBe('review-perf')
 })
 
 it('keeps what was typed when the window loses focus', async () => {
   render(boardWith([aRow({ name: 'perf' })]))
   await openStartPanel('Bug week')
-  const hasFocus = vi.spyOn(document, 'hasFocus').mockReturnValue(false)
 
   const name = startPanel().querySelectorAll('input.edit')[0]
   name.value = 'review-perf'
   name.dispatchEvent(new FocusEvent('focusout', { bubbles: true, relatedTarget: null }))
 
   expect(startPanel()?.querySelectorAll('input.edit')[0].value).toBe('review-perf')
-  hasFocus.mockRestore()
 })
 
 it('closes once the session has started and nothing needs saying', async () => {

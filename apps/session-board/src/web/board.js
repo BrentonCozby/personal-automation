@@ -901,10 +901,19 @@ function openStartPanel({ label, button }) {
     answer.textContent = text
   }
 
+  // A press anywhere but the panel is what dismisses it. Read from the press
+  // rather than from focus, because focus cannot tell a press on the panel's own
+  // empty space from a press on the page behind: both leave it on nothing.
+  const closeOnOutsidePress = event => {
+    if (panel.contains(event.target)) return
+    close()
+  }
+
   let settled = false
   const close = () => {
     if (settled) return
     settled = true
+    document.removeEventListener('pointerdown', closeOnOutsidePress, true)
     panel.remove()
     // `render` clears the flag itself, since it is what destroys the panel.
     // Repaint now: the snapshots that arrived while this was open were set
@@ -983,11 +992,13 @@ function openStartPanel({ label, button }) {
     })
   })
 
-  // `relatedTarget` is null both for a click on the page background, which
-  // should close the panel, and for a tab or app switch, which should not.
+  // Only a keyboard walking focus out of the panel closes it here. A null
+  // `relatedTarget` says nothing: it is what a tab switch gives, and what a
+  // press on the panel's own empty space or on a suggestion in the repository
+  // popup gives too, and neither of those is a reason to take the panel away.
   panel.addEventListener('focusout', event => {
+    if (!event.relatedTarget) return
     if (panel.contains(event.relatedTarget)) return
-    if (!document.hasFocus()) return
     close()
   })
 
@@ -1014,6 +1025,9 @@ function openStartPanel({ label, button }) {
   })
 
   header.insertAdjacentElement('afterend', panel)
+  // Capture, so a press on something that stops the event bubbling still
+  // dismisses the panel.
+  document.addEventListener('pointerdown', closeOnOutsidePress, true)
   name.focus()
 }
 
