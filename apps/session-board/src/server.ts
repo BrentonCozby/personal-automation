@@ -33,6 +33,16 @@ const HERE = dirname(fileURLToPath(import.meta.url))
 // one rebuild, short enough that the panel still feels live.
 const REBUILD_DEBOUNCE_MS = 150
 
+/**
+ * How often the board is rebuilt with no file having changed.
+ *
+ * A session working through a long turn writes to its transcript and to
+ * nothing the board watches, so an answered permission prompt and a moving age
+ * would both wait on the session's next hook, which can be half an hour away.
+ * Nothing is sent unless the board actually came out different.
+ */
+const REBUILD_INTERVAL_MS = 10_000
+
 const MAX_BODY_BYTES = 64 * 1024
 
 const MILLISECONDS_PER_SECOND = 1000
@@ -129,6 +139,8 @@ export function createBoardServer({ config }: { config: Config }): BoardServer {
 
   let events: HookEvent[] = []
   let rebuildTimer: NodeJS.Timeout | undefined
+  let ticker: NodeJS.Timeout | undefined
+  let lastFrame: string | undefined
   let loaded: Promise<void> | undefined
   let watchers: FSWatcher[] = []
   let isClosed = false
@@ -154,6 +166,11 @@ export function createBoardServer({ config }: { config: Config }): BoardServer {
         dirname(config.groupsPath),
       ])
       watchers = [...directories].map(directory => watch(directory, scheduleRebuild))
+
+      // `unref` so the timer alone never holds the process open: the listening
+      // socket is what should decide that.
+      ticker = setInterval(() => void pushToStreams(), REBUILD_INTERVAL_MS)
+      ticker.unref()
     })
 
     return loaded
@@ -168,6 +185,12 @@ export function createBoardServer({ config }: { config: Config }): BoardServer {
 
     const board = await snapshot()
     const frame = `data: ${JSON.stringify(board)}\n\n`
+    // A subscriber is sent the board as it connects, so skipping an identical
+    // frame costs a new one nothing and keeps the timer below silent while the
+    // board sits still.
+    if (frame === lastFrame) return
+
+    lastFrame = frame
     for (const stream of streams) stream.write(frame)
   }
 
@@ -612,6 +635,9 @@ export function createBoardServer({ config }: { config: Config }): BoardServer {
 
     if (rebuildTimer) clearTimeout(rebuildTimer)
     rebuildTimer = undefined
+
+    if (ticker) clearInterval(ticker)
+    ticker = undefined
 
     for (const stream of streams) stream.end()
     streams.clear()

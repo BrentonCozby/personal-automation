@@ -6,6 +6,7 @@ import { join } from 'node:path'
 import { promisify } from 'node:util'
 import { afterEach, expect, it, vi } from 'vitest'
 import type { Config } from './config.js'
+import type { Board } from './derive/board.js'
 import { findProgressFiles } from './derive/progress-files.js'
 import { openNewSession, openSessionFromProgress } from './launch.js'
 import { createBoardServer } from './server.js'
@@ -25,6 +26,7 @@ const closers: Array<() => Promise<void>> = []
 
 afterEach(async () => {
   for (const close of closers.splice(0)) await close()
+  vi.useRealTimers()
 })
 
 async function findFreePort(): Promise<number> {
@@ -46,10 +48,12 @@ async function startBoard({
   events = [],
   metadata,
   groups,
+  transcriptRoots = [],
 }: {
   events?: Record<string, unknown>[]
   metadata?: Record<string, unknown>
   groups?: string[]
+  transcriptRoots?: string[]
 } = {}): Promise<{
   origin: string
   metadataPath: string
@@ -76,7 +80,7 @@ async function startBoard({
     openFileCommand: 'code -- {{path}}',
     progressCommand: 'claude -n {{name}} {{prompt}}',
     progressPrompt: 'Read {{progress}} and carry on.',
-    transcriptRoots: [],
+    transcriptRoots,
   }
 
   const board = createBoardServer({ config })
@@ -92,6 +96,40 @@ async function startBoard({
     port,
     close: () => board.close(),
   }
+}
+
+/**
+ * Open an event stream and keep every frame it sends.
+ *
+ * The count matters as much as the content: a test that only reads the newest
+ * frame cannot tell a push that happened from one that never did.
+ */
+async function openFrames(port: number): Promise<{ socket: Socket; frames: Board[] }> {
+  const frames: Board[] = []
+  let buffer = ''
+  let onFrame: (() => void) | undefined
+
+  const socket = createConnection({ port, host: '127.0.0.1' })
+  socket.on('data', chunk => {
+    buffer += chunk.toString()
+    const parts = buffer.split('\n\n')
+    buffer = parts.pop() ?? ''
+    for (const part of parts) {
+      // The response headers arrive glued to the first frame, so the payload is
+      // the one line inside a part that starts with `data: `.
+      const line = part.split('\n').find(one => one.startsWith('data: '))
+      if (line) frames.push(JSON.parse(line.slice('data: '.length)))
+    }
+    onFrame?.()
+  })
+
+  await new Promise<void>(resolve => socket.once('connect', resolve))
+  socket.write('GET /stream HTTP/1.1\r\nHost: localhost\r\n\r\n')
+  await new Promise<void>(resolve => {
+    onFrame = resolve
+  })
+
+  return { socket, frames }
 }
 
 /** Resolves once the first frame has arrived, so the stream is really open. */
@@ -173,6 +211,48 @@ it('gives the port back even with an event stream still open', async () => {
   stream.destroy()
 
   expect(await isPortFree(board.port)).toBe(true)
+})
+
+it('rebuilds on a timer, with no file it watches having changed', async () => {
+  // `Date` is faked alongside the interval so the board really does come out
+  // different on the tick. Nothing on disk moves: the drawer drops a session
+  // once it is more than seven days old, and that is the clock alone.
+  vi.useFakeTimers({ toFake: ['setInterval', 'Date'] })
+  const startedAt = 1_700_000_000
+  const sevenDays = 7 * 24 * 60 * 60
+  vi.setSystemTime(startedAt * 1000)
+
+  const board = await startBoard({
+    // Unclaimed, with a minute left of the window it is drawn in.
+    events: [{ session_id: 'abc', hook_event_name: 'SessionStart', t: startedAt - sevenDays + 60 }],
+  })
+  const stream = await openFrames(board.port)
+  expect(stream.frames[0]?.unclaimed).toHaveLength(1)
+
+  vi.setSystemTime((startedAt + 120) * 1000)
+  await vi.advanceTimersByTimeAsync(10_000)
+  await new Promise(resolve => setTimeout(resolve, 150))
+
+  // Frame count, not just content: without the timer this stays at the one
+  // frame the stream opened with, and the drawer keeps the row for good.
+  expect(stream.frames).toHaveLength(2)
+  expect(stream.frames[1]?.unclaimed).toHaveLength(0)
+  stream.socket.destroy()
+})
+
+it('sends nothing on a tick that leaves the board exactly as it was', async () => {
+  vi.useFakeTimers({ toFake: ['setInterval'] })
+
+  const board = await startBoard({
+    events: [{ session_id: 'abc', hook_event_name: 'SessionStart', t: 1_700_000_000 }],
+    metadata: { abc: { name: 'impact-scoring' } },
+  })
+  const stream = await openFrames(board.port)
+
+  await vi.advanceTimersByTimeAsync(30_000)
+
+  expect(stream.frames).toHaveLength(1)
+  stream.socket.destroy()
 })
 
 it('lists the progress files of the repo the session was working in', async () => {
