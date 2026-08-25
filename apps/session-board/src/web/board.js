@@ -983,10 +983,11 @@ function openStartPanel({ label, button }) {
     })
   })
 
-  // A click on the page background focuses nothing, so `relatedTarget` is null
-  // and the panel closes, which is what a click outside a dialog should do.
+  // `relatedTarget` is null both for a click on the page background, which
+  // should close the panel, and for a tab or app switch, which should not.
   panel.addEventListener('focusout', event => {
     if (panel.contains(event.relatedTarget)) return
+    if (!document.hasFocus()) return
     close()
   })
 
@@ -1007,7 +1008,9 @@ function openStartPanel({ label, button }) {
       if (where.value) go.focus()
       else where.focus()
     }
-    if (event.target === where) go.focus()
+    // Deferred, because Chrome takes focus back as it closes the suggestion
+    // popup this Enter picked from, and would leave it on nothing at all.
+    if (event.target === where) setTimeout(() => go.focus())
   })
 
   header.insertAdjacentElement('afterend', panel)

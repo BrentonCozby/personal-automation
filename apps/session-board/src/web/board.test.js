@@ -1281,6 +1281,45 @@ it('closes on Escape', async () => {
   expect(startPanel()).toBe(null)
 })
 
+it('walks Enter from the directory field to start, once the browser has let go', async () => {
+  render(boardWith([aRow({ name: 'perf' })]))
+  await openStartPanel('Bug week')
+
+  const panel = startPanel()
+  const where = panel.querySelectorAll('input.edit')[1]
+  where.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }))
+
+  // Not on the same tick: Chrome closes the suggestion popup this Enter picked
+  // from afterwards, and takes focus with it.
+  expect(document.activeElement).not.toBe(panel.querySelector('.start-go'))
+  await settle()
+  expect(document.activeElement).toBe(panel.querySelector('.start-go'))
+})
+
+it('closes when focus leaves it for the page behind', async () => {
+  render(boardWith([aRow({ name: 'perf' })]))
+  await openStartPanel('Bug week')
+
+  startPanel()
+    .querySelectorAll('input.edit')[0]
+    .dispatchEvent(new FocusEvent('focusout', { bubbles: true, relatedTarget: null }))
+
+  expect(startPanel()).toBe(null)
+})
+
+it('keeps what was typed when the window loses focus', async () => {
+  render(boardWith([aRow({ name: 'perf' })]))
+  await openStartPanel('Bug week')
+  const hasFocus = vi.spyOn(document, 'hasFocus').mockReturnValue(false)
+
+  const name = startPanel().querySelectorAll('input.edit')[0]
+  name.value = 'review-perf'
+  name.dispatchEvent(new FocusEvent('focusout', { bubbles: true, relatedTarget: null }))
+
+  expect(startPanel()?.querySelectorAll('input.edit')[0].value).toBe('review-perf')
+  hasFocus.mockRestore()
+})
+
 it('closes once the session has started and nothing needs saying', async () => {
   render(boardWith([aRow({ name: 'perf' })]))
   await openStartPanel('Bug week')
