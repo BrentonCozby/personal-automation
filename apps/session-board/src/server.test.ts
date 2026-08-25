@@ -60,6 +60,8 @@ async function startBoard({
     // here lets a request get that far: the ones that would are refused first.
     launchCommand: 'claude --resume {{id}}',
     openFileCommand: 'code -- {{path}}',
+    progressCommand: 'claude -n {{name}} {{prompt}}',
+    progressPrompt: 'Read {{progress}} and carry on.',
     transcriptRoots: [],
   }
 
@@ -115,9 +117,36 @@ it('writes nothing at all when a field of the body is the wrong type', async () 
     body: JSON.stringify({ name: 42, group: 'Bug week' }),
   })
 
+  // Refused whole rather than half-applied, and said so: writing nothing behind
+  // a 200 reads as an edit that quietly did not take.
+  expect(res.status).toBe(400)
+  expect(await readMetadata(board.metadataPath)).toBeUndefined()
+})
+
+it('refuses a session name that is not kebab-case, and says which rule', async () => {
+  const board = await startBoard()
+
+  const res = await fetch(`${board.origin}/api/sessions/abc`, {
+    method: 'PATCH',
+    headers: { origin: board.origin, 'content-type': 'application/json' },
+    body: JSON.stringify({ name: 'Impact Scoring' }),
+  })
+
+  expect(res.status).toBe(400)
+  expect(await res.json()).toMatchObject({ error: expect.stringContaining('kebab-case') })
+  expect(await readMetadata(board.metadataPath)).toBeUndefined()
+})
+
+it('still lets a name be cleared, which is how a row is unclaimed', async () => {
+  const board = await startBoard({ metadata: { abc: { name: 'impact-scoring' } } })
+
+  const res = await fetch(`${board.origin}/api/sessions/abc`, {
+    method: 'PATCH',
+    headers: { origin: board.origin, 'content-type': 'application/json' },
+    body: JSON.stringify({ name: null }),
+  })
+
   expect(res.status).toBe(200)
-  // The valid sibling field is dropped too: a body that is not what it claims
-  // is refused whole rather than half-applied.
   expect(await readMetadata(board.metadataPath)).toEqual({ abc: {} })
 })
 
@@ -272,11 +301,11 @@ it('accepts a PATCH from the board page itself', async () => {
   const res = await fetch(`${board.origin}/api/sessions/abc`, {
     method: 'PATCH',
     headers: { origin: board.origin, 'content-type': 'application/json' },
-    body: JSON.stringify({ name: 'impact scoring' }),
+    body: JSON.stringify({ name: 'impact-scoring' }),
   })
 
   expect(res.status).toBe(200)
-  expect(await readMetadata(board.metadataPath)).toEqual({ abc: { name: 'impact scoring' } })
+  expect(await readMetadata(board.metadataPath)).toEqual({ abc: { name: 'impact-scoring' } })
 })
 
 it('accepts a json content-type that carries a charset', async () => {
@@ -285,7 +314,7 @@ it('accepts a json content-type that carries a charset', async () => {
   const res = await fetch(`${board.origin}/api/sessions/abc`, {
     method: 'PATCH',
     headers: { origin: board.origin, 'content-type': 'application/json; charset=utf-8' },
-    body: JSON.stringify({ name: 'impact scoring' }),
+    body: JSON.stringify({ name: 'impact-scoring' }),
   })
 
   expect(res.status).toBe(200)

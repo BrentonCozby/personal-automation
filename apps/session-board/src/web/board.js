@@ -11,6 +11,22 @@ let dragged
 /** The group that means "no group", which clears the field rather than setting it. */
 const UNGROUPED_LABEL = 'Ungrouped'
 
+/**
+ * The nearest kebab-case name to what was typed.
+ *
+ * The matcher links a session to a progress file by an exact match against the
+ * file's slug, and slugs are kebab-case because filenames are, so a name in any
+ * other shape can never match one. Corrected here as you type rather than
+ * refused afterwards; `src/session-name.ts` enforces the same rule server-side
+ * and the two have to stay in step.
+ */
+function toKebabCase(value) {
+  return value
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+}
+
 function readCollapsed() {
   try {
     const stored = JSON.parse(localStorage.getItem('collapsed') || '[]')
@@ -111,10 +127,33 @@ function makeActivatable(node, onActivate) {
 async function api(path, options) {
   try {
     const res = await fetch(path, { headers: { 'content-type': 'application/json' }, ...options })
-    if (!res.ok) console.error('request failed', path, res.status, await res.text())
+    if (res.ok) return { ok: true }
+
+    const text = await res.text()
+    console.error('request failed', path, res.status, text)
+
+    let error
+    try {
+      error = JSON.parse(text).error
+    } catch {
+      // A body that is not the server's own JSON, so there is no sentence to
+      // show. The console line above still carries it.
+    }
+
+    return { ok: false, error }
   } catch (error) {
     console.error('request never reached the server', path, error)
+
+    return { ok: false }
   }
+}
+
+/** A short-lived line under a row, for something the row itself cannot show. */
+function showMessage(node, text) {
+  const line = el('div', 'edit-line')
+  line.append(el('span', 'pending', text))
+  node.append(line)
+  setTimeout(() => line.remove(), MESSAGE_MS)
 }
 
 // Answers with the parsed body whatever the status, because the server says
@@ -248,15 +287,14 @@ function buildRow(row) {
   top.append(el('span', isStale ? 'age stale' : 'age', formatAge(ageSeconds)))
   node.append(top)
 
-  // The slug repeats the name whenever a session is named after its task,
-  // which is the naming the matcher rewards. Showing both wastes a line.
-  const hasProgressLine = Boolean(row.progressLabel) && row.progressLabel !== row.name
+  // Shown even when the slug only repeats the name. It reads as redundant on
+  // those rows, but it is the only thing that says a progress file is linked
+  // at all, and the only way to open one: the line is what you click.
+  const hasProgressLine = Boolean(row.progressLabel)
 
-  // For a session with no name of its own, the working directory is the
-  // only human-readable thing the board has. A named row gets it too when
-  // no progress line will run, since then nothing else says where it is.
-  // Keyed on the line actually rendering, not on a progress file existing: a
-  // row named after its own progress file suppresses both and showed nothing.
+  // The working directory is the fallback, for a row with nothing better to
+  // say where it is. Keyed on the progress line actually rendering rather than
+  // on a progress file existing, or a row can suppress both and show nothing.
   const cwdLabel = row.cwd ? formatCwd(row.cwd) : ''
   if (cwdLabel && (!row.name || !hasProgressLine)) {
     const cwd = el('div', 'sub cwd')
@@ -302,7 +340,15 @@ function buildRow(row) {
       host: name,
       current: row.name,
       placeholder: row.isClaimed ? 'session name' : 'name it to claim it',
-      onCommit: value => patchSession(row.sessionId, { name: value || null }),
+      onCommit: value => {
+        // Corrected rather than refused: `Review Perf` becomes `review-perf`,
+        // and the repainted row is the confirmation. The server enforces the
+        // same rule, so this only ever reports a rule the two disagree on.
+        const kebab = toKebabCase(value)
+        void patchSession(row.sessionId, { name: kebab || null }).then(result => {
+          if (!result.ok) showMessage(node, result.error ?? 'could not save that name')
+        })
+      },
     }),
   )
 
@@ -311,7 +357,7 @@ function buildRow(row) {
   const openButton = el('button', null, 'resume ↗')
   const blocked = whyResumeIsBlocked(row, isAlive)
   openButton.disabled = Boolean(blocked)
-  openButton.title = blocked || 'Open this session in a new Ghostty tab'
+  openButton.title = blocked || resumeTitle(row)
   openButton.addEventListener('click', event => {
     event.stopPropagation()
     void api(`/api/sessions/${encodeURIComponent(row.sessionId)}/open`, {
@@ -368,6 +414,18 @@ function buildRow(row) {
 }
 
 /**
+ * Whether resuming starts a clean session on the progress file rather than
+ * reopening the old conversation.
+ *
+ * The progress file is the durable state, so a fresh session that reads it
+ * picks the work up without dragging a long stale context along. A file that
+ * has gone missing is no use to a new session, so those fall back.
+ */
+function startsFromProgress(row) {
+  return Boolean(row.progressPath) && Boolean(row.name) && !row.isProgressFileMissing
+}
+
+/**
  * Why this session cannot be resumed, or undefined when it can.
  *
  * The button carries the answer as its disabled state and its tooltip, rather
@@ -378,12 +436,22 @@ function whyResumeIsBlocked(row, isAlive) {
   // cannot focus the tab that already holds it, so it cannot offer to do that
   // instead.
   if (isAlive) return 'Still running in a terminal tab, so there is nothing to resume'
-  if (row.isTranscriptMissing) {
-    return 'Claude Code has no transcript for this session, so it cannot be resumed'
-  }
   if (!row.cwd) return 'No working directory was ever recorded, so there is nowhere to resume it'
 
+  // A missing transcript only blocks the path that needs one. A row with a
+  // progress file starts a new session, which never reads the old transcript.
+  if (row.isTranscriptMissing && !startsFromProgress(row)) {
+    return 'No progress file and no transcript on disk, so there is nothing to pick up'
+  }
+
   return undefined
+}
+
+/** What the resume button promises, which is two different things. */
+function resumeTitle(row) {
+  return startsFromProgress(row)
+    ? `Start a new session named ${row.name} and point it at ${row.progressLabel}`
+    : 'Reopen this session in a new Ghostty tab'
 }
 
 /**

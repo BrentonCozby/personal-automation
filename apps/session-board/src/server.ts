@@ -3,16 +3,17 @@ import { readFile } from 'node:fs/promises'
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import type { z } from 'zod'
 import type { Config } from './config.js'
 import type { Board } from './derive/board.js'
 import { listProgressCandidates, resolveRepoRoot } from './derive/progress-files.js'
 import { createEventLogReader } from './events/read.js'
 import type { HookEvent } from './events/types.js'
-import { openFile, openSessionTab } from './launch.js'
+import { openFile, openSessionFromProgress, openSessionTab } from './launch.js'
 import { createMetadataStore } from './metadata/store.js'
 import type { MetadataPatch } from './metadata/types.js'
 import { findRequestRejection, isSessionId } from './request-guard.js'
-import { buildSnapshot, resolveSessionCwd } from './snapshot.js'
+import { buildSnapshot, fileExists, resolveSessionCwd } from './snapshot.js'
 import { openBodySchema, patchBodySchema } from './wire.js'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
@@ -58,23 +59,19 @@ async function readBody(req: IncomingMessage): Promise<unknown> {
 const PATCH_FIELDS = ['name', 'group', 'parkedReason', 'progressPath'] as const
 
 /**
- * Turn a request body into a metadata change.
+ * Turn a parsed request body into a metadata change.
  *
  * `null` on the wire means clear the field; a key left out means leave it be.
- * A body that does not parse writes nothing at all.
  */
-function toPatch(body: unknown): MetadataPatch {
-  const parsed = patchBodySchema.safeParse(body)
-  if (!parsed.success) return {}
-
+function toPatch(body: z.infer<typeof patchBodySchema>): MetadataPatch {
   const patch: MetadataPatch = {}
 
   for (const field of PATCH_FIELDS) {
-    if (!(field in parsed.data)) continue
+    if (!(field in body)) continue
 
     // An empty string reaches here from a field edited down to nothing, and
     // means the same as `null`.
-    patch[field] = parsed.data[field] || undefined
+    patch[field] = body[field] || undefined
   }
 
   return patch
@@ -175,11 +172,29 @@ export function createBoardServer({ config }: { config: Config }): BoardServer {
         return true
       }
 
-      await openSessionTab({
-        sessionId,
-        cwd: body.data.cwd,
-        commandTemplate: config.launchCommand,
-      })
+      // A progress file is the durable state, so a row that has one gets a
+      // clean session pointed at it rather than its old conversation reopened.
+      // A file that has gone missing falls through to the old session, which is
+      // then the only record of the work left.
+      const entry = (await store.read())[sessionId]
+      const progressPath = entry?.progressPath
+      const name = entry?.name
+      if (progressPath && name && (await fileExists(progressPath))) {
+        await openSessionFromProgress({
+          sessionId,
+          name,
+          progressPath,
+          cwd: body.data.cwd,
+          commandTemplate: config.progressCommand,
+          promptTemplate: config.progressPrompt,
+        })
+      } else {
+        await openSessionTab({
+          sessionId,
+          cwd: body.data.cwd,
+          commandTemplate: config.launchCommand,
+        })
+      }
       sendJson({ res, status: 200, body: { ok: true } })
 
       return true
@@ -225,11 +240,21 @@ export function createBoardServer({ config }: { config: Config }): BoardServer {
     }
 
     if (!action && req.method === 'PATCH') {
+      const body = patchBodySchema.safeParse(await readBody(req))
+      if (!body.success) {
+        // Says which rule was broken rather than writing nothing and answering
+        // 200, which reads as an edit that silently did not take.
+        const reason = body.error.issues[0]?.message ?? 'invalid request body'
+        sendJson({ res, status: 400, body: { error: reason } })
+
+        return true
+      }
+
       const merged = await store.patch({
         sessionId,
         // Editing a row is what puts a session that was taken off the board
         // back on it.
-        changes: { ...toPatch(await readBody(req)), isDismissed: undefined },
+        changes: { ...toPatch(body.data), isDismissed: undefined },
       })
       sendJson({ res, status: 200, body: merged })
       await pushToStreams()

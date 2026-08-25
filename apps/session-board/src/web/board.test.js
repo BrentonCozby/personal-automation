@@ -125,7 +125,7 @@ it('shows the working directory for a named row that has no progress file', () =
   expect(rowNode().querySelector('.cwd .label').textContent).toBe('repo-worktrees/perf')
 })
 
-it('drops the progress line when its slug only repeats the name', () => {
+it('shows the progress file even when its slug only repeats the name', () => {
   render(
     boardWith([
       aRow({
@@ -137,24 +137,10 @@ it('drops the progress line when its slug only repeats the name', () => {
     ]),
   )
 
-  expect(rowNode().querySelector('.progress')).toBe(null)
-})
-
-it('falls back to the directory when the progress line is dropped as a repeat', () => {
-  render(
-    boardWith([
-      aRow({
-        name: 'code-gardener',
-        cwd: '/Users/x/Code/repo-worktrees/code-gardener',
-        progressPath: '/repo/code-gardener.progress.local.md',
-        progressLabel: 'code-gardener',
-      }),
-    ]),
-  )
-
-  // Both rules firing at once used to leave the row with no second line at all,
-  // and it is the tidiest naming that trips them.
-  expect(rowNode().querySelector('.cwd .label').textContent).toBe('repo-worktrees/code-gardener')
+  // Redundant to read, but it is the only thing that says a file is linked and
+  // the only way to open one, and kebab-case names make the repeat common.
+  expect(rowNode().querySelector('.progress .label').textContent).toBe('code-gardener')
+  expect(rowNode().querySelector('.cwd')).toBe(null)
 })
 
 it('prefers the progress slug over the directory when it says something new', () => {
@@ -188,6 +174,65 @@ it('strikes through a progress file that is no longer on disk', () => {
   expect(rowNode().querySelector('.progress').classList.contains('missing')).toBe(true)
 })
 
+it('corrects a typed name to kebab-case rather than refusing it', () => {
+  const fetchMock = vi.fn(async () => ({ ok: true, json: async () => ({}) }))
+  vi.stubGlobal('fetch', fetchMock)
+  render(boardWith([aRow({ name: 'perf' })]))
+
+  const name = rowNode().querySelector('.name')
+  name.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }))
+  const input = name.querySelector('input.edit')
+  input.value = 'Review Perf'
+  input.dispatchEvent(new Event('blur'))
+
+  const patch = fetchMock.mock.calls.find(([, options]) => options?.method === 'PATCH')
+
+  expect(JSON.parse(patch?.[1].body)).toEqual({ name: 'review-perf' })
+})
+
+it('clears the name when nothing usable was typed', () => {
+  const fetchMock = vi.fn(async () => ({ ok: true, json: async () => ({}) }))
+  vi.stubGlobal('fetch', fetchMock)
+  render(boardWith([aRow({ name: 'perf' })]))
+
+  const name = rowNode().querySelector('.name')
+  name.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }))
+  const input = name.querySelector('input.edit')
+  input.value = '!!!'
+  input.dispatchEvent(new Event('blur'))
+
+  const patch = fetchMock.mock.calls.find(([, options]) => options?.method === 'PATCH')
+
+  expect(JSON.parse(patch?.[1].body)).toEqual({ name: null })
+})
+
+it('says why when the server refuses a name', async () => {
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async () => ({
+      ok: false,
+      status: 400,
+      text: async () => JSON.stringify({ error: 'a session name is kebab-case' }),
+    })),
+  )
+  vi.spyOn(console, 'error').mockImplementation(() => {
+    // The client logs every refusal. This test is about the row.
+  })
+  render(boardWith([aRow({ name: 'perf' })]))
+
+  const name = rowNode().querySelector('.name')
+  name.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }))
+  const input = name.querySelector('input.edit')
+  input.value = 'other'
+  input.dispatchEvent(new Event('blur'))
+  await settle()
+
+  // Nothing repaints on a refusal, so without this the edit just looks ignored.
+  expect(rowNode().querySelector('.edit-line .pending').textContent).toBe(
+    'a session name is kebab-case',
+  )
+})
+
 it('names the status of the dot, which otherwise carries it in hue alone', () => {
   render(boardWith([aRow({ name: 'perf', status: 'waiting' })]))
 
@@ -215,15 +260,58 @@ it('offers resume on a finished session that has a directory', () => {
   expect(buttonNamed('resume ↗').disabled).toBe(false)
 })
 
-it('puts resume out of reach on a session with no transcript on disk', () => {
+it('puts resume out of reach with neither a transcript nor a progress file', () => {
   render(boardWith([aRow({ name: 'perf', cwd: '/repo', isTranscriptMissing: true })]))
 
   const resume = buttonNamed('resume ↗')
 
   expect(resume.disabled).toBe(true)
   expect(resume.title).toBe(
-    'Claude Code has no transcript for this session, so it cannot be resumed',
+    'No progress file and no transcript on disk, so there is nothing to pick up',
   )
+})
+
+it('offers resume with no transcript when a progress file can carry the work', () => {
+  render(
+    boardWith([
+      aRow({
+        name: 'perf',
+        cwd: '/repo',
+        isTranscriptMissing: true,
+        progressPath: '/repo/marketplace-perf.progress.local.md',
+        progressLabel: 'marketplace-perf',
+      }),
+    ]),
+  )
+
+  const resume = buttonNamed('resume ↗')
+
+  // The new session never reads the old transcript, so its absence is no
+  // longer a reason to refuse.
+  expect(resume.disabled).toBe(false)
+  expect(resume.title).toBe('Start a new session named perf and point it at marketplace-perf')
+})
+
+it('says it will reopen the old session when there is no progress file', () => {
+  render(boardWith([aRow({ name: 'perf', cwd: '/repo' })]))
+
+  expect(buttonNamed('resume ↗').title).toBe('Reopen this session in a new Ghostty tab')
+})
+
+it('falls back to the old session when the progress file has gone missing', () => {
+  render(
+    boardWith([
+      aRow({
+        name: 'perf',
+        cwd: '/repo',
+        progressPath: '/repo/gone.progress.local.md',
+        progressLabel: 'gone',
+        isProgressFileMissing: true,
+      }),
+    ]),
+  )
+
+  expect(buttonNamed('resume ↗').title).toBe('Reopen this session in a new Ghostty tab')
 })
 
 it('strikes through the name of a session with no transcript, as it does a lost file', () => {

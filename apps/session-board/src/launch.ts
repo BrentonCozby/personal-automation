@@ -1,5 +1,7 @@
 import { execFile } from 'node:child_process'
-import { resolve } from 'node:path'
+import { writeFile } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join, resolve } from 'node:path'
 import { promisify } from 'node:util'
 import type { SessionId } from './request-guard.js'
 
@@ -52,6 +54,82 @@ export async function openSessionTab({
   const command = commandTemplate.replaceAll('{{id}}', sessionId)
 
   await execFileAsync('osascript', ['-e', NEW_TAB_SCRIPT, command, resolveLaunchCwd(cwd)])
+}
+
+/**
+ * Wrap a value so a shell reads it as one word, whatever is inside it.
+ *
+ * Single quotes suspend every other kind of expansion, so the only character
+ * that needs handling is the single quote itself: close the string, add an
+ * escaped one, open it again.
+ */
+export function shellQuote(value: string): string {
+  return `'${value.replaceAll("'", `'\\''`)}'`
+}
+
+/**
+ * Start a new session on the work a progress file describes.
+ *
+ * The command goes into a script file rather than into the command string
+ * Ghostty is handed. A session name is whatever was typed into the board, and
+ * that string would otherwise cross two shells (Ghostty's `bash -c`, then the
+ * login shell) with a different quoting rule at each layer, so a name holding
+ * an apostrophe would break the launch and one holding a semicolon would run
+ * as a command. Inside a file there are no layers left to escape from.
+ *
+ * The path is built from the session id, which the request guard has already
+ * limited to `[A-Za-z0-9._-]`, so the path itself needs no quoting and each
+ * session reuses one file instead of leaving a trail of them.
+ */
+export function buildProgressScript({
+  name,
+  progressPath,
+  commandTemplate,
+  promptTemplate,
+}: {
+  name: string
+  progressPath: string
+  commandTemplate: string
+  promptTemplate: string
+}): string {
+  const prompt = promptTemplate.replaceAll('{{progress}}', progressPath)
+  const command = commandTemplate
+    .replaceAll('{{name}}', shellQuote(name))
+    .replaceAll('{{prompt}}', shellQuote(prompt))
+
+  // `exec` so the login shell is replaced rather than left waiting: the tab's
+  // process is then Claude Code itself, and closing the tab reaches it.
+  return `#!/bin/zsh -l\nexec ${command}\n`
+}
+
+export async function openSessionFromProgress({
+  sessionId,
+  name,
+  progressPath,
+  cwd,
+  commandTemplate,
+  promptTemplate,
+}: {
+  sessionId: SessionId
+  name: string
+  progressPath: string
+  cwd: string
+  commandTemplate: string
+  promptTemplate: string
+}): Promise<void> {
+  const scriptPath = join(tmpdir(), `session-board-launch-${sessionId}.sh`)
+  await writeFile(
+    scriptPath,
+    buildProgressScript({ name, progressPath, commandTemplate, promptTemplate }),
+    { mode: 0o700 },
+  )
+
+  await execFileAsync('osascript', [
+    '-e',
+    NEW_TAB_SCRIPT,
+    `/bin/zsh -l ${scriptPath}`,
+    resolveLaunchCwd(cwd),
+  ])
 }
 
 /** Split a configured command into argv, so it can run without a shell. */

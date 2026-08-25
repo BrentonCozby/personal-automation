@@ -46,7 +46,7 @@ export function resolveSessionCwd({
   return cwdBySession(events).get(sessionId) || metadata[sessionId]?.cwd
 }
 
-async function fileExists(path: string): Promise<boolean> {
+export async function fileExists(path: string): Promise<boolean> {
   try {
     await access(path)
 

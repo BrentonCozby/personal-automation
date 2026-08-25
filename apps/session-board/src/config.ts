@@ -12,6 +12,8 @@ const schema = z.object({
   BOARD_LAUNCH_COMMAND: z.string().min(1),
   BOARD_OPEN_FILE_COMMAND: z.string().min(1),
   BOARD_TRANSCRIPT_ROOTS: z.string().min(1),
+  BOARD_PROGRESS_COMMAND: z.string().min(1),
+  BOARD_PROGRESS_PROMPT: z.string().min(1),
 })
 
 export interface Config {
@@ -28,6 +30,14 @@ export interface Config {
   launchCommand: string
   /** Runs when a progress-file slug is clicked. `{{path}}` becomes the file. */
   openFileCommand: string
+  /**
+   * Starts a new session on the work a progress file describes, rather than
+   * resuming the old one. `{{name}}` and `{{prompt}}` are substituted, both
+   * shell-quoted.
+   */
+  progressCommand: string
+  /** The first thing that new session is told. `{{progress}}` becomes the file. */
+  progressPrompt: string
   /**
    * The `projects` directories Claude Code keeps transcripts under. A session
    * with no transcript in any of them cannot be resumed at all.
@@ -46,6 +56,8 @@ export function loadConfig(): Config {
     freshMinutes: parsed.BOARD_FRESH_MINUTES,
     launchCommand: parsed.BOARD_LAUNCH_COMMAND,
     openFileCommand: parsed.BOARD_OPEN_FILE_COMMAND,
+    progressCommand: parsed.BOARD_PROGRESS_COMMAND,
+    progressPrompt: parsed.BOARD_PROGRESS_PROMPT,
     transcriptRoots: parsed.BOARD_TRANSCRIPT_ROOTS.split(',')
       .map(root => root.trim())
       .filter(Boolean),

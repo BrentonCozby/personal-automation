@@ -19,6 +19,8 @@ function config(): Config {
     freshMinutes: 15,
     launchCommand: 'claude --resume {{id}}',
     openFileCommand: 'code -- {{path}}',
+    progressCommand: 'claude -n {{name}} {{prompt}}',
+    progressPrompt: 'Read {{progress}} and carry on.',
     transcriptRoots: [],
   }
 }

@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { isKebabCase } from './session-name.js'
 
 /**
  * The shapes a request body is allowed to arrive in.
@@ -11,8 +12,17 @@ import { z } from 'zod'
 /** `null` clears the field. A key left out leaves it alone. */
 const clearableText = z.string().nullable()
 
+// An empty string clears the name, the same as `null`, so it passes alongside
+// the pattern rather than being caught as a malformed one.
+const sessionName = z
+  .string()
+  .refine(value => value === '' || isKebabCase(value), {
+    message: 'a session name is kebab-case: lowercase letters and digits, single hyphens between',
+  })
+  .nullable()
+
 export const patchBodySchema = z.object({
-  name: clearableText.optional(),
+  name: sessionName.optional(),
   group: clearableText.optional(),
   parkedReason: clearableText.optional(),
   progressPath: clearableText.optional(),

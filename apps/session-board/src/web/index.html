@@ -89,13 +89,24 @@
         z-index: 2;
       }
 
+      /* A band, and a label rather than a title. A group header used to be the
+         same `--fg` white as an idle session's name at a one-pixel size
+         difference, so the two read as the same kind of thing. It now differs
+         by background, case, size and color at once, which is what keeps the
+         session names the brightest thing on the board. */
       .group-header {
         display: flex;
         align-items: center;
         gap: 6px;
-        padding: 12px 12px 4px;
-        font-size: 12px;
-        font-weight: 500;
+        padding: 6px 12px;
+        margin-top: 10px;
+        background: var(--hover);
+        border-top: 1px solid var(--hairline);
+        border-bottom: 1px solid var(--hairline);
+        font-size: 10px;
+        font-weight: 600;
+        letter-spacing: 0.09em;
+        text-transform: uppercase;
         user-select: none;
       }
 
@@ -120,9 +131,18 @@
       /* A long group name shortens itself rather than pushing its count off the
          panel. */
       .group-label {
+        color: var(--muted);
         overflow: hidden;
         text-overflow: ellipsis;
         white-space: nowrap;
+      }
+
+      /* The rename field is typed in, so it keeps sentence case and a readable
+         size while the label around it is a small uppercase one. */
+      .group-header input.edit {
+        text-transform: none;
+        letter-spacing: normal;
+        font-size: 12px;
       }
 
       .group-header .group-name { border-radius: 3px; cursor: text; }
