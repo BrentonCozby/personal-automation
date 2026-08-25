@@ -1229,17 +1229,38 @@ function buildNewGroup() {
   return host
 }
 
-// The page calls this; importing the module does nothing on its own, which is
-// what lets a test load it without an event stream or a running server.
-export function start() {
-  // Before the count, so the toolbar reads left to right as sort, action,
-  // total rather than ending on a control.
-  document
-    .getElementById('toolbar')
-    ?.insertBefore(buildNewGroup(), document.getElementById('count'))
+/** How long a dropped stream waits before it is opened again. */
+const RECONNECT_DELAY_MS = 2000
 
-  const stream = new EventSource('/stream')
+/** The open stream, so a reconnect can close the one it replaces. */
+let stream
+
+let reconnectTimer
+
+function sayOffline(isOffline) {
+  const label = document.getElementById('offline')
+  if (label) label.textContent = isOffline ? 'not live, reconnecting' : ''
+}
+
+/**
+ * Open the event stream, and keep it open.
+ *
+ * `EventSource` retries a dropped connection by itself but gives up for good
+ * the moment a retry is refused, which is exactly what restarting the server
+ * looks like from the page. It left the board frozen on its last frame, with
+ * every row still reading as whatever it said at the time and nothing on
+ * screen to say so: the only way back was reloading by hand.
+ */
+export function connect() {
+  stream?.close()
+  clearTimeout(reconnectTimer)
+
+  stream = new EventSource('/stream')
+
+  stream.addEventListener('open', () => sayOffline(false))
+
   stream.addEventListener('message', event => {
+    sayOffline(false)
     const board = JSON.parse(event.data)
     // Another session's event must not yank the field out from under a name
     // being typed, or the row out from under a drag. The next snapshot is
@@ -1251,6 +1272,32 @@ export function start() {
       return
     }
     render(board)
+  })
+
+  stream.addEventListener('error', () => {
+    sayOffline(true)
+    if (stream?.readyState !== EventSource.CLOSED) return
+
+    reconnectTimer = setTimeout(connect, RECONNECT_DELAY_MS)
+  })
+}
+
+// The page calls this; importing the module does nothing on its own, which is
+// what lets a test load it without an event stream or a running server.
+export function start() {
+  // Before the count, so the toolbar reads left to right as sort, action,
+  // total rather than ending on a control.
+  document
+    .getElementById('toolbar')
+    ?.insertBefore(buildNewGroup(), document.getElementById('count'))
+
+  connect()
+
+  // Coming back to the tab is when a board frozen while it was hidden gets
+  // read, so it is the moment worth checking the stream on.
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState !== 'visible') return
+    if (stream?.readyState === EventSource.CLOSED) connect()
   })
 
   // A press holds the repaint off until the button comes back up, then the

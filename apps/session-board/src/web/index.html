@@ -102,6 +102,25 @@
         z-index: 2;
       }
 
+      /* Says the board stopped updating, which it otherwise cannot: every row
+         goes on reading as whatever it said when the stream died. Empty and so
+         drawn as nothing while the stream is up. */
+      #offline {
+        color: var(--danger);
+        font-weight: 600;
+      }
+
+      #offline:not(:empty)::before {
+        content: '';
+        display: inline-block;
+        width: var(--mark);
+        height: var(--mark);
+        margin-right: 6px;
+        border-radius: 50%;
+        background: var(--danger);
+        vertical-align: -1px;
+      }
+
       /* A band, and a label rather than a title. A group header used to be the
          same `--fg` white as an idle session's name at a one-pixel size
          difference, so the two read as the same kind of thing. It now differs
@@ -656,7 +675,12 @@
     </style>
   </head>
   <body>
-    <div id="toolbar"><span>Oldest first</span><span id="count"></span></div>
+    <div id="toolbar">
+      <span>Oldest first</span>
+      <!-- Empty while the stream is up, so a board that is live says nothing. -->
+      <span id="offline"></span>
+      <span id="count"></span>
+    </div>
     <div id="board"></div>
     <div id="drawer"></div>
     <!-- Shared by every "start a session" panel, and outside the part `render`

@@ -84,6 +84,36 @@ function buttonNamed(name) {
   )
 }
 
+/**
+ * Stand in for `EventSource`, handing each listener back through `handlers`.
+ *
+ * `close` and `readyState` are real parts of the interface the client uses to
+ * reconnect, so a stub without them passes tests the browser would fail.
+ */
+function fakeStreamInto(handlers) {
+  const opened = []
+
+  class FakeStream {
+    static CLOSED = 2
+    static opened = opened
+
+    constructor() {
+      this.readyState = 0
+      opened.push(this)
+    }
+
+    addEventListener(type, handler) {
+      handlers[type] = handler
+    }
+
+    close() {
+      this.readyState = FakeStream.CLOSED
+    }
+  }
+
+  return FakeStream
+}
+
 /** Waits out the picker's fetch, which no timer advances. */
 function settle() {
   return new Promise(resolve => setTimeout(resolve, 0))
@@ -93,7 +123,7 @@ beforeEach(() => {
   // The same elements index.html carries. The client looks each one up by id,
   // so the two have to stay in step.
   document.body.innerHTML =
-    '<div id="toolbar"><span id="count"></span></div><div id="board"></div><div id="drawer"></div><datalist id="board-repos"></datalist>'
+    '<div id="toolbar"><span id="offline"></span><span id="count"></span></div><div id="board"></div><div id="drawer"></div><datalist id="board-repos"></datalist>'
   vi.useFakeTimers({ shouldAdvanceTime: true })
   vi.setSystemTime(NOW_SECONDS * 1000)
 })
@@ -750,14 +780,7 @@ it('holds the repaint while a row is being dragged', () => {
   // Driven through the real event stream, since that is where the guard sits:
   // calling `render` by hand would test a path no snapshot ever takes.
   const onMessage = {}
-  vi.stubGlobal(
-    'EventSource',
-    class {
-      addEventListener(type, handler) {
-        onMessage[type] = handler
-      }
-    },
-  )
+  vi.stubGlobal('EventSource', fakeStreamInto(onMessage))
   vi.stubGlobal(
     'fetch',
     vi.fn(async () => ({ ok: true, json: async () => ({}) })),
@@ -788,14 +811,7 @@ it('holds the repaint while a row is being dragged', () => {
 
 it('holds the repaint while the pointer is down, so a click is not swallowed', () => {
   const onMessage = {}
-  vi.stubGlobal(
-    'EventSource',
-    class {
-      addEventListener(type, handler) {
-        onMessage[type] = handler
-      }
-    },
-  )
+  vi.stubGlobal('EventSource', fakeStreamInto(onMessage))
   vi.stubGlobal(
     'fetch',
     vi.fn(async () => ({ ok: true, json: async () => ({}) })),
@@ -828,14 +844,7 @@ it('holds the repaint while the pointer is down, so a click is not swallowed', (
 
 it('leaves the board alone on a release that had no snapshot to catch up on', () => {
   const onMessage = {}
-  vi.stubGlobal(
-    'EventSource',
-    class {
-      addEventListener(type, handler) {
-        onMessage[type] = handler
-      }
-    },
-  )
+  vi.stubGlobal('EventSource', fakeStreamInto(onMessage))
   start()
   onMessage.message({ data: JSON.stringify(boardWith([aRow({ name: 'perf' })])) })
 
@@ -1058,14 +1067,7 @@ it('creates a group from the toolbar, with no session in it yet', async () => {
   const fetchMock = vi.fn(async () => ({ ok: true, json: async () => ({}) }))
   vi.stubGlobal('fetch', fetchMock)
   const onMessage = {}
-  vi.stubGlobal(
-    'EventSource',
-    class {
-      addEventListener(type, handler) {
-        onMessage[type] = handler
-      }
-    },
-  )
+  vi.stubGlobal('EventSource', fakeStreamInto(onMessage))
   start()
 
   const host = document.querySelector('.new-group')
@@ -1389,4 +1391,51 @@ it('keeps the panel open with the reason when the server refuses', async () => {
   expect(panel.querySelector('.start-answer').textContent).toBe(
     'review-perf is already on the board',
   )
+})
+
+it('reopens a stream the browser gave up on, and says the board is not live meanwhile', async () => {
+  const handlers = {}
+  const FakeStream = fakeStreamInto(handlers)
+  vi.stubGlobal('EventSource', FakeStream)
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async () => ({ ok: true, json: async () => ({}) })),
+  )
+  start()
+
+  // What restarting the server looks like from the page: the retry `EventSource`
+  // makes on its own is refused, and it closes for good.
+  FakeStream.opened.at(-1).readyState = FakeStream.CLOSED
+  handlers.error(new Event('error'))
+
+  expect(document.getElementById('offline').textContent).toBe('not live, reconnecting')
+  expect(FakeStream.opened).toHaveLength(1)
+
+  await vi.advanceTimersByTimeAsync(2000)
+
+  expect(FakeStream.opened).toHaveLength(2)
+
+  handlers.message({ data: JSON.stringify(boardWith([aRow({ name: 'perf' })])) })
+
+  expect(document.getElementById('offline').textContent).toBe('')
+})
+
+it('leaves a stream the browser is still retrying alone', async () => {
+  const handlers = {}
+  const FakeStream = fakeStreamInto(handlers)
+  vi.stubGlobal('EventSource', FakeStream)
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async () => ({ ok: true, json: async () => ({}) })),
+  )
+  start()
+
+  // `CONNECTING`, which is `EventSource` retrying by itself. Opening a second
+  // stream here would leave two of them running against one board.
+  FakeStream.opened.at(-1).readyState = 0
+  handlers.error(new Event('error'))
+  await vi.advanceTimersByTimeAsync(5000)
+
+  expect(FakeStream.opened).toHaveLength(1)
+  expect(document.getElementById('offline').textContent).toBe('not live, reconnecting')
 })
