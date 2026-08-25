@@ -268,11 +268,63 @@
 
       .sub.parked { color: var(--waiting); cursor: text; }
       .sub.cwd { color: var(--muted); font-family: var(--mono); }
-      .sub.progress { color: var(--muted); font-family: var(--mono); cursor: pointer; }
-      .sub.progress:hover { color: var(--fg); }
-      .sub.progress.missing .label { text-decoration: line-through; }
 
       .icon { flex: none; opacity: 0.75; }
+
+      /* In the row's left indent, which is the one strip the action bar never
+         covers: the bar is placed against the right edge and appears on the
+         same hover that has to reach the pin. */
+      .pin {
+        position: absolute;
+        left: 8px;
+        top: 6px;
+        width: 14px;
+        font-size: 11px;
+        color: var(--muted);
+        font-family: var(--mono);
+        line-height: 16px;
+        text-align: center;
+        border-radius: 3px;
+      }
+
+      .row:hover .pin { color: var(--fg); }
+      .pin.missing .icon { text-decoration: line-through; }
+      /* Both beat `.row:hover { cursor: grab }`. The popover is inside the pin,
+         so clicking anywhere on it opens the file and it inherits the pointer;
+         the directory pin opens nothing, so it says so. */
+      .pin[role='button'] { cursor: pointer; }
+      .pin:not([role='button']) { cursor: default; }
+
+      .popover {
+        display: none;
+        position: absolute;
+        left: 0;
+        top: 18px;
+        /* Above the rows it overlaps, the action bar of the row below (drawn on
+           its own background) and the sticky toolbar, which all sit at 2. */
+        z-index: 3;
+        width: max-content;
+        max-width: 320px;
+        background: var(--bg);
+        border: 1px solid var(--hairline);
+        border-radius: 5px;
+        box-shadow: 0 3px 10px rgb(0 0 0 / 25%);
+        padding: 6px 8px;
+        text-align: left;
+      }
+
+      .pin:hover .popover,
+      .pin:focus-visible .popover { display: block; }
+
+      .popover-title { color: var(--fg); font-size: 11px; }
+      .popover-path {
+        color: var(--muted);
+        font-size: 10px;
+        margin-top: 2px;
+        /* A path is the one thing here that has no length limit, so it wraps
+           rather than being cut: this popover exists to show it in full. */
+        overflow-wrap: anywhere;
+      }
 
       .actions {
         position: absolute;

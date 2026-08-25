@@ -119,13 +119,16 @@ it('offers to name a session that has none', () => {
   expect(rowNode().querySelector('.name').textContent).toBe('unnamed')
 })
 
-it('shows the working directory for a named row that has no progress file', () => {
-  render(boardWith([aRow({ name: 'perf', cwd: '/Users/x/Code/repo-worktrees/perf' })]))
+it('keeps the directory as text on an unnamed row, which has nothing else to go by', () => {
+  render(boardWith([aRow({ cwd: '/Users/x/Code/repo-worktrees/perf' })]))
 
+  // The drawer is 16 rows all called "unnamed", so this line is what tells one
+  // from another. It is the one place a second line still earns its space.
   expect(rowNode().querySelector('.cwd .label').textContent).toBe('repo-worktrees/perf')
+  expect(rowNode().querySelector('.pin')).toBe(null)
 })
 
-it('shows the progress file even when its slug only repeats the name', () => {
+it('gives a named row a pin instead of a second line', () => {
   render(
     boardWith([
       aRow({
@@ -137,13 +140,12 @@ it('shows the progress file even when its slug only repeats the name', () => {
     ]),
   )
 
-  // Redundant to read, but it is the only thing that says a file is linked and
-  // the only way to open one, and kebab-case names make the repeat common.
-  expect(rowNode().querySelector('.progress .label').textContent).toBe('code-gardener')
-  expect(rowNode().querySelector('.cwd')).toBe(null)
+  // 8 of 15 rows on the real board repeated the name directly above them.
+  expect(rowNode().querySelector('.sub')).toBe(null)
+  expect(rowNode().querySelector('.pin .icon').textContent).toBe('≡')
 })
 
-it('prefers the progress slug over the directory when it says something new', () => {
+it('names the project in the popover, and the file path under it', () => {
   render(
     boardWith([
       aRow({
@@ -155,8 +157,76 @@ it('prefers the progress slug over the directory when it says something new', ()
     ]),
   )
 
-  expect(rowNode().querySelector('.progress .label').textContent).toBe('marketplace-perf')
-  expect(rowNode().querySelector('.cwd')).toBe(null)
+  // The project is what the row stopped saying anywhere. The slug is not
+  // repeated: it is the row's own name on most sessions, and the path spells
+  // it out for the rest.
+  expect(rowNode().querySelector('.popover-title').textContent).toBe('repo-worktrees/perf')
+  expect(rowNode().querySelector('.popover-path').textContent).toBe(
+    '/repo/marketplace-perf.progress.local.md',
+  )
+})
+
+it('leaves the project line out when the session never recorded a directory', () => {
+  render(
+    boardWith([
+      aRow({
+        name: 'perf',
+        progressPath: '/repo/marketplace-perf.progress.local.md',
+        progressLabel: 'marketplace-perf',
+      }),
+    ]),
+  )
+
+  expect(rowNode().querySelector('.popover-title')).toBe(null)
+  expect(rowNode().querySelector('.popover-path').textContent).toBe(
+    '/repo/marketplace-perf.progress.local.md',
+  )
+})
+
+it('falls back to a directory pin on a named row with no progress file', () => {
+  render(boardWith([aRow({ name: 'perf', cwd: '/Users/x/Code/repo-worktrees/perf' })]))
+
+  // A pin, not a line: the row stays one line whatever it has to point at.
+  expect(rowNode().querySelector('.sub')).toBe(null)
+  expect(rowNode().querySelector('.pin .icon').textContent).toBe('⌂')
+  expect(rowNode().querySelector('.popover-title').textContent).toBe('repo-worktrees/perf')
+  expect(rowNode().querySelector('.popover-path').textContent).toBe(
+    '/Users/x/Code/repo-worktrees/perf',
+  )
+})
+
+it('gives the directory pin no tab stop, since there is nothing to open', () => {
+  render(boardWith([aRow({ name: 'perf', cwd: '/Users/x/Code/repo-worktrees/perf' })]))
+
+  expect(rowNode().querySelector('.pin').getAttribute('role')).toBe(null)
+})
+
+it('carries no pin at all when a named row has nothing to point at', () => {
+  render(boardWith([aRow({ name: 'perf' })]))
+
+  expect(rowNode().querySelector('.pin')).toBe(null)
+})
+
+it('opens the progress file from the pin, as the second line used to', async () => {
+  const fetchMock = vi.fn(async () => ({ ok: true }))
+  vi.stubGlobal('fetch', fetchMock)
+  render(
+    boardWith([
+      aRow({
+        name: 'perf',
+        progressPath: '/repo/perf-work.progress.local.md',
+        progressLabel: 'perf-work',
+      }),
+    ]),
+  )
+
+  rowNode().querySelector('.pin').click()
+  await settle()
+
+  expect(fetchMock).toHaveBeenCalledWith(
+    '/api/sessions/abc/open-progress',
+    expect.objectContaining({ method: 'POST' }),
+  )
 })
 
 it('strikes through a progress file that is no longer on disk', () => {
@@ -171,7 +241,8 @@ it('strikes through a progress file that is no longer on disk', () => {
     ]),
   )
 
-  expect(rowNode().querySelector('.progress').classList.contains('missing')).toBe(true)
+  expect(rowNode().querySelector('.pin').classList.contains('missing')).toBe(true)
+  expect(rowNode().querySelector('.popover-path').textContent).toContain('no longer on disk')
 })
 
 it('corrects a typed name to kebab-case rather than refusing it', () => {

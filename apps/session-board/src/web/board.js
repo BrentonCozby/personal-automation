@@ -243,6 +243,61 @@ function editIn({ host, current, placeholder, onCommit }) {
 // which is about how long it takes to notice something has appeared.
 const MESSAGE_MS = 4000
 
+/**
+ * The mark in a row's gutter saying what the row points at.
+ *
+ * `≡` for a linked progress file, which a click opens; `⌂` for a row that only
+ * knows its directory. Both carry the detail in a popover the CSS opens on
+ * hover and on focus, so the row itself stays one line.
+ *
+ * The gutter is the one part of a row the action bar cannot reach: the bar is
+ * absolutely placed against the right edge and covers whatever sits under it
+ * while the row is hovered, which is exactly when the pin has to be pointable.
+ *
+ * `undefined` when there is nothing to point at, so a row can carry no pin
+ * rather than an empty one.
+ */
+function buildPin(row) {
+  const isProgress = Boolean(row.progressLabel)
+  if (!isProgress && !row.cwd) return undefined
+
+  const pin = el('span', row.isProgressFileMissing ? 'pin missing' : 'pin')
+  // `≡` rather than a document character: U+2398 and the ones like it are
+  // missing from most fonts and come out as an empty box.
+  pin.append(el('span', 'icon', isProgress ? '≡' : '⌂'))
+
+  // The project the session is working in, which the row no longer says
+  // anywhere. The slug is not repeated here: it is the name on the row for most
+  // sessions, and the full path below spells it out for the rest.
+  const popover = el('div', 'popover')
+  if (row.cwd) popover.append(el('div', 'popover-title', formatCwd(row.cwd)))
+
+  const detail = isProgress ? row.progressPath : row.cwd
+  popover.append(
+    el('div', 'popover-path', row.isProgressFileMissing ? `${detail} (no longer on disk)` : detail),
+  )
+  pin.append(popover)
+
+  if (!isProgress) {
+    // Nothing to activate, so it takes no tab stop: 16 drawer rows of a focus
+    // ring that opens a directory nobody can open is worse than the tooltip.
+    pin.title = row.cwd
+
+    return pin
+  }
+
+  pin.title = row.isProgressFileMissing
+    ? `${row.progressPath} (no longer on disk)`
+    : row.progressPath
+  makeActivatable(pin, () => {
+    void api(`/api/sessions/${encodeURIComponent(row.sessionId)}/open-progress`, {
+      method: 'POST',
+    })
+  })
+
+  return pin
+}
+
 function buildRow(row) {
   const node = el('div', `row status-${row.status}`)
   const isAlive = row.status !== 'gone'
@@ -294,16 +349,19 @@ function buildRow(row) {
   top.append(el('span', isStale ? 'age stale' : 'age', formatAge(ageSeconds)))
   node.append(top)
 
-  // Shown even when the slug only repeats the name. It reads as redundant on
-  // those rows, but it is the only thing that says a progress file is linked
-  // at all, and the only way to open one: the line is what you click.
-  const hasProgressLine = Boolean(row.progressLabel)
+  // A named row says what it points at with a pin in the gutter rather than a
+  // line of its own: 8 of 15 second lines repeated the name directly above
+  // them, and the slug is worth a hover rather than a line each. The pin keeps
+  // both jobs that line was doing, since it says a file is linked and opening
+  // one is still a click.
+  //
+  // An unnamed row keeps the directory as text. It is the only thing telling
+  // one from another there: the drawer is 16 rows all called "unnamed".
+  const pin = row.name ? buildPin(row) : undefined
+  if (pin) node.append(pin)
 
-  // The working directory is the fallback, for a row with nothing better to
-  // say where it is. Keyed on the progress line actually rendering rather than
-  // on a progress file existing, or a row can suppress both and show nothing.
   const cwdLabel = row.cwd ? formatCwd(row.cwd) : ''
-  if (cwdLabel && (!row.name || !hasProgressLine)) {
+  if (cwdLabel && !row.name) {
     const cwd = el('div', 'sub cwd')
     cwd.append(el('span', 'icon', '⌂'), el('span', 'label', cwdLabel))
     cwd.title = row.cwd
@@ -322,22 +380,6 @@ function buildRow(row) {
       }),
     )
     node.append(parked)
-  }
-
-  if (hasProgressLine) {
-    const progress = el('div', row.isProgressFileMissing ? 'sub progress missing' : 'sub progress')
-    // `≡` rather than a document character: U+2398 and the ones like it are
-    // missing from most fonts and come out as an empty box.
-    progress.append(el('span', 'icon', '≡'), el('span', 'label', row.progressLabel))
-    progress.title = row.isProgressFileMissing
-      ? `${row.progressPath} (no longer on disk)`
-      : row.progressPath
-    makeActivatable(progress, () => {
-      void api(`/api/sessions/${encodeURIComponent(row.sessionId)}/open-progress`, {
-        method: 'POST',
-      })
-    })
-    node.append(progress)
   }
 
   // Naming an unclaimed session is what claims it, so this is the whole
