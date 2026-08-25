@@ -1,6 +1,10 @@
 import { expect, it } from 'vitest'
 import type { HookEvent } from '../events/types.js'
-import { resolveCurrentSessionId, resolveSuccessors } from './continuity.js'
+import {
+  resolveCurrentSessionId,
+  resolveRelaunchSuccessors,
+  resolveSuccessors,
+} from './continuity.js'
 
 let clock = 0
 
@@ -146,4 +150,100 @@ it('stops instead of spinning if the chain loops back', () => {
   ])
 
   expect(resolveCurrentSessionId({ sessionId: 'a', successors })).toBe('b')
+})
+
+it('follows a relaunched row to the session the board started for it', () => {
+  const successors = resolveRelaunchSuccessors({
+    events: [
+      event({
+        hook_event_name: 'SessionStart',
+        session_id: 'fresh',
+        session_title: 'technical-interview-round',
+        t: 1_787_634_212,
+      }),
+    ],
+    metadata: {
+      old: { name: 'technical-interview-round', relaunchedAt: 1_787_634_209 },
+    },
+  })
+
+  expect(successors.get('old')).toBe('fresh')
+})
+
+it('ignores a session that started before the resume was clicked', () => {
+  const successors = resolveRelaunchSuccessors({
+    events: [
+      event({
+        hook_event_name: 'SessionStart',
+        session_id: 'fresh',
+        session_title: 'soc2',
+        t: 1_787_634_100,
+      }),
+    ],
+    metadata: { old: { name: 'soc2', relaunchedAt: 1_787_634_209 } },
+  })
+
+  expect(successors.size).toBe(0)
+})
+
+it('ignores a session that started long after the resume was clicked', () => {
+  const successors = resolveRelaunchSuccessors({
+    events: [
+      event({
+        hook_event_name: 'SessionStart',
+        session_id: 'fresh',
+        session_title: 'soc2',
+        t: 1_787_634_209 + 3600,
+      }),
+    ],
+    metadata: { old: { name: 'soc2', relaunchedAt: 1_787_634_209 } },
+  })
+
+  expect(successors.size).toBe(0)
+})
+
+it('ignores a session started under a different name', () => {
+  const successors = resolveRelaunchSuccessors({
+    events: [
+      event({
+        hook_event_name: 'SessionStart',
+        session_id: 'fresh',
+        session_title: 'code-gardener',
+        t: 1_787_634_212,
+      }),
+    ],
+    metadata: { old: { name: 'soc2', relaunchedAt: 1_787_634_209 } },
+  })
+
+  expect(successors.size).toBe(0)
+})
+
+it('gives one new session to only one relaunched row', () => {
+  const successors = resolveRelaunchSuccessors({
+    events: [
+      event({
+        hook_event_name: 'SessionStart',
+        session_id: 'fresh',
+        session_title: 'soc2',
+        t: 1_787_634_212,
+      }),
+    ],
+    metadata: {
+      first: { name: 'soc2', relaunchedAt: 1_787_634_209 },
+      second: { name: 'soc2', relaunchedAt: 1_787_634_210 },
+    },
+  })
+
+  expect([...successors]).toEqual([['first', 'fresh']])
+})
+
+it('ignores a row that has not been relaunched', () => {
+  const successors = resolveRelaunchSuccessors({
+    events: [
+      event({ hook_event_name: 'SessionStart', session_id: 'fresh', session_title: 'soc2' }),
+    ],
+    metadata: { old: { name: 'soc2' } },
+  })
+
+  expect(successors.size).toBe(0)
 })

@@ -147,3 +147,40 @@ it('keeps both rows when a cleared terminal took up work that was already named'
     after: { name: 'bme-orders', group: 'BME' },
   })
 })
+
+it('moves a relaunched row onto the session the board started for it', async () => {
+  const store = await storeWith({
+    old: {
+      name: 'technical-interview-round',
+      group: 'Interviewing',
+      progressPath: '/repo/technical-interview-round.progress.local.md',
+      relaunchedAt: NOW - 10,
+    },
+  })
+
+  const board = await buildSnapshot({
+    events: [
+      {
+        session_id: 'fresh',
+        hook_event_name: 'SessionStart',
+        session_title: 'technical-interview-round',
+        t: NOW - 8,
+      },
+    ],
+    store,
+    config: config(),
+    now: NOW,
+  })
+
+  // One row, not the old one stranded in Interviewing beside a new one in
+  // Ungrouped carrying the same name.
+  expect(namesOnBoard(board)).toEqual(['technical-interview-round'])
+  expect(board.groups.map(group => group.name)).toEqual(['Interviewing'])
+  expect(await store.read()).toEqual({
+    fresh: {
+      name: 'technical-interview-round',
+      group: 'Interviewing',
+      progressPath: '/repo/technical-interview-round.progress.local.md',
+    },
+  })
+})

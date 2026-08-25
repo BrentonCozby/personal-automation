@@ -1,5 +1,6 @@
 import type { HookEvent } from '../events/types.js'
 import type { MetadataBySession, SessionMetadata } from '../metadata/types.js'
+import { toKebabCase } from '../session-name.js'
 import { deriveActivity } from './activity.js'
 import { progressSlug } from './progress-files.js'
 
@@ -140,6 +141,10 @@ function lastDefined<T>({
  * `session_title` only ever holds the name passed to `claude -n`. The title
  * Claude writes from your first prompt reaches the terminal tab and stops
  * there, so there is no risk of claiming a session you never named.
+ *
+ * The name is kebab-cased on the way in, the same as one typed into the board,
+ * because this write goes through `store.patch` and so misses the wire schema
+ * that enforces the rule everywhere else.
  */
 export function findSessionsToAutoClaim({
   events,
@@ -154,7 +159,10 @@ export function findSessionsToAutoClaim({
     if (!event.session_title) continue
     if (metadata[event.session_id]) continue
 
-    claims.set(event.session_id, event.session_title)
+    const name = toKebabCase(event.session_title)
+    if (!name) continue
+
+    claims.set(event.session_id, name)
   }
 
   return [...claims].map(([sessionId, name]) => ({ sessionId, name }))

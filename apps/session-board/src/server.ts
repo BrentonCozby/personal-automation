@@ -24,6 +24,8 @@ const REBUILD_DEBOUNCE_MS = 150
 
 const MAX_BODY_BYTES = 64 * 1024
 
+const MILLISECONDS_PER_SECOND = 1000
+
 function sendJson({
   res,
   status,
@@ -187,6 +189,14 @@ export function createBoardServer({ config }: { config: Config }): BoardServer {
           cwd: body.data.cwd,
           commandTemplate: config.progressCommand,
           promptTemplate: config.progressPrompt,
+        })
+
+        // The session about to start is a new id that shares nothing with this
+        // one, so this is the only record that the two are the same work. The
+        // next snapshot reads it and moves the row onto the new session.
+        await store.patch({
+          sessionId,
+          changes: { relaunchedAt: Math.floor(Date.now() / MILLISECONDS_PER_SECOND) },
         })
       } else {
         await openSessionTab({

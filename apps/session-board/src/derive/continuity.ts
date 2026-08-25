@@ -1,4 +1,5 @@
 import type { HookEvent } from '../events/types.js'
+import type { MetadataBySession } from '../metadata/types.js'
 
 // The reasons Claude Code hands one session's process to another. `/clear`
 // mints a fresh session id in the same process, and resuming does the same when
@@ -65,6 +66,57 @@ export function resolveSuccessors(events: HookEvent[]): Map<string, string> {
     }
 
     startedOnPid.set(pid, { sessionId: event.session_id, t: event.t })
+  }
+
+  return successor
+}
+
+/**
+ * How long after a resume click a new session may start and still be counted as
+ * the same work.
+ *
+ * The tab opens in about a second. The rest of the window covers a slow login
+ * shell, and it is short enough that a `claude -n <the same name>` you start by
+ * hand later in the day is not swallowed into the row.
+ */
+const RELAUNCH_WINDOW_SECONDS = 300
+
+/**
+ * Map a relaunched row to the session the board just started for it.
+ *
+ * Resuming a row that has a progress file opens a brand new session rather than
+ * the old conversation, so the two ids share no process and `resolveSuccessors`
+ * cannot see the link. Without this the new session claims itself from the name
+ * it was given and lands in Ungrouped, while the row you clicked stays behind in
+ * its group: the same name twice, once live and once dead.
+ */
+export function resolveRelaunchSuccessors({
+  events,
+  metadata,
+}: {
+  events: HookEvent[]
+  metadata: MetadataBySession
+}): Map<string, string> {
+  const successor = new Map<string, string>()
+  const taken = new Set<string>()
+
+  for (const [sessionId, entry] of Object.entries(metadata)) {
+    const { relaunchedAt, name } = entry
+    if (!relaunchedAt || !name) continue
+
+    const started = events.find(
+      event =>
+        event.hook_event_name === 'SessionStart' &&
+        event.session_title === name &&
+        event.session_id !== sessionId &&
+        !taken.has(event.session_id) &&
+        event.t >= relaunchedAt &&
+        event.t <= relaunchedAt + RELAUNCH_WINDOW_SECONDS,
+    )
+    if (!started) continue
+
+    successor.set(sessionId, started.session_id)
+    taken.add(started.session_id)
   }
 
   return successor

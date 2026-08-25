@@ -372,3 +372,21 @@ it('claims nothing for a session that was never named', () => {
 
   expect(claims).toEqual([])
 })
+
+it('kebab-cases a title so an auto-claimed name can still match a progress file', () => {
+  const claims = findSessionsToAutoClaim({
+    events: [event({ sessionId: 'a', name: 'SessionStart', session_title: 'Bug Week' })],
+    metadata: {},
+  })
+
+  expect(claims).toEqual([{ sessionId: 'a', name: 'bug-week' }])
+})
+
+it('claims nothing for a title with no kebab-case name in it', () => {
+  const claims = findSessionsToAutoClaim({
+    events: [event({ sessionId: 'a', name: 'SessionStart', session_title: '!!!' })],
+    metadata: {},
+  })
+
+  expect(claims).toEqual([])
+})

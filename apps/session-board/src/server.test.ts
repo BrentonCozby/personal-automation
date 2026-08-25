@@ -4,9 +4,18 @@ import { createConnection, createServer as createNetServer, type Socket } from '
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { promisify } from 'node:util'
-import { afterEach, expect, it } from 'vitest'
+import { afterEach, expect, it, vi } from 'vitest'
 import type { Config } from './config.js'
+import { openSessionFromProgress } from './launch.js'
 import { createBoardServer } from './server.js'
+
+// Launching is the one thing a request does outside this process: it opens a
+// terminal tab. Everything up to that point runs for real.
+vi.mock('./launch.js', () => ({
+  openFile: vi.fn(),
+  openSessionFromProgress: vi.fn(),
+  openSessionTab: vi.fn(),
+}))
 
 const execFileAsync = promisify(execFile)
 
@@ -56,8 +65,6 @@ async function startBoard({
     port,
     staleDays: 4,
     freshMinutes: 15,
-    // Reaching either of these would spawn a terminal tab or an editor. No test
-    // here lets a request get that far: the ones that would are refused first.
     launchCommand: 'claude --resume {{id}}',
     openFileCommand: 'code -- {{path}}',
     progressCommand: 'claude -n {{name}} {{prompt}}',
@@ -327,4 +334,28 @@ it('still serves the board page, which sends no origin of its own', async () => 
 
   expect(res.status).toBe(200)
   expect(res.headers.get('content-type')).toContain('text/html')
+})
+
+it('marks a row relaunched so the fresh session takes the row over', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'session-board-progress-'))
+  const progressPath = join(dir, 'soc2.progress.local.md')
+  await writeFile(progressPath, '# soc2\n')
+
+  const board = await startBoard({ metadata: { abc: { name: 'soc2', progressPath } } })
+
+  const res = await fetch(`${board.origin}/api/sessions/abc/open`, {
+    method: 'POST',
+    headers: { origin: board.origin, 'content-type': 'application/json' },
+    body: JSON.stringify({ cwd: dir }),
+  })
+
+  expect(res.status).toBe(200)
+  expect(openSessionFromProgress).toHaveBeenCalledOnce()
+
+  // Without this the new session claims itself from the name it was given and
+  // the row that was clicked stays behind, showing the same name twice.
+  const stored = (await readMetadata(board.metadataPath)) as {
+    abc: { relaunchedAt?: number }
+  }
+  expect(stored.abc.relaunchedAt).toBeGreaterThan(0)
 })

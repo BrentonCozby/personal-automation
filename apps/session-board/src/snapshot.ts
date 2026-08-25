@@ -1,7 +1,11 @@
 import { access } from 'node:fs/promises'
 import type { Config } from './config.js'
 import { type Board, buildBoard, findSessionsToAutoClaim } from './derive/board.js'
-import { resolveCurrentSessionId, resolveSuccessors } from './derive/continuity.js'
+import {
+  resolveCurrentSessionId,
+  resolveRelaunchSuccessors,
+  resolveSuccessors,
+} from './derive/continuity.js'
 import { resolveLiveSessions } from './derive/liveness.js'
 import { listProcesses } from './derive/processes.js'
 import { findProgressFiles, matchProgressFile, resolveRepoRoot } from './derive/progress-files.js'
@@ -173,9 +177,14 @@ async function migrateSupersededSessions({
     const current = resolveCurrentSessionId({ sessionId, successors })
     if (current === sessionId) continue
 
+    // The mark that paired these two belongs to the row that was clicked, not
+    // to the session it started. Carrying it forward would let the new row
+    // adopt a third session started under the same name minutes later.
+    const { relaunchedAt: _relaunched, ...carried } = entry
+
     // The successor may have already claimed itself from the name it inherited,
     // so anything it holds wins and the older row only fills the gaps.
-    await store.patch({ sessionId: current, changes: { ...entry, ...metadata[current] } })
+    await store.patch({ sessionId: current, changes: { ...carried, ...metadata[current] } })
     await store.remove(sessionId)
     didMigrate = true
   }
@@ -195,17 +204,26 @@ async function migrateSupersededSessions({
  * Compares against the end of the chain, not the next link. Clearing twice with
  * a throwaway in the middle still lands the first session's row on the last
  * one, so a pairwise check would miss exactly the case it exists to catch.
+ *
+ * A row you relaunched yourself is never kept apart. The ambiguity this guards
+ * against belongs to `/clear`, which cannot say whether the new session carries
+ * the same work; clicking resume says so outright, and both ends carry the same
+ * name by design because the board passes it to the new session.
  */
 function findRowsToKeepApart({
   successors,
   metadata,
+  relaunched,
 }: {
   successors: Map<string, string>
   metadata: MetadataBySession
+  relaunched: Set<string>
 }): Set<string> {
   const kept = new Set<string>()
 
   for (const sessionId of Object.keys(metadata)) {
+    if (relaunched.has(sessionId)) continue
+
     const current = resolveCurrentSessionId({ sessionId, successors })
     if (current === sessionId) continue
 
@@ -228,8 +246,13 @@ export async function buildSnapshot({
 }): Promise<Board> {
   let metadata = await store.read()
 
-  const successors = resolveSuccessors(events)
-  const keptApart = findRowsToKeepApart({ successors, metadata })
+  const relaunches = resolveRelaunchSuccessors({ events, metadata })
+  const successors = new Map([...resolveSuccessors(events), ...relaunches])
+  const keptApart = findRowsToKeepApart({
+    successors,
+    metadata,
+    relaunched: new Set(relaunches.keys()),
+  })
   const isSuperseded = (sessionId: string): boolean =>
     !keptApart.has(sessionId) && resolveCurrentSessionId({ sessionId, successors }) !== sessionId
 
