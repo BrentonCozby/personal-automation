@@ -1,8 +1,8 @@
 import type { HookEvent } from '../events/types.js'
 import type { MetadataBySession, SessionMetadata } from '../metadata/types.js'
-import { toKebabCase } from '../session-name.js'
 import { deriveActivity } from './activity.js'
 import { progressSlug } from './progress-files.js'
+import { findEventTitles } from './session-names.js'
 
 /**
  * What colors a row.
@@ -17,6 +17,15 @@ export const UNGROUPED_LABEL = 'Ungrouped'
 export interface BoardRow {
   sessionId: string
   name?: string | undefined
+  /**
+   * A name read out of the session itself, for a row you never named: the title
+   * Claude Code recorded, or the first thing you asked it.
+   *
+   * Kept apart from `name` rather than filling it in, because naming a session
+   * is what claims it. This is only ever drawn, never stored, so a row can say
+   * what it was for while staying off the board.
+   */
+  derivedName?: string | undefined
   group?: string | undefined
   parkedReason?: string | undefined
   progressPath?: string | undefined
@@ -85,6 +94,7 @@ function groupEventsBySession(events: HookEvent[]): SessionEvents[] {
 function toBoardRow({
   sessionId,
   entry,
+  derivedName,
   missingProgressPaths,
   transcriptTimes,
   status,
@@ -93,6 +103,7 @@ function toBoardRow({
 }: {
   sessionId: string
   entry: SessionMetadata | undefined
+  derivedName: string | undefined
   missingProgressPaths: Set<string>
   transcriptTimes: Map<string, number>
   status: RowStatus
@@ -104,6 +115,7 @@ function toBoardRow({
   return {
     sessionId,
     name: entry?.name,
+    derivedName,
     group: entry?.group,
     parkedReason: entry?.parkedReason,
     progressPath,
@@ -152,19 +164,9 @@ export function findSessionsToAutoClaim({
   events: HookEvent[]
   metadata: MetadataBySession
 }): { sessionId: string; name: string }[] {
-  const claims = new Map<string, string>()
-
-  for (const event of events) {
-    if (!event.session_title) continue
-    if (metadata[event.session_id]) continue
-
-    const name = toKebabCase(event.session_title)
-    if (!name) continue
-
-    claims.set(event.session_id, name)
-  }
-
-  return [...claims].map(([sessionId, name]) => ({ sessionId, name }))
+  return [...findEventTitles({ events })]
+    .filter(([sessionId]) => !metadata[sessionId])
+    .map(([sessionId, name]) => ({ sessionId, name }))
 }
 
 export function buildBoard({
@@ -175,6 +177,7 @@ export function buildBoard({
   missingProgressPaths,
   transcriptTimes,
   supersededSessionIds = new Set(),
+  derivedNames = new Map(),
   now,
   freshMinutes,
   staleDays,
@@ -197,6 +200,8 @@ export function buildBoard({
    * of their own, so they belong on neither the board nor the drawer.
    */
   supersededSessionIds?: Set<string>
+  /** Names read out of the sessions themselves, for the rows nobody named. */
+  derivedNames?: Map<string, string>
   /** Unix seconds. */
   now: number
   freshMinutes: number
@@ -240,6 +245,7 @@ export function buildBoard({
     const row = toBoardRow({
       sessionId,
       entry,
+      derivedName: derivedNames.get(sessionId),
       missingProgressPaths,
       transcriptTimes,
       status,
@@ -254,7 +260,20 @@ export function buildBoard({
       continue
     }
 
-    if (ageSeconds <= unclaimedWindowDays * SECONDS_PER_DAY) unclaimed.push(row)
+    if (ageSeconds > unclaimedWindowDays * SECONDS_PER_DAY) continue
+
+    // A session nobody ever asked anything, and that Claude Code never titled
+    // either, has nothing to say for itself: `/clear` writes one every time,
+    // and every abandoned `claude` in a terminal leaves another. Twelve of the
+    // twenty rows in the first real drawer were these, each drawn as "unnamed"
+    // beside a path, and resuming one opens an empty conversation.
+    //
+    // The name decides it; the prompt count only rescues what the name misses,
+    // so a session whose transcript cannot be read still keeps its row.
+    const hasPrompt = sessionEvents.some(event => event.hook_event_name === 'UserPromptSubmit')
+    if (!row.name && !row.derivedName && !hasPrompt) continue
+
+    unclaimed.push(row)
   }
 
   // A session that went quiet before the hook started writing has no events to
@@ -272,6 +291,7 @@ export function buildBoard({
       row: toBoardRow({
         sessionId,
         entry,
+        derivedName: derivedNames.get(sessionId),
         missingProgressPaths,
         transcriptTimes,
         status: 'gone',

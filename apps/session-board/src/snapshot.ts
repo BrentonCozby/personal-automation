@@ -12,6 +12,12 @@ import { resolveLiveSessions } from './derive/liveness.js'
 import { listProcesses } from './derive/processes.js'
 import { findProgressFiles, matchProgressFile, resolveRepoRoot } from './derive/progress-files.js'
 import { cwdBySession } from './derive/repos.js'
+import {
+  createSessionNamer,
+  findEventTitles,
+  findTranscriptPaths,
+  type SessionNamer,
+} from './derive/session-names.js'
 import { findTranscripts } from './derive/transcripts.js'
 import type { HookEvent } from './events/types.js'
 import type { GroupStore } from './metadata/group-store.js'
@@ -311,12 +317,19 @@ export async function buildSnapshot({
   store,
   groups,
   config,
+  namer = createSessionNamer(),
   now = Math.floor(Date.now() / MILLISECONDS_PER_SECOND),
 }: {
   events: HookEvent[]
   store: MetadataStore
   groups: GroupStore
   config: Config
+  /**
+   * Holds the transcript it read for each session, so pass the same one every
+   * time. A fresh namer per snapshot re-reads one file per unnamed row, every
+   * thirty seconds, for an answer that cannot change.
+   */
+  namer?: SessionNamer
   now?: number
 }): Promise<Board> {
   let metadata = await store.read()
@@ -364,17 +377,32 @@ export async function buildSnapshot({
       .filter(name => name !== undefined),
   )
 
-  const [processes, missingProgressPaths, transcriptTimes, knownGroups] = await Promise.all([
-    listProcesses(),
-    findMissingProgressPaths(metadata),
-    findTranscripts({ roots: config.transcriptRoots }),
-    groups.read(),
-  ])
+  // Only for the rows you never named: a name you typed always wins, so
+  // reading a transcript to second-guess it would be work thrown away.
+  const transcriptPaths = findTranscriptPaths({ events })
+  const titles = findEventTitles({ events })
+  const unnamed = [...new Set(events.map(event => event.session_id))]
+    .filter(sessionId => !metadata[sessionId]?.name)
+    .map(sessionId => ({
+      sessionId,
+      transcriptPaths: transcriptPaths.get(sessionId) ?? [],
+      title: titles.get(sessionId),
+    }))
+
+  const [processes, missingProgressPaths, transcriptTimes, knownGroups, derivedNames] =
+    await Promise.all([
+      listProcesses(),
+      findMissingProgressPaths(metadata),
+      findTranscripts({ roots: config.transcriptRoots }),
+      groups.read(),
+      namer.derive({ sessions: unnamed }),
+    ])
 
   return buildBoard({
     events,
     metadata,
     knownGroups,
+    derivedNames,
     supersededSessionIds: new Set([...successors.keys()].filter(id => !keptApart.has(id))),
     liveSessionIds: resolveLiveSessions({ events, processes }),
     missingProgressPaths,

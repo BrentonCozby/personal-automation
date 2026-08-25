@@ -101,3 +101,24 @@ it('refuses a file whose shape does not match', async () => {
 
   await expect(store.read()).rejects.toThrow()
 })
+
+it('keeps the name when a row is taken off the board, and drops the rest', async () => {
+  const { store } = await storeInTempDir()
+  await store.patch({
+    sessionId: 'abc',
+    changes: { name: 'impact', group: 'home', parkedReason: 'review', progressPath: '/a.md' },
+  })
+
+  await store.dismiss('abc')
+
+  expect(await store.read()).toEqual({ abc: { name: 'impact', isDismissed: true } })
+})
+
+it('takes an unnamed row off the board with the marker alone', async () => {
+  const { store } = await storeInTempDir()
+  await store.patch({ sessionId: 'abc', changes: { group: 'home' } })
+
+  await store.dismiss('abc')
+
+  expect(await store.read()).toEqual({ abc: { isDismissed: true } })
+})

@@ -10,9 +10,11 @@ export const hookEventSchema = z.object({
   cwd: z.string().optional(),
   source: z.string().optional(),
   reason: z.string().optional(),
-  // Only ever the name passed to `claude -n`. The title Claude generates from
-  // your first prompt reaches the terminal tab but never the hook payload, so
-  // a value here always means you named the session yourself.
+  // The name passed to `claude -n`, or the title Claude Code wrote for the
+  // session itself. Both arrive here, so a value is what the session calls
+  // itself rather than proof that you named it: 54 of the 55 titles in the real
+  // log are kebab-case `-n` names, and the one that is not ("edit customer
+  // hidden error") is Claude Code's own.
   session_title: z.string().optional(),
   notification_type: z.string().optional(),
   transcript_path: z.string().optional(),

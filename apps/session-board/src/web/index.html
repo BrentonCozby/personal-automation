@@ -380,6 +380,12 @@
          readable even while the row is the quietest thing on the board. */
       .status-gone    .name { color: var(--muted); }
 
+      /* A name read out of the session rather than typed by anyone. Italic like
+         `unnamed`, for the same reason, but in the row's own color: amber is
+         the drawer asking to be named, and this row already says what it is.
+         Last, so it outranks the weight the three live statuses set. */
+      .name.derived { font-style: italic; font-weight: 400; }
+
       .age {
         font-size: 11px;
         color: var(--muted);

@@ -151,6 +151,72 @@ it('offers to name a session that has none', () => {
   expect(rowNode().querySelector('.name').textContent).toBe('unnamed')
 })
 
+it('draws the name read out of the session in place of "unnamed"', () => {
+  render(boardWith([aRow({ derivedName: 'best-sandwich' })]))
+
+  const name = rowNode().querySelector('.name')
+
+  expect(name.textContent).toBe('best-sandwich')
+  expect(name.classList.contains('derived')).toBe(true)
+  expect(name.classList.contains('unnamed')).toBe(false)
+})
+
+it('prefers a name you typed over one read out of the session', () => {
+  render(boardWith([aRow({ name: 'review-perf', derivedName: 'best-sandwich' })]))
+
+  const name = rowNode().querySelector('.name')
+
+  expect(name.textContent).toBe('review-perf')
+  expect(name.classList.contains('derived')).toBe(false)
+})
+
+// The name is a guess and the path is not, so it is still the thing that tells
+// two rows in the same repository apart.
+it('keeps the directory line under a row named from the session itself', () => {
+  render(boardWith([aRow({ derivedName: 'best-sandwich', cwd: '/Users/x/Code/repo' })]))
+
+  expect(rowNode().querySelector('.cwd .label').textContent).toBe('Code/repo')
+})
+
+it('claims a row on the name read out of it, with nothing typed', () => {
+  const fetchMock = vi.fn(async () => ({ ok: true, json: async () => ({}) }))
+  vi.stubGlobal('fetch', fetchMock)
+  render(boardWith([aRow({ derivedName: 'best-sandwich' })]))
+
+  const name = rowNode().querySelector('.name')
+  name.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }))
+  name.querySelector('input.edit').dispatchEvent(new Event('blur'))
+
+  const patch = fetchMock.mock.calls.find(([, options]) => options?.method === 'PATCH')
+
+  expect(JSON.parse(patch?.[1].body)).toEqual({ name: 'best-sandwich' })
+})
+
+it('opens the field on the name read out of the session, ready to be replaced', () => {
+  render(boardWith([aRow({ derivedName: 'best-sandwich' })]))
+
+  const name = rowNode().querySelector('.name')
+  name.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }))
+
+  expect(name.querySelector('input.edit').value).toBe('best-sandwich')
+})
+
+// Enter on an unchanged field commits it, so Escape has to stay the way out or
+// there would be none.
+it('claims nothing when the field opened on a suggestion is escaped', () => {
+  const fetchMock = vi.fn(async () => ({ ok: true, json: async () => ({}) }))
+  vi.stubGlobal('fetch', fetchMock)
+  render(boardWith([aRow({ derivedName: 'best-sandwich' })]))
+
+  const name = rowNode().querySelector('.name')
+  name.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }))
+  name
+    .querySelector('input.edit')
+    .dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
+
+  expect(fetchMock.mock.calls.find(([, options]) => options?.method === 'PATCH')).toBe(undefined)
+})
+
 it('keeps the directory as text on an unnamed row, which has nothing else to go by', () => {
   render(boardWith([aRow({ cwd: '/Users/x/Code/repo-worktrees/perf' })]))
 

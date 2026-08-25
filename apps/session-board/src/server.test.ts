@@ -223,8 +223,12 @@ it('rebuilds on a timer, with no file it watches having changed', async () => {
   vi.setSystemTime(startedAt * 1000)
 
   const board = await startBoard({
-    // Unclaimed, with a minute left of the window it is drawn in.
-    events: [{ session_id: 'abc', hook_event_name: 'SessionStart', t: startedAt - sevenDays + 60 }],
+    // Unclaimed, with a minute left of the window it is drawn in. The prompt is
+    // what keeps it in the drawer at all: a session nobody asked anything and
+    // nothing named is dropped whatever its age.
+    events: [
+      { session_id: 'abc', hook_event_name: 'UserPromptSubmit', t: startedAt - sevenDays + 60 },
+    ],
   })
   const stream = await openFrames(board.port)
   expect(stream.frames[0]?.unclaimed).toHaveLength(1)

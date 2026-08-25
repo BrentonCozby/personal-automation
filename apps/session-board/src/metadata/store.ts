@@ -5,7 +5,14 @@ import type { MetadataBySession, MetadataPatch, SessionMetadata } from './types.
 export interface MetadataStore {
   read(): Promise<MetadataBySession>
   patch(input: { sessionId: string; changes: MetadataPatch }): Promise<SessionMetadata>
-  /** Drop a row's annotations but leave a marker saying it was taken off the board. */
+  /**
+   * Take a row off the board, keeping the name and dropping the rest.
+   *
+   * The name is what says which session a drawer row is, so wiping it left
+   * sixteen rows reading "unnamed" beside a path. Everything else is where the
+   * row sat and what you were waiting on, which is exactly what taking it off
+   * the board says you are done with.
+   */
   dismiss(sessionId: string): Promise<void>
   remove(sessionId: string): Promise<void>
 }
@@ -45,8 +52,9 @@ export function createMetadataStore({ path }: { path: string }): MetadataStore {
   function dismiss(sessionId: string): Promise<void> {
     return serialize(async () => {
       const all = await read()
+      const { name } = all[sessionId] ?? {}
 
-      await write({ ...all, [sessionId]: { isDismissed: true } })
+      await write({ ...all, [sessionId]: withoutEmptyFields({ name, isDismissed: true }) })
     })
   }
 

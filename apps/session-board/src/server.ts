@@ -17,6 +17,7 @@ import {
   collectSessionDirectories,
   listRepoRoots,
 } from './derive/repos.js'
+import { createSessionNamer } from './derive/session-names.js'
 import { createEventLogReader } from './events/read.js'
 import type { HookEvent } from './events/types.js'
 import { openFile, openNewSession, openSessionFromProgress, openSessionTab } from './launch.js'
@@ -176,8 +177,12 @@ export function createBoardServer({ config }: { config: Config }): BoardServer {
     return loaded
   }
 
+  // One namer for the life of the server, so a transcript is read once rather
+  // than once per snapshot.
+  const namer = createSessionNamer()
+
   function snapshot(): Promise<Board> {
-    return buildSnapshot({ events, store, groups, config })
+    return buildSnapshot({ events, store, groups, config, namer })
   }
 
   async function pushToStreams(): Promise<void> {

@@ -20,6 +20,19 @@ function event({
   return { session_id: sessionId, hook_event_name: name, t: NOW - agoSeconds, ...rest }
 }
 
+/**
+ * A turn a person typed, which is what keeps a session in the drawer.
+ *
+ * A session with no prompt, no name and no derived name is dropped, so most
+ * drawer fixtures need one of the three and this is the cheapest.
+ */
+function prompted(sessionId: string, agoSeconds = 0): HookEvent[] {
+  return [
+    event({ sessionId, name: 'UserPromptSubmit', agoSeconds }),
+    event({ sessionId, agoSeconds }),
+  ]
+}
+
 function build({
   events,
   metadata = {},
@@ -29,6 +42,7 @@ function build({
   transcripts,
   wroteAt = {},
   knownGroups = [],
+  derivedNames = {},
 }: {
   events: HookEvent[]
   metadata?: MetadataBySession
@@ -40,11 +54,14 @@ function build({
   /** Unix seconds a session's transcript was last written to. Zero unless said. */
   wroteAt?: Record<string, number>
   knownGroups?: string[]
+  /** Names read out of the sessions themselves, keyed by session id. */
+  derivedNames?: Record<string, string>
 }): Board {
   return buildBoard({
     events,
     metadata,
     knownGroups,
+    derivedNames: new Map(Object.entries(derivedNames)),
     liveSessionIds: new Set(live),
     missingProgressPaths: new Set(missing),
     transcriptTimes: new Map(
@@ -62,7 +79,7 @@ function build({
 
 it('shows only claimed sessions on the board', () => {
   const board = build({
-    events: [event({ sessionId: 'claimed' }), event({ sessionId: 'throwaway' })],
+    events: [event({ sessionId: 'claimed' }), ...prompted('throwaway')],
     metadata: { claimed: { name: 'impact' } },
     live: ['claimed', 'throwaway'],
   })
@@ -121,8 +138,8 @@ it('keeps an imported row off the board when its id was superseded', () => {
 
 it('moves a dismissed session to the drawer instead of the board', () => {
   const board = build({
-    events: [event({ sessionId: 'dropped' })],
-    metadata: { dropped: { isDismissed: true } },
+    events: prompted('dropped'),
+    metadata: { dropped: { isDismissed: true, name: 'code-gardener' } },
     live: ['dropped'],
   })
 
@@ -148,6 +165,57 @@ it('keeps a dismissed import off the board entirely, having no events to drawer 
 
   expect(board.groups).toEqual([])
   expect(board.unclaimed).toEqual([])
+})
+
+it('carries a name read out of the session onto its drawer row', () => {
+  const board = build({
+    events: prompted('drawer'),
+    derivedNames: { drawer: 'best-sandwich' },
+  })
+
+  expect(board.unclaimed.map(row => row.derivedName)).toEqual(['best-sandwich'])
+})
+
+// The name is what you type to claim a row, so filling it in would put every
+// drawer row on the board the moment it could be named.
+it('leaves the name itself empty, since naming a session is what claims it', () => {
+  const board = build({
+    events: prompted('drawer'),
+    derivedNames: { drawer: 'best-sandwich' },
+  })
+
+  expect(board.unclaimed.map(row => row.name)).toEqual([undefined])
+  expect(board.claimedCount).toBe(0)
+})
+
+it('gives a dismissed row back the name it was taken off the board with', () => {
+  const board = build({
+    events: [event({ sessionId: 'dropped' })],
+    metadata: { dropped: { isDismissed: true, name: 'code-gardener' } },
+  })
+
+  expect(board.unclaimed.map(row => row.name)).toEqual(['code-gardener'])
+})
+
+it('drops a session nobody ever asked anything and nothing ever named', () => {
+  const board = build({ events: [event({ sessionId: 'stub' })] })
+
+  expect(board.unclaimed).toEqual([])
+})
+
+it('keeps a session that was asked something, even with no name anywhere', () => {
+  const board = build({ events: prompted('asked') })
+
+  expect(board.unclaimed.map(row => row.sessionId)).toEqual(['asked'])
+})
+
+it('keeps a session with a name but no prompt, which is what a cleared tab leaves', () => {
+  const board = build({
+    events: [event({ sessionId: 'cleared' })],
+    derivedNames: { cleared: 'bug-2260-cart-green-thumb' },
+  })
+
+  expect(board.unclaimed.map(row => row.sessionId)).toEqual(['cleared'])
 })
 
 it('drops an unclaimed session once it falls outside the drawer window', () => {
@@ -421,10 +489,7 @@ it('keeps a superseded id off both the board and the drawer', () => {
 
 it('lists the drawer newest first', () => {
   const board = build({
-    events: [
-      event({ sessionId: 'older', agoSeconds: 2 * DAY }),
-      event({ sessionId: 'newer', agoSeconds: 1 * DAY }),
-    ],
+    events: [...prompted('older', 2 * DAY), ...prompted('newer', 1 * DAY)],
   })
 
   expect(board.unclaimed.map(row => row.sessionId)).toEqual(['newer', 'older'])

@@ -231,7 +231,7 @@ function patchSession(id, changes) {
   })
 }
 
-function editIn({ host, current, placeholder, onCommit }) {
+function editIn({ host, current, placeholder, onCommit, commitUnchanged = false }) {
   const previous = [...host.childNodes]
   // A span that says it is a button must not say so while it holds a text
   // field. It goes back to being a button when the edit ends.
@@ -257,8 +257,13 @@ function editIn({ host, current, placeholder, onCommit }) {
     settled = true
     if (role) host.setAttribute('role', role)
     if (draggableRow) draggableRow.draggable = true
-    if (commit && input.value.trim() !== (current || '')) {
-      onCommit(input.value.trim())
+
+    const value = input.value.trim()
+    // `commitUnchanged` is for a field that opened on a suggestion rather than
+    // on what the row already holds, where leaving it alone is an answer. An
+    // empty field never counts as one either way: there is nothing to save.
+    if (commit && (value !== (current || '') || (commitUnchanged && value))) {
+      onCommit(value)
 
       return
     }
@@ -373,12 +378,16 @@ function buildRow(row) {
   dot.title = statusLabel
   top.append(dot)
 
-  const label = row.name || 'unnamed'
+  // A name read out of the session stands in for one you never typed, so a row
+  // off the board says what it was for instead of "unnamed" beside a path.
+  const isNameDerived = !row.name && Boolean(row.derivedName)
+  const label = row.name || row.derivedName || 'unnamed'
   // Struck through for the same reason a progress file that has gone missing
   // is: what the row points at is no longer there. The row itself stays, since
   // what you wrote about the work still reads.
   const nameClasses = ['name']
-  if (!row.name) nameClasses.push('unnamed')
+  if (!row.name && !isNameDerived) nameClasses.push('unnamed')
+  if (isNameDerived) nameClasses.push('derived')
   if (row.isTranscriptMissing) nameClasses.push('missing')
   const name = el('span', nameClasses.join(' '), label)
   name.title = nameTitle(row, label)
@@ -431,8 +440,12 @@ function buildRow(row) {
   makeActivatable(name, () =>
     editIn({
       host: name,
-      current: row.name,
+      current: row.name ?? row.derivedName,
       placeholder: row.isClaimed ? 'session name' : 'name it to claim it',
+      // The field opens on the derived name with the text selected, so Enter
+      // takes the suggestion and typing replaces it. Without this, taking the
+      // suggestion unchanged would look like a field that ignores you.
+      commitUnchanged: isNameDerived,
       onCommit: value => {
         // Corrected rather than refused: `Review Perf` becomes `review-perf`,
         // and the repainted row is the confirmation. The server enforces the
@@ -570,6 +583,12 @@ function nameTitle(row, label) {
     return `${label} · ${row.sessionId} · no transcript on disk, so this session cannot be resumed`
   }
   if (row.name) return `${label} · ${row.sessionId}`
+
+  // Said outright, because this name was never typed by anyone and a row that
+  // did not say so would read as claimed.
+  if (row.derivedName) {
+    return `${label} · ${row.sessionId} · read from the session itself. Click to name it and claim it.`
+  }
 
   return 'Name this session'
 }
