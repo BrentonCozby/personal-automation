@@ -9,6 +9,7 @@ import {
 import { resolveLiveSessions } from './derive/liveness.js'
 import { listProcesses } from './derive/processes.js'
 import { findProgressFiles, matchProgressFile, resolveRepoRoot } from './derive/progress-files.js'
+import { cwdBySession } from './derive/repos.js'
 import { findTranscriptSessionIds } from './derive/transcripts.js'
 import type { HookEvent } from './events/types.js'
 import type { GroupStore } from './metadata/group-store.js'
@@ -19,16 +20,6 @@ import type { MetadataBySession } from './metadata/types.js'
 const UNCLAIMED_WINDOW_DAYS = 7
 
 const MILLISECONDS_PER_SECOND = 1000
-
-function cwdBySession(events: HookEvent[]): Map<string, string> {
-  const cwds = new Map<string, string>()
-
-  for (const event of events) {
-    if (event.cwd) cwds.set(event.session_id, event.cwd)
-  }
-
-  return cwds
-}
 
 /**
  * Where a session was last working.

@@ -6,13 +6,15 @@ import { join } from 'node:path'
 import { promisify } from 'node:util'
 import { afterEach, expect, it, vi } from 'vitest'
 import type { Config } from './config.js'
-import { openSessionFromProgress } from './launch.js'
+import { findProgressFiles } from './derive/progress-files.js'
+import { openNewSession, openSessionFromProgress } from './launch.js'
 import { createBoardServer } from './server.js'
 
 // Launching is the one thing a request does outside this process: it opens a
 // terminal tab. Everything up to that point runs for real.
 vi.mock('./launch.js', () => ({
   openFile: vi.fn(),
+  openNewSession: vi.fn(),
   openSessionFromProgress: vi.fn(),
   openSessionTab: vi.fn(),
 }))
@@ -508,4 +510,236 @@ it('deletes a group and drops its rows into Ungrouped', async () => {
   expect(res.status).toBe(200)
   expect(await readMetadata(board.groupsPath)).toEqual([])
   expect(await readMetadata(board.metadataPath)).toEqual({ abc: { name: 'impact' } })
+})
+
+/** A real repository, since resolveRepoRoot runs git for real. */
+async function gitRepo(): Promise<string> {
+  const root = await realpath(await mkdtemp(join(tmpdir(), 'session-board-repo-')))
+  await execFileAsync('git', ['-C', root, 'init', '-q'])
+
+  return root
+}
+
+function postSession(board: { origin: string }, body: Record<string, unknown>): Promise<Response> {
+  return fetch(`${board.origin}/api/sessions`, {
+    method: 'POST',
+    headers: { origin: board.origin, 'content-type': 'application/json' },
+    body: JSON.stringify(body),
+  })
+}
+
+it('offers the repo roots the directories in the log collapse onto', async () => {
+  const root = await gitRepo()
+  const nested = join(root, 'apps', 'web')
+  await execFileAsync('mkdir', ['-p', nested])
+  const board = await startBoard({
+    events: [
+      { session_id: 'a', hook_event_name: 'SessionStart', t: 1, cwd: root },
+      { session_id: 'b', hook_event_name: 'SessionStart', t: 2, cwd: nested },
+    ],
+  })
+
+  const res = await fetch(`${board.origin}/api/repos`)
+
+  // One root, not two directories: the subdirectory collapsed onto it.
+  expect(await res.json()).toEqual({ repos: [root] })
+})
+
+it('starts a session under a pending row carrying the name and the group', async () => {
+  const root = await gitRepo()
+  const board = await startBoard()
+
+  const res = await postSession(board, {
+    name: 'review-perf',
+    group: 'Bug week',
+    cwd: root,
+    createProgressFile: false,
+  })
+  const answer = (await res.json()) as { sessionId: string }
+
+  expect(res.status).toBe(200)
+  expect(answer.sessionId).toMatch(/^pending-/)
+  expect(await readMetadata(board.metadataPath)).toEqual({
+    [answer.sessionId]: {
+      name: 'review-perf',
+      group: 'Bug week',
+      // No lastActive: a placeholder id has no transcript, so a row that drew
+      // straight away would appear struck through with a dead resume button.
+      relaunchedAt: expect.any(Number),
+    },
+  })
+})
+
+it('writes the progress file at the repo root and links the row to it', async () => {
+  const root = await gitRepo()
+  const board = await startBoard()
+
+  const res = await postSession(board, {
+    name: 'review-perf',
+    cwd: root,
+    createProgressFile: true,
+  })
+  const answer = (await res.json()) as { progressPath: string; isProgressFileNew: boolean }
+
+  expect(answer.progressPath).toBe(join(root, 'review-perf.progress.local.md'))
+  expect(answer.isProgressFileNew).toBe(true)
+  expect(await readFile(answer.progressPath, 'utf8')).toMatch(/^# Review perf\n/)
+})
+
+it('tells a session with a brand new progress file nothing at all', async () => {
+  const root = await gitRepo()
+  const board = await startBoard()
+
+  await postSession(board, { name: 'review-perf', cwd: root, createProgressFile: true })
+
+  // An empty file is nothing to carry on from, and a first prompt would be
+  // answered before the task had been typed.
+  expect(vi.mocked(openNewSession).mock.calls.at(-1)?.[0]).toMatchObject({
+    name: 'review-perf',
+    prompt: undefined,
+    cwd: root,
+  })
+})
+
+it('tells a session to carry on when the progress file already held work', async () => {
+  const root = await gitRepo()
+  const existing = join(root, 'review-perf.progress.local.md')
+  await writeFile(existing, 'half done\n')
+  const board = await startBoard()
+
+  const res = await postSession(board, {
+    name: 'review-perf',
+    cwd: root,
+    createProgressFile: true,
+  })
+
+  expect(await res.json()).toMatchObject({ isProgressFileNew: false })
+  expect(await readFile(existing, 'utf8')).toBe('half done\n')
+  expect(vi.mocked(openNewSession).mock.calls.at(-1)?.[0]).toMatchObject({
+    prompt: `Read ${existing} and carry on.`,
+  })
+})
+
+it('starts no progress file when the box is unchecked', async () => {
+  const root = await gitRepo()
+  const board = await startBoard()
+
+  await postSession(board, { name: 'review-perf', cwd: root, createProgressFile: false })
+
+  expect(await findProgressFiles(root)).toEqual([])
+  expect(vi.mocked(openNewSession).mock.calls.at(-1)?.[0]).toMatchObject({ prompt: undefined })
+})
+
+it('launches at the repo root when a worktree was typed, and says which root', async () => {
+  const root = await gitRepo()
+  await execFileAsync('git', ['-C', root, 'commit', '-q', '--allow-empty', '-m', 'first'])
+  const worktree = join(await realpath(await mkdtemp(join(tmpdir(), 'session-board-wt-'))), 'side')
+  await execFileAsync('git', ['-C', root, 'worktree', 'add', '-q', worktree, '-b', 'side'])
+  const board = await startBoard()
+
+  const res = await postSession(board, {
+    name: 'review-perf',
+    cwd: worktree,
+    createProgressFile: true,
+  })
+  const answer = (await res.json()) as { cwd: string; progressPath: string }
+
+  // Corrected rather than refused, and the answer names the root so the
+  // correction is visible.
+  expect(answer.cwd).toBe(root)
+  expect(answer.progressPath).toBe(join(root, 'review-perf.progress.local.md'))
+  expect(vi.mocked(openNewSession).mock.calls.at(-1)?.[0]).toMatchObject({ cwd: root })
+})
+
+it('refuses a directory that is in no repository', async () => {
+  const plain = await realpath(await mkdtemp(join(tmpdir(), 'session-board-plain-')))
+  const board = await startBoard()
+
+  const res = await postSession(board, {
+    name: 'review-perf',
+    cwd: plain,
+    createProgressFile: true,
+  })
+
+  expect(res.status).toBe(400)
+  expect(await res.json()).toEqual({ error: `${plain} is not in a git repository` })
+  expect(await readMetadata(board.metadataPath)).toBeUndefined()
+})
+
+it('refuses a relative directory', async () => {
+  const board = await startBoard()
+
+  const res = await postSession(board, {
+    name: 'review-perf',
+    cwd: 'Code/marketplace',
+    createProgressFile: true,
+  })
+
+  expect(res.status).toBe(400)
+  expect(await res.json()).toEqual({ error: 'a working directory has to be an absolute path' })
+})
+
+it('refuses a name another row on the board already holds', async () => {
+  const root = await gitRepo()
+  const board = await startBoard({ metadata: { abc: { name: 'review-perf' } } })
+
+  const res = await postSession(board, {
+    name: 'review-perf',
+    cwd: root,
+    createProgressFile: true,
+  })
+
+  // The relaunch pairing keys on the name, so two rows waiting under one would
+  // race for the same SessionStart.
+  expect(res.status).toBe(409)
+  expect(await res.json()).toEqual({ error: 'review-perf is already on the board' })
+  expect(await findProgressFiles(root)).toEqual([])
+})
+
+it('lets a name a superseded row left behind be used again', async () => {
+  const root = await gitRepo()
+  const board = await startBoard({
+    metadata: { abc: { name: 'review-perf', supersededBy: 'def' } },
+  })
+
+  const res = await postSession(board, {
+    name: 'review-perf',
+    cwd: root,
+    createProgressFile: false,
+  })
+
+  expect(res.status).toBe(200)
+})
+
+it('refuses a session name that is not kebab-case', async () => {
+  const root = await gitRepo()
+  const board = await startBoard()
+
+  const res = await postSession(board, {
+    name: 'Review Perf',
+    cwd: root,
+    createProgressFile: true,
+  })
+
+  expect(res.status).toBe(400)
+  expect(await findProgressFiles(root)).toEqual([])
+})
+
+it('stores no group at all for a session started from Ungrouped', async () => {
+  const root = await gitRepo()
+  const board = await startBoard()
+
+  const res = await postSession(board, {
+    name: 'review-perf',
+    group: 'Ungrouped',
+    cwd: root,
+    createProgressFile: false,
+  })
+  const { sessionId } = (await res.json()) as { sessionId: string }
+
+  // Ungrouped is the absence of a group, so storing the word would draw a
+  // second heading of that name beside the one buildBoard invents.
+  expect(await readMetadata(board.metadataPath)).toEqual({
+    [sessionId]: { name: 'review-perf', relaunchedAt: expect.any(Number) },
+  })
 })

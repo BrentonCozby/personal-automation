@@ -112,9 +112,21 @@ function isPointerDown() {
   return pointerDownAt !== undefined && Date.now() - pointerDownAt < POINTER_HOLD_MS
 }
 
+/**
+ * The group whose "start a session" panel is open, or undefined.
+ *
+ * The fifth thing a repaint has to wait for, and it gets a flag of its own
+ * rather than leaning on `edit` having focus the way a single field does: the
+ * panel holds two text fields, a checkbox and two buttons, and focus sits on
+ * none of them while you read it. The board is frozen for as long as the panel
+ * is open, which is what a dialog does, and unlike a release the browser never
+ * reported there is always a visible way out of it.
+ */
+let startingIn
+
 /** Whether a repaint has to wait: it would destroy what the pointer is holding. */
 function isBusy() {
-  return isEditing() || dragged !== undefined || isPointerDown()
+  return isEditing() || dragged !== undefined || isPointerDown() || startingIn !== undefined
 }
 
 // What each dot means, so the status is not carried by hue alone. Five states
@@ -786,7 +798,250 @@ function buildGroupDelete({ label, count }) {
   return button
 }
 
-function buildGroup({ key, label, count, rows, isRenameable = false, isDropTarget = false }) {
+/** The shared `<datalist>` every "start a session" panel suggests from. */
+const REPO_LIST_ID = 'board-repos'
+
+/**
+ * Fill the datalist with the repository roots, most likely first.
+ *
+ * Roots rather than worktrees: a progress file lives at the real root, so a
+ * session tied to one worktree cannot keep its state where the rest of that
+ * repository's sessions keep theirs. The server does the collapsing, and puts
+ * the group's own repositories ahead of the rest.
+ */
+async function loadRepos(group) {
+  const answer = await apiJson(`/api/repos?group=${encodeURIComponent(group)}`)
+  const repos = answer?.repos ?? []
+  const list = document.getElementById(REPO_LIST_ID)
+
+  if (list) {
+    list.replaceChildren(
+      ...repos.map(path => {
+        const option = el('option')
+        option.value = path
+        // The last two segments, which is how a row names its directory, shown
+        // beside the full path the field submits.
+        option.label = formatCwd(path)
+
+        return option
+      }),
+    )
+  }
+
+  return repos
+}
+
+/**
+ * Ask the server to start a session, reading the answer even on success.
+ *
+ * Unlike `api`, which only reports whether a request landed: which repository
+ * root the server settled on and whether the progress file was already there
+ * are both things the panel says back.
+ */
+async function createSession(body) {
+  try {
+    const res = await fetch('/api/sessions', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(body),
+    })
+    const data = await res.json()
+    if (!res.ok) console.error('request failed', '/api/sessions', res.status, data)
+
+    return { ok: res.ok, ...data }
+  } catch (error) {
+    console.error('request never reached the server', '/api/sessions', error)
+
+    return { ok: false }
+  }
+}
+
+/**
+ * The panel the `+` on a group header opens.
+ *
+ * There is no session to create. A row is keyed by a Claude Code session id and
+ * no id exists until a session starts and fires a hook, so this writes a row
+ * under a placeholder, opens a tab, and the next snapshot pairs the two by the
+ * name they share.
+ */
+function openStartPanel({ label, button }) {
+  const header = button.closest('.group-header')
+  if (!header) return
+
+  startingIn = label
+
+  const name = el('input', 'edit')
+  name.placeholder = 'session name'
+  name.setAttribute('aria-label', `Name for the new session in ${label}`)
+
+  const where = el('input', 'edit')
+  where.setAttribute('list', REPO_LIST_ID)
+  where.setAttribute('aria-label', 'Repository the new session starts in')
+  // Filled once the roots arrive. Disabled until then so a path typed into it
+  // cannot be overwritten by the answer landing a moment later.
+  where.placeholder = 'looking for repositories…'
+  where.disabled = true
+
+  const withProgress = el('input', 'edit')
+  withProgress.type = 'checkbox'
+  withProgress.checked = true
+  const check = el('label', 'start-check')
+  check.append(withProgress, ' create a progress file')
+
+  const go = el('button', 'edit start-go', 'start')
+  const cancel = el('button', 'edit', 'cancel')
+  const actions = el('div', 'start-actions')
+  actions.append(check, cancel, go)
+
+  const answer = el('div', 'start-answer')
+  const panel = el('div', 'start-panel')
+  panel.append(name, where, actions, answer)
+
+  const say = text => {
+    answer.textContent = text
+  }
+
+  let settled = false
+  const close = () => {
+    if (settled) return
+    settled = true
+    panel.remove()
+    // `render` clears the flag itself, since it is what destroys the panel.
+    // Repaint now: the snapshots that arrived while this was open were set
+    // aside rather than drawn.
+    render(latest)
+  }
+
+  void loadRepos(label).then(repos => {
+    if (!where.isConnected) return
+
+    where.disabled = false
+    where.placeholder = 'repo root'
+    // Preselected rather than left empty, which is what makes the common case
+    // no typing at all.
+    where.value = repos[0] ?? ''
+  })
+
+  cancel.addEventListener('click', close)
+
+  go.addEventListener('click', () => {
+    // Corrected in the field rather than refused, the way a row's name is. The
+    // matcher links a session to a progress file by an exact match against the
+    // file's slug, so a name in any other shape can never match one.
+    const kebab = toKebabCase(name.value)
+    if (!kebab) {
+      say('a session needs a name')
+      name.focus()
+
+      return
+    }
+    name.value = kebab
+
+    const cwd = where.value.trim()
+    if (!cwd) {
+      say('a session needs a repository to start in')
+      where.focus()
+
+      return
+    }
+
+    go.disabled = true
+    cancel.disabled = true
+    say('starting…')
+
+    void createSession({
+      name: kebab,
+      group: label,
+      cwd,
+      createProgressFile: withProgress.checked,
+    }).then(result => {
+      if (!result.ok) {
+        go.disabled = false
+        cancel.disabled = false
+        say(result.error ?? 'could not start that session')
+
+        return
+      }
+
+      // The row appearing is the confirmation, so nothing is said unless
+      // something happened that the row will not show: the directory was
+      // corrected to a repository root, or a progress file was already there
+      // and has been linked as it stands rather than written.
+      const notes = []
+      if (result.cwd && result.cwd !== cwd) notes.push(`started in ${formatCwd(result.cwd)}`)
+      if (result.progressPath && result.isProgressFileNew === false) {
+        notes.push('linked the progress file already there')
+      }
+      if (notes.length === 0) {
+        close()
+
+        return
+      }
+
+      say(notes.join(', '))
+      setTimeout(close, MESSAGE_MS)
+    })
+  })
+
+  // A click on the page background focuses nothing, so `relatedTarget` is null
+  // and the panel closes, which is what a click outside a dialog should do.
+  panel.addEventListener('focusout', event => {
+    if (panel.contains(event.relatedTarget)) return
+    close()
+  })
+
+  panel.addEventListener('keydown', event => {
+    // The board's own keys must not fire from inside a field.
+    event.stopPropagation()
+    if (event.key === 'Escape') {
+      close()
+
+      return
+    }
+    if (event.key !== 'Enter') return
+
+    // Enter walks to the next thing that still needs an answer rather than
+    // submitting, so Enter on a highlighted suggestion in the directory field
+    // means "take that one" and nothing else.
+    if (event.target === name) {
+      if (where.value) go.focus()
+      else where.focus()
+    }
+    if (event.target === where) go.focus()
+  })
+
+  header.insertAdjacentElement('afterend', panel)
+  name.focus()
+}
+
+/**
+ * The `+` that starts a session in a group.
+ *
+ * `+` on a header rather than in the toolbar, which is where `+ new group`
+ * lives: one makes a group, the other makes a session inside one.
+ */
+function buildGroupStart(label) {
+  const button = el('button', 'group-start', '+')
+  button.title = `Start a session in ${label}`
+
+  button.addEventListener('click', event => {
+    event.stopPropagation()
+    if (startingIn !== undefined) return
+    openStartPanel({ label, button })
+  })
+
+  return button
+}
+
+function buildGroup({
+  key,
+  label,
+  count,
+  rows,
+  isRenameable = false,
+  isDropTarget = false,
+  canStartSession = false,
+}) {
   const wrapper = el('div', collapsed.has(key) ? 'group collapsed' : 'group')
 
   if (isDropTarget) {
@@ -835,6 +1090,8 @@ function buildGroup({ key, label, count, rows, isRenameable = false, isDropTarge
 
   header.append(toggle, title, el('span', 'count', `(${count})`))
 
+  if (canStartSession) header.append(buildGroupStart(label))
+
   if (isRenameable) {
     title.title = 'Rename this group. Clearing the name deletes it.'
     makeActivatable(title, () =>
@@ -871,6 +1128,10 @@ export function render(board) {
   if (!board) return
   latest = board
   hasUndrawnSnapshot = false
+  // A rebuild throws the open "start a session" panel away with everything
+  // else, so the flag holding the repaint off has to go with it or the board
+  // freezes with nothing on screen to explain why.
+  startingIn = undefined
   pruneCollapsed(board)
 
   const boardEl = document.getElementById('board')
@@ -906,6 +1167,10 @@ export function render(board) {
         // there is no name to change.
         isRenameable: group.name !== UNGROUPED_LABEL,
         isDropTarget: true,
+        // Ungrouped included: starting a session that belongs to no group yet
+        // is an ordinary thing to want. The drawer is left out, since it holds
+        // sessions nobody claimed rather than being somewhere to put one.
+        canStartSession: true,
       }),
     )
   }

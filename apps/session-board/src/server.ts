@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto'
 import { type FSWatcher, watch } from 'node:fs'
 import { readFile } from 'node:fs/promises'
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http'
@@ -6,16 +7,25 @@ import { fileURLToPath } from 'node:url'
 import type { z } from 'zod'
 import type { Config } from './config.js'
 import { type Board, UNGROUPED_LABEL } from './derive/board.js'
-import { listProgressCandidates, resolveRepoRoot } from './derive/progress-files.js'
+import {
+  createProgressFile,
+  listProgressCandidates,
+  resolveRepoRoot,
+} from './derive/progress-files.js'
+import {
+  collectGroupDirectories,
+  collectSessionDirectories,
+  listRepoRoots,
+} from './derive/repos.js'
 import { createEventLogReader } from './events/read.js'
 import type { HookEvent } from './events/types.js'
-import { openFile, openSessionFromProgress, openSessionTab } from './launch.js'
+import { openFile, openNewSession, openSessionFromProgress, openSessionTab } from './launch.js'
 import { createGroupStore } from './metadata/group-store.js'
 import { createMetadataStore } from './metadata/store.js'
 import type { MetadataPatch } from './metadata/types.js'
 import { findRequestRejection, isSessionId } from './request-guard.js'
 import { buildSnapshot, fileExists, resolveSessionCwd } from './snapshot.js'
-import { groupBodySchema, openBodySchema, patchBodySchema } from './wire.js'
+import { groupBodySchema, newSessionBodySchema, openBodySchema, patchBodySchema } from './wire.js'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 
@@ -62,6 +72,21 @@ async function readBody(req: IncomingMessage): Promise<unknown> {
 const PATCH_FIELDS = ['name', 'group', 'parkedReason', 'progressPath'] as const
 
 /**
+ * The group to write on a row, which is nothing at all for Ungrouped.
+ *
+ * Ungrouped is the absence of a group, and `buildBoard` invents that heading
+ * for the rows that have none. Storing the word would put a second heading of
+ * the same name beside it, one renameable and one not. Renaming a group to it
+ * is the way in: dragging onto it already clears the field.
+ */
+function toStoredGroup(group: string | undefined): string | undefined {
+  const trimmed = group?.trim()
+  if (!trimmed || trimmed.toLowerCase() === UNGROUPED_LABEL.toLowerCase()) return undefined
+
+  return trimmed
+}
+
+/**
  * Turn a parsed request body into a metadata change.
  *
  * `null` on the wire means clear the field; a key left out means leave it be.
@@ -77,13 +102,7 @@ function toPatch(body: z.infer<typeof patchBodySchema>): MetadataPatch {
     patch[field] = body[field] || undefined
   }
 
-  // Ungrouped is the absence of a group, and `buildBoard` invents that heading
-  // for the rows that have none. Storing the word would put a second heading of
-  // the same name beside it, one renameable and one not. Renaming a group to it
-  // is the way in: dragging onto it already clears the field.
-  if (patch.group?.trim().toLowerCase() === UNGROUPED_LABEL.toLowerCase()) {
-    patch.group = undefined
-  }
+  if ('group' in body) patch.group = toStoredGroup(patch.group)
 
   return patch
 }
@@ -247,6 +266,130 @@ export function createBoardServer({ config }: { config: Config }): BoardServer {
     }
 
     return false
+  }
+
+  /**
+   * The repository roots and the session the `+` on a group header starts.
+   *
+   * Split from `handleApi` because that one matches a path carrying a session
+   * id, and the whole point here is that no id exists yet.
+   */
+  async function handleCreateApi({
+    req,
+    res,
+    url,
+  }: {
+    req: IncomingMessage
+    res: ServerResponse
+    url: URL
+  }): Promise<boolean> {
+    if (url.pathname === '/api/repos' && req.method === 'GET') {
+      const metadata = await store.read()
+
+      // The group's own repositories come first, so the field opens already
+      // holding the one that group is about rather than the one the whole board
+      // uses most: on the real board those differ for four of the six groups.
+      const group = toStoredGroup(url.searchParams.get('group') ?? undefined)
+      const preferred = group
+        ? await listRepoRoots(collectGroupDirectories({ events, metadata, group }))
+        : []
+      const everything = await listRepoRoots(collectSessionDirectories({ events, metadata }))
+
+      sendJson({ res, status: 200, body: { repos: [...new Set([...preferred, ...everything])] } })
+
+      return true
+    }
+
+    if (url.pathname !== '/api/sessions' || req.method !== 'POST') return false
+
+    const body = newSessionBodySchema.safeParse(await readBody(req))
+    if (!body.success) {
+      sendJson({ res, status: 400, body: { error: body.error.issues[0]?.message } })
+
+      return true
+    }
+
+    const { name, cwd, createProgressFile: wantsProgressFile } = body.data
+
+    // The relaunch pairing matches on the name, so two rows waiting under one
+    // name would race for the same SessionStart and one of them would keep a
+    // row nothing ever fills.
+    const metadata = await store.read()
+    const isNameTaken = Object.values(metadata).some(
+      entry => entry.name === name && !entry.supersededBy && !entry.isDismissed,
+    )
+    if (isNameTaken) {
+      sendJson({ res, status: 409, body: { error: `${name} is already on the board` } })
+
+      return true
+    }
+
+    // Worktrees collapse onto the repository they belong to rather than being
+    // refused, the way the name field corrects rather than refuses. The answer
+    // names the root so the correction is visible instead of silent.
+    const root = await resolveRepoRoot(cwd)
+    if (!root) {
+      sendJson({ res, status: 400, body: { error: `${cwd} is not in a git repository` } })
+
+      return true
+    }
+
+    const created = wantsProgressFile
+      ? await createProgressFile({ repoRoot: root, name })
+      : undefined
+
+    // Only a file that already held work gets a first prompt. A brand new one
+    // is empty, so telling the session to read it and carry on would spend its
+    // first turn on nothing and answer before you had typed the task.
+    const prompt =
+      created && !created.isNew
+        ? config.progressPrompt.replaceAll('{{progress}}', created.path)
+        : undefined
+
+    // No session id exists until a session starts and fires a hook, so the row
+    // is written under a placeholder and the two are paired afterwards by the
+    // same `relaunchedAt` machinery a resume uses. `pending-` rather than a
+    // bare uuid so an unpaired row is recognisable in the metadata file.
+    const sessionId = `pending-${randomUUID()}`
+    if (!isSessionId(sessionId)) throw new Error('generated session id failed its own check')
+
+    // Deliberately no `lastActive`: a row that has one draws immediately, and a
+    // placeholder id has no transcript, so it would appear struck through with
+    // a dead resume button. The panel says "starting…" instead.
+    await store.patch({
+      sessionId,
+      changes: {
+        name,
+        group: toStoredGroup(body.data.group),
+        progressPath: created?.path,
+        // Written before the launch. The session about to start fires its first
+        // event moments later, and this mark is the only record that the two are
+        // the same work.
+        relaunchedAt: Math.floor(Date.now() / MILLISECONDS_PER_SECOND),
+      },
+    })
+
+    await openNewSession({
+      sessionId,
+      name,
+      prompt,
+      cwd: root,
+      commandTemplate: config.progressCommand,
+    })
+
+    sendJson({
+      res,
+      status: 200,
+      body: {
+        sessionId,
+        cwd: root,
+        progressPath: created?.path,
+        isProgressFileNew: created?.isNew,
+      },
+    })
+    await pushToStreams()
+
+    return true
   }
 
   async function handleApi({
@@ -448,6 +591,7 @@ export function createBoardServer({ config }: { config: Config }): BoardServer {
         }
 
         if (await handleGroupApi({ req, res, url })) return
+        if (await handleCreateApi({ req, res, url })) return
         if (await handleApi({ req, res, url })) return
 
         sendJson({ res, status: 404, body: { error: 'not found' } })

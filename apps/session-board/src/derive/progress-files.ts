@@ -1,5 +1,5 @@
 import { execFile } from 'node:child_process'
-import { readdir } from 'node:fs/promises'
+import { readdir, writeFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import { promisify } from 'node:util'
 import type { MetadataBySession } from '../metadata/types.js'
@@ -54,6 +54,64 @@ export async function findProgressFiles(repoRoot: string): Promise<string[]> {
     .filter(entry => entry.endsWith(PROGRESS_SUFFIX))
     .sort()
     .map(entry => join(repoRoot, entry))
+}
+
+/**
+ * The three headings a progress file is required to have, and nothing else.
+ *
+ * The sections are left empty because there is nothing true to put in them yet:
+ * the session fills them as the work happens. The title is the name with its
+ * hyphens spelled back out, since the name is kebab-case for the matcher's sake
+ * rather than for a reader's.
+ */
+function progressTemplate(name: string): string {
+  const title = name.replaceAll('-', ' ')
+
+  return `# ${title.charAt(0).toUpperCase()}${title.slice(1)}
+
+## Current state
+
+## Decisions and rationale
+
+## Next
+`
+}
+
+export interface CreatedProgressFile {
+  path: string
+  /**
+   * False when a file of that name was already on disk, which is then linked as
+   * it stands rather than replaced. The caller says so, since a new session
+   * about to read a file it did not expect is worth knowing about.
+   */
+  isNew: boolean
+}
+
+/**
+ * Write the progress file for a session the board is about to start.
+ *
+ * `wx` rather than a check followed by a write: the file is what a session's
+ * whole state lives in, so two board clicks racing must not be able to blank
+ * one that already holds work.
+ */
+export async function createProgressFile({
+  repoRoot,
+  name,
+}: {
+  repoRoot: string
+  name: string
+}): Promise<CreatedProgressFile> {
+  const path = join(repoRoot, `${name}${PROGRESS_SUFFIX}`)
+
+  try {
+    await writeFile(path, progressTemplate(name), { flag: 'wx' })
+
+    return { path, isNew: true }
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'EEXIST') return { path, isNew: false }
+
+    throw error
+  }
 }
 
 /** The filename with `.progress.local.md` removed, which is what a row shows. */

@@ -90,8 +90,10 @@ function settle() {
 }
 
 beforeEach(() => {
+  // The same elements index.html carries. The client looks each one up by id,
+  // so the two have to stay in step.
   document.body.innerHTML =
-    '<div id="toolbar"><span id="count"></span></div><div id="board"></div><div id="drawer"></div>'
+    '<div id="toolbar"><span id="count"></span></div><div id="board"></div><div id="drawer"></div><datalist id="board-repos"></datalist>'
   vi.useFakeTimers({ shouldAdvanceTime: true })
   vi.setSystemTime(NOW_SECONDS * 1000)
 })
@@ -1106,4 +1108,246 @@ it('keeps collapsed groups when a frame arrives carrying none', () => {
 
   expect(isOnlyGroupCollapsed()).toBe(true)
   document.querySelector('.chevron-hit').click()
+})
+
+/** The `+` on the header of the group named `label`. */
+function startButton(label) {
+  const group = [...document.querySelectorAll('.group')].find(
+    node => node.querySelector('.group-label').textContent === label,
+  )
+
+  return group.querySelector('.group-start')
+}
+
+function startPanel() {
+  return document.querySelector('.start-panel')
+}
+
+/**
+ * Open a group's start panel and wait out the repo fetch.
+ *
+ * `element.click()` rather than a real pointer, which is what a test can do:
+ * this proves the handler and the markup, not the layout.
+ */
+async function openStartPanel(label, repos = ['/Users/me/Code/marketplace']) {
+  const fetchMock = vi.fn((_path, options) => {
+    if (options?.method === 'POST')
+      return { ok: true, json: async () => ({ sessionId: 'pending-1' }) }
+
+    return { ok: true, json: async () => ({ repos }) }
+  })
+  vi.stubGlobal('fetch', fetchMock)
+
+  startButton(label).click()
+  await settle()
+
+  return fetchMock
+}
+
+it('offers a + on every group header, including Ungrouped', () => {
+  render(
+    boardWithGroups([
+      { name: 'Bug week', rows: [aRow({ name: 'perf' })] },
+      { name: 'Ungrouped', rows: [aRow({ sessionId: 'def', name: 'loose' })] },
+    ]),
+  )
+
+  expect(startButton('Bug week')).not.toBe(null)
+  expect(startButton('Ungrouped')).not.toBe(null)
+})
+
+// The drawer holds sessions nobody claimed, which is not somewhere to put a new
+// one.
+it('offers no + on the drawer', () => {
+  render(boardWithGroups([], [aRow({ sessionId: 'zzz' })]))
+
+  expect(document.querySelector('#drawer .group-start')).toBe(null)
+})
+
+it('opens a panel asking for a name, a repo and a progress file', async () => {
+  render(boardWith([aRow({ name: 'perf' })]))
+  await openStartPanel('Bug week')
+
+  const panel = startPanel()
+  expect(panel).not.toBe(null)
+  expect(panel.querySelectorAll('input.edit[type="text"], input.edit:not([type])').length).toBe(2)
+  expect(panel.querySelector('input[type="checkbox"]').checked).toBe(true)
+})
+
+it("asks the server for the group's own repositories first", async () => {
+  render(boardWith([aRow({ name: 'perf' })]))
+  const fetchMock = await openStartPanel('Bug week')
+
+  expect(fetchMock).toHaveBeenCalledWith('/api/repos?group=Bug%20week')
+})
+
+it('fills the directory field with the first repository, so nothing is typed', async () => {
+  render(boardWith([aRow({ name: 'perf' })]))
+  await openStartPanel('Bug week', ['/Users/me/Code/marketplace', '/Users/me/Code/other'])
+
+  expect(startPanel().querySelectorAll('input.edit')[1].value).toBe('/Users/me/Code/marketplace')
+})
+
+it('lists every repository as a suggestion the field can be typed against', async () => {
+  render(boardWith([aRow({ name: 'perf' })]))
+  await openStartPanel('Bug week', ['/Users/me/Code/marketplace', '/Users/me/Code/other'])
+
+  const options = [...document.querySelectorAll('#board-repos option')].map(node => node.value)
+  expect(options).toEqual(['/Users/me/Code/marketplace', '/Users/me/Code/other'])
+})
+
+it('holds the repaint off while the panel is open', async () => {
+  render(boardWith([aRow({ name: 'perf' })]))
+  await openStartPanel('Bug week')
+
+  // A snapshot arriving now would rebuild the header the panel hangs off and
+  // take it away mid-edit.
+  render(boardWith([aRow({ name: 'perf' })]))
+  document.dispatchEvent(new Event('pointerdown'))
+  document.dispatchEvent(new Event('pointerup'))
+  await settle()
+
+  expect(startPanel()).toBe(null)
+})
+
+it('posts the name, the group, the repo and the checkbox', async () => {
+  render(boardWith([aRow({ name: 'perf' })]))
+  const fetchMock = await openStartPanel('Bug week')
+
+  const panel = startPanel()
+  const [name, where] = panel.querySelectorAll('input.edit')
+  name.value = 'review-perf'
+  where.value = '/Users/me/Code/marketplace'
+  panel.querySelector('.start-go').click()
+  await settle()
+
+  const post = fetchMock.mock.calls.find(([, options]) => options?.method === 'POST')
+  expect(post[0]).toBe('/api/sessions')
+  expect(JSON.parse(post[1].body)).toEqual({
+    name: 'review-perf',
+    group: 'Bug week',
+    cwd: '/Users/me/Code/marketplace',
+    createProgressFile: true,
+  })
+})
+
+it('corrects the name to kebab-case in the field before sending it', async () => {
+  render(boardWith([aRow({ name: 'perf' })]))
+  const fetchMock = await openStartPanel('Bug week')
+
+  const panel = startPanel()
+  const name = panel.querySelectorAll('input.edit')[0]
+  name.value = 'Review Perf'
+  panel.querySelector('.start-go').click()
+  await settle()
+
+  const post = fetchMock.mock.calls.find(([, options]) => options?.method === 'POST')
+  expect(JSON.parse(post[1].body).name).toBe('review-perf')
+})
+
+it('sends nothing and says so when the name has nothing usable in it', async () => {
+  render(boardWith([aRow({ name: 'perf' })]))
+  const fetchMock = await openStartPanel('Bug week')
+
+  const panel = startPanel()
+  panel.querySelectorAll('input.edit')[0].value = '!!!'
+  panel.querySelector('.start-go').click()
+  await settle()
+
+  expect(fetchMock.mock.calls.some(([, options]) => options?.method === 'POST')).toBe(false)
+  expect(panel.querySelector('.start-answer').textContent).toBe('a session needs a name')
+  expect(startPanel()).not.toBe(null)
+})
+
+it('closes on cancel without sending anything', async () => {
+  render(boardWith([aRow({ name: 'perf' })]))
+  const fetchMock = await openStartPanel('Bug week')
+
+  const cancel = [...startPanel().querySelectorAll('button')].find(
+    button => button.textContent === 'cancel',
+  )
+  cancel.click()
+
+  expect(startPanel()).toBe(null)
+  expect(fetchMock.mock.calls.some(([, options]) => options?.method === 'POST')).toBe(false)
+})
+
+it('closes on Escape', async () => {
+  render(boardWith([aRow({ name: 'perf' })]))
+  await openStartPanel('Bug week')
+
+  startPanel().dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
+
+  expect(startPanel()).toBe(null)
+})
+
+it('closes once the session has started and nothing needs saying', async () => {
+  render(boardWith([aRow({ name: 'perf' })]))
+  await openStartPanel('Bug week')
+
+  const panel = startPanel()
+  panel.querySelectorAll('input.edit')[0].value = 'review-perf'
+  panel.querySelector('.start-go').click()
+  await settle()
+
+  // The row appearing is the confirmation, so there is nothing to read.
+  expect(startPanel()).toBe(null)
+})
+
+it('stays open to say the directory was corrected to a repository root', async () => {
+  render(boardWith([aRow({ name: 'perf' })]))
+  vi.stubGlobal(
+    'fetch',
+    vi.fn((_path, options) => {
+      if (options?.method === 'POST') {
+        return {
+          ok: true,
+          json: async () => ({ sessionId: 'pending-1', cwd: '/Users/me/Code/marketplace' }),
+        }
+      }
+
+      return { ok: true, json: async () => ({ repos: ['/Users/me/Code/marketplace'] }) }
+    }),
+  )
+  startButton('Bug week').click()
+  await settle()
+
+  const panel = startPanel()
+  panel.querySelectorAll('input.edit')[0].value = 'review-perf'
+  panel.querySelectorAll('input.edit')[1].value = '/Users/me/Code/marketplace-worktrees/soc2'
+  panel.querySelector('.start-go').click()
+  await settle()
+
+  expect(panel.querySelector('.start-answer').textContent).toBe('started in Code/marketplace')
+})
+
+it('keeps the panel open with the reason when the server refuses', async () => {
+  render(boardWith([aRow({ name: 'perf' })]))
+  vi.stubGlobal(
+    'fetch',
+    vi.fn((_path, options) => {
+      if (options?.method === 'POST') {
+        return {
+          ok: false,
+          status: 409,
+          json: async () => ({ error: 'review-perf is already on the board' }),
+        }
+      }
+
+      return { ok: true, json: async () => ({ repos: ['/Users/me/Code/marketplace'] }) }
+    }),
+  )
+  startButton('Bug week').click()
+  await settle()
+
+  const panel = startPanel()
+  panel.querySelectorAll('input.edit')[0].value = 'review-perf'
+  panel.querySelector('.start-go').click()
+  await settle()
+
+  // Left open so the name can be fixed rather than typed again from nothing.
+  expect(startPanel()).not.toBe(null)
+  expect(panel.querySelector('.start-answer').textContent).toBe(
+    'review-perf is already on the board',
+  )
 })

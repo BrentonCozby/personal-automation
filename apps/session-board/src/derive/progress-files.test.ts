@@ -1,10 +1,11 @@
 import { execFile } from 'node:child_process'
-import { mkdtemp, realpath, writeFile } from 'node:fs/promises'
+import { mkdtemp, readFile, realpath, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { promisify } from 'node:util'
 import { expect, it } from 'vitest'
 import {
+  createProgressFile,
   findProgressFiles,
   listProgressCandidates,
   matchProgressFile,
@@ -208,4 +209,41 @@ it('links nothing when the repo has no progress files', () => {
   expect(
     matchProgressFile({ candidates: [], sessionName: 'x', unlinkedSessionCount: 1 }),
   ).toBeUndefined()
+})
+
+it('writes a new progress file named after the session', async () => {
+  const root = await tempDir()
+  const created = await createProgressFile({ repoRoot: root, name: 'review-perf' })
+
+  expect(created).toEqual({ path: join(root, 'review-perf.progress.local.md'), isNew: true })
+  expect(await readFile(created.path, 'utf8')).toBe(
+    '# Review perf\n\n## Current state\n\n## Decisions and rationale\n\n## Next\n',
+  )
+})
+
+// The name is kebab-case for the matcher, which reads filenames. A reader of
+// the file itself gets the words back.
+it('spells the hyphens out in the title', async () => {
+  const root = await tempDir()
+  const created = await createProgressFile({ repoRoot: root, name: 'ssr-iframe-fallback' })
+
+  expect(await readFile(created.path, 'utf8')).toMatch(/^# Ssr iframe fallback\n/)
+})
+
+it('leaves a file that is already there alone and says so', async () => {
+  const root = await tempDir()
+  const path = join(root, 'review-perf.progress.local.md')
+  await writeFile(path, 'work already recorded here\n')
+
+  const created = await createProgressFile({ repoRoot: root, name: 'review-perf' })
+
+  expect(created).toEqual({ path, isNew: false })
+  expect(await readFile(path, 'utf8')).toBe('work already recorded here\n')
+})
+
+it('finds the file it just wrote, so the row links to it', async () => {
+  const root = await tempDir()
+  await createProgressFile({ repoRoot: root, name: 'review-perf' })
+
+  expect(await findProgressFiles(root)).toEqual([join(root, 'review-perf.progress.local.md')])
 })

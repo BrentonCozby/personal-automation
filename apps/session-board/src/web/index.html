@@ -178,6 +178,33 @@
 
       .group-delete:hover { color: var(--danger); border-color: var(--danger); }
 
+      /* The `+` that starts a session in this group. It takes the free space so
+         it lands beside the ×, and it is hidden until hover for the same reason
+         the × is: a column of always-on buttons down eight groups is noise. */
+      .group-start {
+        margin-left: auto;
+        flex: none;
+        display: none;
+        background: var(--bg);
+        border: 1px solid var(--faint);
+        color: var(--muted);
+        border-radius: 4px;
+        font-family: inherit;
+        font-size: 12px;
+        letter-spacing: normal;
+        text-transform: none;
+        min-height: 24px;
+        min-width: 24px;
+        line-height: 1;
+        padding: 0 7px;
+        cursor: pointer;
+      }
+
+      .group-header:hover .group-start,
+      .group-header:focus-within .group-start { display: block; }
+
+      .group-start:hover { color: var(--fg); border-color: var(--ready); }
+
       .new-group {
         border-radius: 3px;
         padding: 2px 4px;
@@ -465,6 +492,61 @@
          here beside the fields rather than beside the × itself. */
       button.group-delete.edit { color: var(--danger); border-color: var(--danger); }
 
+      /* The panel the group header's `+` opens. It sits between the header and
+         the group's rows, which is where the row it is about to make will
+         appear. */
+      .start-panel {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+        margin: 0 12px 8px;
+        padding: 8px;
+        border: 1px solid var(--ready);
+        border-top: none;
+        border-radius: 0 0 4px 4px;
+        font-size: 11px;
+      }
+
+      .start-panel input.edit { font-size: 11px; }
+
+      .start-actions {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+      }
+
+      .start-check {
+        display: flex;
+        align-items: center;
+        gap: 5px;
+        color: var(--muted);
+        cursor: pointer;
+      }
+
+      /* Both buttons to the right, away from the checkbox, with `start` last so
+         the panel reads left to right as option, way out, action. */
+      .start-actions > button:first-of-type { margin-left: auto; }
+
+      .start-actions button {
+        background: var(--bg);
+        border: 1px solid var(--faint);
+        color: var(--muted);
+        border-radius: 4px;
+        font: inherit;
+        min-height: 24px;
+        padding: 0 9px;
+        cursor: pointer;
+      }
+
+      .start-actions button:hover:not(:disabled) { color: var(--fg); border-color: var(--ready); }
+      .start-actions button:disabled { cursor: default; color: var(--faint); }
+      .start-actions .start-go { color: var(--fg); border-color: var(--ready); }
+
+      /* Empty until there is something to say, so it takes no room on a panel
+         that is going well. */
+      .start-answer:empty { display: none; }
+      .start-answer { color: var(--muted); }
+
       .edit-line { margin-top: 3px; margin-left: 14px; font-size: 11px; }
       .edit-line .pending { color: var(--muted); }
       .edit-line input.edit,
@@ -487,6 +569,9 @@
     <div id="toolbar"><span>Oldest first</span><span id="count"></span></div>
     <div id="board"></div>
     <div id="drawer"></div>
+    <!-- Shared by every "start a session" panel, and outside the part `render`
+         rebuilds so a panel does not have to carry its own copy. -->
+    <datalist id="board-repos"></datalist>
 
     <script type="module">
       import { start } from '/board.js'

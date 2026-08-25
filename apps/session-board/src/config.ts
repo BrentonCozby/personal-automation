@@ -34,9 +34,12 @@ export interface Config {
   /** Runs when a progress-file slug is clicked. `{{path}}` becomes the file. */
   openFileCommand: string
   /**
-   * Starts a new session on the work a progress file describes, rather than
-   * resuming the old one. `{{name}}` and `{{prompt}}` are substituted, both
-   * shell-quoted.
+   * Starts a fresh named session, for both of the ways the board makes one:
+   * resuming a row that has a progress file, and the `+` on a group header.
+   *
+   * `{{name}}` and `{{prompt}}` are substituted, both shell-quoted. `{{prompt}}`
+   * drops out of the command when there is nothing to say, which is what a
+   * session started from a group header with a brand new progress file gets.
    */
   progressCommand: string
   /** The first thing that new session is told. `{{progress}}` becomes the file. */

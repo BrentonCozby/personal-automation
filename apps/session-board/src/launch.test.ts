@@ -4,7 +4,13 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { promisify } from 'node:util'
 import { expect, it } from 'vitest'
-import { buildOpenFileArgv, buildProgressScript, resolveLaunchCwd, shellQuote } from './launch.js'
+import {
+  buildOpenFileArgv,
+  buildProgressScript,
+  buildSessionScript,
+  resolveLaunchCwd,
+  shellQuote,
+} from './launch.js'
 
 const execFileAsync = promisify(execFile)
 
@@ -130,4 +136,28 @@ it('treats shell syntax in a name as part of the name', async () => {
 
   // Reaches the binary as text. Unquoted it would have run two commands.
   expect(argv).toEqual(['-n', '$(whoami); echo pwned', 'Read /repo/x.progress.local.md.'])
+})
+
+it('passes only the name when the new session has nothing to read', async () => {
+  const argv = await argvFromScript(
+    buildSessionScript({
+      name: 'review-perf',
+      commandTemplate: 'claude-auto -n {{name}} {{prompt}}',
+    }),
+  )
+
+  // Two arguments, not three. An empty pair of quotes would have reached Claude
+  // Code as a first prompt that happens to be blank.
+  expect(argv).toEqual(['-n', 'review-perf'])
+})
+
+it('quotes a name that needs it even with no prompt to follow', async () => {
+  const argv = await argvFromScript(
+    buildSessionScript({
+      name: '$(whoami); echo pwned',
+      commandTemplate: 'claude-auto -n {{name}} {{prompt}}',
+    }),
+  )
+
+  expect(argv).toEqual(['-n', '$(whoami); echo pwned'])
 })

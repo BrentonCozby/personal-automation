@@ -31,6 +31,29 @@ export const patchBodySchema = z.object({
 
 export const openBodySchema = z.object({ cwd: z.string().min(1) })
 
+/**
+ * A session the board is inventing, for the `+` on a group header.
+ *
+ * The name is refused rather than corrected here, unlike the PATCH that renames
+ * a row: the relaunch pairing matches this name against the `session_title` the
+ * new session reports, and the command that starts it carries the name the
+ * board sent, so a name quietly changed after the launch could never pair. The
+ * client corrects as you type, so a refusal here means the client was bypassed.
+ *
+ * The directory is only checked for being absolute here. Whether it is in a
+ * repository at all needs `git`, which no schema can run.
+ */
+export const newSessionBodySchema = z.object({
+  name: z.string().refine(isKebabCase, {
+    message: 'a session name is kebab-case: lowercase letters and digits, single hyphens between',
+  }),
+  group: z.string().optional(),
+  cwd: z.string().refine(value => value.startsWith('/'), {
+    message: 'a working directory has to be an absolute path',
+  }),
+  createProgressFile: z.boolean(),
+})
+
 // Free text, unlike a session name: a group name is never matched against a
 // filename, so the kebab-case rule that exists for the progress-file matcher
 // has no job here. Ungrouped is where a row with no group is drawn, so storing

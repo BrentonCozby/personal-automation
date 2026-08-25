@@ -78,7 +78,7 @@ export function shellQuote(value: string): string {
 }
 
 /**
- * Start a new session on the work a progress file describes.
+ * The script that starts one named session, ready to run as `zsh -l <file>`.
  *
  * The command goes into a script file rather than into the command string
  * Ghostty is handed. A session name is whatever was typed into the board, and
@@ -86,11 +86,29 @@ export function shellQuote(value: string): string {
  * login shell) with a different quoting rule at each layer, so a name holding
  * an apostrophe would break the launch and one holding a semicolon would run
  * as a command. Inside a file there are no layers left to escape from.
- *
- * The path is built from the session id, which the request guard has already
- * limited to `[A-Za-z0-9._-]`, so the path itself needs no quoting and each
- * session reuses one file instead of leaving a trail of them.
  */
+export function buildSessionScript({
+  name,
+  prompt,
+  commandTemplate,
+}: {
+  name: string
+  prompt?: string | undefined
+  commandTemplate: string
+}): string {
+  const command = commandTemplate
+    .replaceAll('{{name}}', shellQuote(name))
+    // A session started with nothing to read has no first prompt, and the
+    // placeholder is removed along with the space in front of it rather than
+    // filled with an empty pair of quotes: Claude Code would take that as a
+    // first prompt that happens to be blank and answer it.
+    .replaceAll(/ *\{\{prompt\}\}/g, prompt === undefined ? '' : ` ${shellQuote(prompt)}`)
+
+  // `exec` so the login shell is replaced rather than left waiting: the tab's
+  // process is then Claude Code itself, and closing the tab reaches it.
+  return `#!/bin/zsh -l\nexec ${command}\n`
+}
+
 export function buildProgressScript({
   name,
   progressPath,
@@ -102,14 +120,38 @@ export function buildProgressScript({
   commandTemplate: string
   promptTemplate: string
 }): string {
-  const prompt = promptTemplate.replaceAll('{{progress}}', progressPath)
-  const command = commandTemplate
-    .replaceAll('{{name}}', shellQuote(name))
-    .replaceAll('{{prompt}}', shellQuote(prompt))
+  return buildSessionScript({
+    name,
+    prompt: promptTemplate.replaceAll('{{progress}}', progressPath),
+    commandTemplate,
+  })
+}
 
-  // `exec` so the login shell is replaced rather than left waiting: the tab's
-  // process is then Claude Code itself, and closing the tab reaches it.
-  return `#!/bin/zsh -l\nexec ${command}\n`
+/**
+ * Run a built launch script in a new tab.
+ *
+ * The path is built from the session id, which the request guard has already
+ * limited to `[A-Za-z0-9._-]`, so the path itself needs no quoting and each
+ * session reuses one file instead of leaving a trail of them.
+ */
+async function openScriptInTab({
+  sessionId,
+  script,
+  cwd,
+}: {
+  sessionId: SessionId
+  script: string
+  cwd: string
+}): Promise<void> {
+  const scriptPath = join(tmpdir(), `session-board-launch-${sessionId}.sh`)
+  await writeFile(scriptPath, script, { mode: 0o700 })
+
+  await execFileAsync('osascript', [
+    '-e',
+    NEW_TAB_SCRIPT,
+    `/bin/zsh -l ${scriptPath}`,
+    resolveLaunchCwd(cwd),
+  ])
 }
 
 export async function openSessionFromProgress({
@@ -127,19 +169,39 @@ export async function openSessionFromProgress({
   commandTemplate: string
   promptTemplate: string
 }): Promise<void> {
-  const scriptPath = join(tmpdir(), `session-board-launch-${sessionId}.sh`)
-  await writeFile(
-    scriptPath,
-    buildProgressScript({ name, progressPath, commandTemplate, promptTemplate }),
-    { mode: 0o700 },
-  )
+  await openScriptInTab({
+    sessionId,
+    script: buildProgressScript({ name, progressPath, commandTemplate, promptTemplate }),
+    cwd,
+  })
+}
 
-  await execFileAsync('osascript', [
-    '-e',
-    NEW_TAB_SCRIPT,
-    `/bin/zsh -l ${scriptPath}`,
-    resolveLaunchCwd(cwd),
-  ])
+/**
+ * Start a session that has no past at all, for a row the board is inventing.
+ *
+ * The prompt is optional here and required by `openSessionFromProgress`: a
+ * session with no progress file, or with one that was just written and is
+ * empty, has nothing to read and starts on an empty conversation the way one
+ * typed by hand does.
+ */
+export async function openNewSession({
+  sessionId,
+  name,
+  prompt,
+  cwd,
+  commandTemplate,
+}: {
+  sessionId: SessionId
+  name: string
+  prompt?: string | undefined
+  cwd: string
+  commandTemplate: string
+}): Promise<void> {
+  await openScriptInTab({
+    sessionId,
+    script: buildSessionScript({ name, prompt, commandTemplate }),
+    cwd,
+  })
 }
 
 /** Split a configured command into argv, so it can run without a shell. */
