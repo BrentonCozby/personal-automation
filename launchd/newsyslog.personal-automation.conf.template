@@ -19,3 +19,5 @@
 {{PROJECT_DIR}}/launchd/logs/tasks-alert.err.log    {{USERNAME}}:staff  644  4  1024  $W0  Z
 {{PROJECT_DIR}}/launchd/logs/vault-backup.out.log    {{USERNAME}}:staff  644  4  1024  $W0  Z
 {{PROJECT_DIR}}/launchd/logs/vault-backup.err.log    {{USERNAME}}:staff  644  4  1024  $W0  Z
+{{PROJECT_DIR}}/launchd/logs/session-board.out.log   {{USERNAME}}:staff  644  4  1024  $W0  Z
+{{PROJECT_DIR}}/launchd/logs/session-board.err.log   {{USERNAME}}:staff  644  4  1024  $W0  Z

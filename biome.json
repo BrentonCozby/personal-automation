@@ -118,6 +118,16 @@
       }
     },
     {
+      "includes": ["**/src/web/*.js"],
+      "linter": {
+        "rules": {
+          "correctness": {
+            "noUndeclaredVariables": "error"
+          }
+        }
+      }
+    },
+    {
       "includes": ["**/*.test.ts", "**/*.e2e.test.ts"],
       "linter": {
         "rules": {

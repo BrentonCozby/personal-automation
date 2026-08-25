@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.personal-automation.session-board</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>/bin/bash</string>
+        <string>{{PROJECT_DIR}}/launchd/run-session-board.sh</string>
+    </array>
+
+    <!-- A server, not a scheduled job: it comes up at login and is put back whenever it
+         exits, for any reason. The other agents here run once and are done, so they set
+         RunAtLoad false and carry a StartCalendarInterval instead. -->
+    <key>RunAtLoad</key>
+    <true/>
+    <key>KeepAlive</key>
+    <true/>
+
+    <!-- Seconds launchd waits before starting it again. The failure this paces is a board
+         that cannot start at all (a missing variable in .env, or port 4747 already held by
+         one started by hand), which would otherwise respawn as fast as it could fail. -->
+    <key>ThrottleInterval</key>
+    <integer>10</integer>
+
+    <key>StandardOutPath</key>
+    <string>{{PROJECT_DIR}}/launchd/logs/session-board.out.log</string>
+    <key>StandardErrorPath</key>
+    <string>{{PROJECT_DIR}}/launchd/logs/session-board.err.log</string>
+</dict>
+</plist>

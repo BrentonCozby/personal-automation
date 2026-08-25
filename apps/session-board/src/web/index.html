@@ -1,0 +1,329 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>sessions</title>
+    <style>
+      /* Every color that carries text clears 4.5:1 against its background, and
+         every one that only draws an edge or a dot clears 3:1. Light was the
+         half that failed: the old values sat between 2.1 and 3.9, so a name in
+         any status color, the age, and the whole directory line were all below
+         the line. `faint` is the one token that is never text. */
+      :root {
+        --bg: #fbfaf9;
+        --fg: #1a1a1a;
+        --muted: #736f6a;
+        --faint: #948b83;
+        --hairline: #e6e2de;
+        --hover: #f0ede9;
+        --running: #257f40;
+        --waiting: #956600;
+        --ready: #2771bf;
+        --idle: #928c85;
+        --gone: #968b80;
+        --danger: #c8452f;
+        --sans: ui-sans-serif, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+        --mono: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace;
+      }
+
+      @media (prefers-color-scheme: dark) {
+        :root {
+          --bg: #0e0e0e;
+          --fg: #e8e6e3;
+          --muted: #837e79;
+          --faint: #68625c;
+          /* Rows carry a second line only sometimes, so the separator is what
+             says where one ends. At #1f1f1f it was there but not visible, which
+             let a two-line row read as two rows. */
+          --hairline: #302c29;
+          --hover: #191919;
+          --running: #4ec46f;
+          --waiting: #e0a318;
+          --ready: #4d9df0;
+          --idle: #6b665f;
+          --gone: #68625b;
+          --danger: #f0664c;
+        }
+      }
+
+      * { box-sizing: border-box; }
+
+      body {
+        margin: 0 auto;
+        /* A row pairs a name on the left with its age on the right, and the pair
+           stops reading as one thing once they are far apart: in a full-width
+           window they ended up 1714px away from each other. This is a side
+           panel, so it keeps panel width whatever window it lands in. */
+        max-width: 560px;
+        background: var(--bg);
+        color: var(--fg);
+        font-family: var(--sans);
+        font-size: 13px;
+        -webkit-font-smoothing: antialiased;
+      }
+
+      /* Nothing here is reachable by keyboard by accident: the rows are divs, so
+         each control opts in with a tabindex and every one of them shows this. */
+      :focus-visible {
+        outline: 2px solid var(--ready);
+        outline-offset: 1px;
+        border-radius: 3px;
+      }
+
+      @media (prefers-reduced-motion: reduce) {
+        * { transition: none !important; }
+      }
+
+      #toolbar {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 8px 12px;
+        font-size: 11px;
+        color: var(--muted);
+        border-bottom: 1px solid var(--hairline);
+        position: sticky;
+        top: 0;
+        background: var(--bg);
+        z-index: 2;
+      }
+
+      .group-header {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        padding: 12px 12px 4px;
+        font-size: 12px;
+        font-weight: 500;
+        user-select: none;
+      }
+
+      .chevron-hit {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        flex: none;
+        /* The triangle is a few pixels across. This is the box you actually
+           click, held at the 24px a pointer target needs. */
+        width: 24px;
+        height: 24px;
+        margin-left: -7px;
+        border-radius: 3px;
+        cursor: pointer;
+      }
+
+      .chevron-hit:hover { background: var(--hover); }
+
+      .group-header .count { color: var(--muted); font-weight: 400; flex: none; }
+
+      /* A long group name shortens itself rather than pushing its count off the
+         panel. */
+      .group-label {
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      .group-header .group-name { border-radius: 3px; cursor: text; }
+      .group-header .group-name:hover { box-shadow: inset 0 0 0 1px var(--hairline); }
+
+      /* Drawn rather than typed. The small-triangle characters render far below
+         the label they sit next to whatever the font-size, and the full-size
+         ones come out as emoji in some fonts. Borders in em scale with the
+         header and look the same everywhere. */
+      .chevron {
+        flex: none;
+        width: 0;
+        height: 0;
+        border-left: 0.32em solid transparent;
+        border-right: 0.32em solid transparent;
+        border-top: 0.38em solid var(--faint);
+        transition: transform 0.12s;
+      }
+
+      .collapsed .chevron { transform: rotate(-90deg); }
+
+      .row {
+        padding: 6px 12px 6px 28px;
+        border-top: 0.5px solid var(--hairline);
+        position: relative;
+      }
+
+      .row:hover { background: var(--hover); }
+
+      .row-top { display: flex; align-items: center; gap: 8px; }
+
+      .dot {
+        width: 6px;
+        height: 6px;
+        border-radius: 50%;
+        flex: none;
+      }
+
+      .status-running .dot { background: var(--running); }
+      .status-waiting .dot { background: var(--waiting); }
+      .status-ready   .dot { background: var(--ready); }
+      .status-idle    .dot { background: var(--idle); }
+      /* Hollow, because a finished session is an absence, not a state. */
+      .status-gone    .dot { background: none; box-shadow: inset 0 0 0 1px var(--gone); }
+
+      .name {
+        flex: 1;
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        cursor: text;
+        border-radius: 3px;
+      }
+
+      .name:hover { box-shadow: inset 0 0 0 1px var(--hairline); }
+      .name.unnamed { color: var(--waiting); font-style: italic; }
+      /* Same mark a progress file that has gone missing gets: what this row
+         points at is no longer on disk. */
+      .name.missing { text-decoration: line-through; text-decoration-thickness: 1px; }
+
+      /* All five are written out, including the plain one. While `idle` had no
+         rule it fell through to `--fg`, which made a session doing nothing the
+         highest-contrast name on the board. */
+      .status-running .name { color: var(--running); }
+      .status-waiting .name { color: var(--waiting); }
+      .status-ready   .name { color: var(--ready); }
+      .status-idle    .name { color: var(--fg); }
+      /* `muted`, not `faint`: this is the name of the session, so it has to be
+         readable even while the row is the quietest thing on the board. */
+      .status-gone    .name { color: var(--muted); }
+
+      .age {
+        font-size: 11px;
+        color: var(--muted);
+        flex: none;
+        font-variant-numeric: tabular-nums;
+        /* Wide enough for the longest age, so the hover buttons can be parked
+           clear of it at a fixed offset. */
+        min-width: 32px;
+        text-align: right;
+      }
+
+      /* Weight, not alarm red. A third of a real board is past the stale
+         threshold, and a session going quiet is the thing this board exists to
+         show rather than something that has gone wrong. Red that common stops
+         being read. */
+      .age.stale { color: var(--fg); font-weight: 500; }
+
+      .sub {
+        display: flex;
+        align-items: center;
+        gap: 5px;
+        font-size: 11px;
+        margin-top: 3px;
+        margin-left: 14px;
+        overflow: hidden;
+      }
+
+      /* The ellipsis has to live on the text, not on the row holding it: a flex
+         container ignores `text-overflow`, so every one of these lines used to
+         be chopped off mid-word with nothing to say it had been. */
+      .sub .label {
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      .sub.parked { color: var(--waiting); cursor: text; }
+      .sub.cwd { color: var(--muted); font-family: var(--mono); }
+      .sub.progress { color: var(--muted); font-family: var(--mono); cursor: pointer; }
+      .sub.progress:hover { color: var(--fg); }
+      .sub.progress.missing .label { text-decoration: line-through; }
+
+      .icon { flex: none; opacity: 0.75; }
+
+      .actions {
+        position: absolute;
+        /* 12px row padding, 32px of age, 6px of gap. How long a session has sat
+           is the reason to reach for these buttons, so it stays readable while
+           the pointer is on the row. */
+        right: 50px;
+        top: 4px;
+        display: none;
+        gap: 3px;
+        background: var(--hover);
+        padding-left: 6px;
+      }
+
+      /* `focus-within` is what makes the row reachable without a mouse: tabbing
+         into a row reveals the same bar hovering it does, so a keyboard does not
+         land on buttons that are invisible. */
+      .row:hover .actions,
+      .row:focus-within .actions { display: flex; }
+
+      .actions button {
+        background: var(--bg);
+        border: 1px solid var(--faint);
+        color: var(--muted);
+        border-radius: 4px;
+        font-size: 10px;
+        /* 24px tall, which is the smallest a pointer target should be. The type
+           stays at 10px; the height comes from the padding. */
+        min-height: 24px;
+        line-height: 1;
+        padding: 0 7px;
+        cursor: pointer;
+        font-family: inherit;
+      }
+
+      .actions button:hover:not(:disabled) { color: var(--fg); border-color: var(--fg); }
+      /* The only button that takes something away, and it looked exactly like
+         the two that do not. */
+      .actions button.remove:hover { color: var(--danger); border-color: var(--danger); }
+      /* Not a decoy: a running session cannot be resumed, so the button that
+         would do it says so by being visibly out of reach rather than by
+         answering a click with a complaint. */
+      .actions button:disabled { opacity: 0.45; cursor: not-allowed; }
+
+      input.edit,
+      select.edit {
+        font: inherit;
+        width: 100%;
+        background: var(--bg);
+        color: var(--fg);
+        border: 1px solid var(--ready);
+        border-radius: 3px;
+        padding: 0 4px;
+      }
+
+      /* The header suppresses selection so a click reads as collapse, which
+         would otherwise leave the rename field unselectable. */
+      .group-header input.edit { width: 14ch; user-select: text; }
+
+      .edit-line { margin-top: 3px; margin-left: 14px; font-size: 11px; }
+      .edit-line .pending { color: var(--muted); }
+      .edit-line input.edit,
+      .edit-line select.edit { font-size: 11px; }
+
+      #drawer > .group { border-top: 1px solid var(--hairline); margin-top: 16px; }
+      #drawer .group-header { color: var(--muted); }
+
+      #empty {
+        padding: 20px 12px;
+        color: var(--muted);
+        font-size: 12px;
+        line-height: 1.6;
+      }
+
+      code { font-family: var(--mono); color: var(--fg); }
+    </style>
+  </head>
+  <body>
+    <div id="toolbar"><span>Oldest first</span><span id="count"></span></div>
+    <div id="board"></div>
+    <div id="drawer"></div>
+
+    <script type="module">
+      import { start } from '/board.js'
+
+      start()
+    </script>
+  </body>
+</html>

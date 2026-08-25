@@ -8,6 +8,7 @@
 #   com.personal-automation.tasks.plist         : tasks digest, on TASKS_SCHEDULE's days/times
 #   com.personal-automation.tasks-alert.plist   : due-date alert, every day at TASKS_ALERT_TIMES
 #   com.personal-automation.vault-backup.plist  : daily Obsidian vault git backup (09:00)
+#   com.personal-automation.session-board.plist : the session board server, up at login
 #   newsyslog.personal-automation.conf          : optional log rotation config
 
 set -euo pipefail
@@ -36,6 +37,10 @@ substitute \
   "$PROJECT_DIR/launchd/com.personal-automation.vault-backup.plist"
 
 substitute \
+  "$PROJECT_DIR/launchd/com.personal-automation.session-board.plist.template" \
+  "$PROJECT_DIR/launchd/com.personal-automation.session-board.plist"
+
+substitute \
   "$PROJECT_DIR/launchd/newsyslog.personal-automation.conf.template" \
   "$PROJECT_DIR/launchd/newsyslog.personal-automation.conf"
 
@@ -46,15 +51,24 @@ echo "Generating the tasks digest and alert schedules…"
 
 cat <<EOF
 
-Next (load all four agents: the daily run, the digest, the due-date alert, and the vault backup):
+Next (load all five agents: the daily run, the digest, the due-date alert, the vault
+backup, and the session board):
   cp $PROJECT_DIR/launchd/com.personal-automation.daily.plist ~/Library/LaunchAgents/
   cp $PROJECT_DIR/launchd/com.personal-automation.tasks.plist ~/Library/LaunchAgents/
   cp $PROJECT_DIR/launchd/com.personal-automation.tasks-alert.plist ~/Library/LaunchAgents/
   cp $PROJECT_DIR/launchd/com.personal-automation.vault-backup.plist ~/Library/LaunchAgents/
+  cp $PROJECT_DIR/launchd/com.personal-automation.session-board.plist ~/Library/LaunchAgents/
   launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.personal-automation.daily.plist
   launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.personal-automation.tasks.plist
   launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.personal-automation.tasks-alert.plist
   launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.personal-automation.vault-backup.plist
+  launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.personal-automation.session-board.plist
+
+The session board comes up at login and is restarted whenever it exits. Stop a copy you
+started by hand first, or it holds port 4747 and the agent respawns every 10 seconds:
+  lsof -nP -iTCP:4747 -sTCP:LISTEN -t | xargs -r kill
+Check it: launchctl print gui/$(id -u)/com.personal-automation.session-board | head -20
+Stop it:  launchctl bootout gui/$(id -u)/com.personal-automation.session-board
 
 Changed TASKS_SCHEDULE or TASKS_ALERT_TIMES later? Re-run this script, then:
   launchctl bootout gui/$(id -u)/com.personal-automation.tasks
