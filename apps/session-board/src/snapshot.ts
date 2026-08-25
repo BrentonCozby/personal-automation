@@ -10,7 +10,7 @@ import { resolveLiveSessions } from './derive/liveness.js'
 import { listProcesses } from './derive/processes.js'
 import { findProgressFiles, matchProgressFile, resolveRepoRoot } from './derive/progress-files.js'
 import { cwdBySession } from './derive/repos.js'
-import { findTranscriptSessionIds } from './derive/transcripts.js'
+import { findTranscripts } from './derive/transcripts.js'
 import type { HookEvent } from './events/types.js'
 import type { GroupStore } from './metadata/group-store.js'
 import type { MetadataStore } from './metadata/store.js'
@@ -296,10 +296,10 @@ export async function buildSnapshot({
       .filter(name => name !== undefined),
   )
 
-  const [processes, missingProgressPaths, transcriptSessionIds, knownGroups] = await Promise.all([
+  const [processes, missingProgressPaths, transcriptTimes, knownGroups] = await Promise.all([
     listProcesses(),
     findMissingProgressPaths(metadata),
-    findTranscriptSessionIds({ roots: config.transcriptRoots }),
+    findTranscripts({ roots: config.transcriptRoots }),
     groups.read(),
   ])
 
@@ -310,7 +310,7 @@ export async function buildSnapshot({
     supersededSessionIds: new Set([...successors.keys()].filter(id => !keptApart.has(id))),
     liveSessionIds: resolveLiveSessions({ events, processes }),
     missingProgressPaths,
-    transcriptSessionIds,
+    transcriptTimes,
     now,
     freshMinutes: config.freshMinutes,
     staleDays: config.staleDays,

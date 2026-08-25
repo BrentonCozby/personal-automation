@@ -27,6 +27,7 @@ function build({
   missing = [],
   superseded = [],
   transcripts,
+  wroteAt = {},
   knownGroups = [],
 }: {
   events: HookEvent[]
@@ -36,6 +37,8 @@ function build({
   superseded?: string[]
   /** Left out means every session in the fixture has one, which is the normal case. */
   transcripts?: string[]
+  /** Unix seconds a session's transcript was last written to. Zero unless said. */
+  wroteAt?: Record<string, number>
   knownGroups?: string[]
 }): Board {
   return buildBoard({
@@ -44,8 +47,10 @@ function build({
     knownGroups,
     liveSessionIds: new Set(live),
     missingProgressPaths: new Set(missing),
-    transcriptSessionIds: new Set(
-      transcripts ?? [...events.map(event => event.session_id), ...Object.keys(metadata)],
+    transcriptTimes: new Map(
+      (transcripts ?? [...events.map(event => event.session_id), ...Object.keys(metadata)]).map(
+        sessionId => [sessionId, wroteAt[sessionId] ?? 0],
+      ),
     ),
     supersededSessionIds: new Set(superseded),
     now: NOW,
@@ -246,6 +251,44 @@ it('colors a session blocked on a permission prompt as waiting', () => {
   })
 
   expect(board.groups[0]?.rows[0]?.status).toBe('waiting')
+})
+
+it('reads a transcript written since the prompt as the prompt having been answered', () => {
+  const board = build({
+    events: [
+      event({
+        sessionId: 'a',
+        name: 'Notification',
+        notification_type: 'permission_prompt',
+        agoSeconds: 30 * MINUTE,
+      }),
+    ],
+    metadata: { a: { name: 'x' } },
+    live: ['a'],
+    wroteAt: { a: NOW - MINUTE },
+  })
+
+  expect(board.groups[0]?.rows[0]?.status).toBe('running')
+  expect(board.groups[0]?.rows[0]?.lastActive).toBe(NOW - MINUTE)
+})
+
+it('stays waiting while the transcript is older than the prompt', () => {
+  const board = build({
+    events: [
+      event({
+        sessionId: 'a',
+        name: 'Notification',
+        notification_type: 'permission_prompt',
+        agoSeconds: 30 * MINUTE,
+      }),
+    ],
+    metadata: { a: { name: 'x' } },
+    live: ['a'],
+    wroteAt: { a: NOW - 31 * MINUTE },
+  })
+
+  expect(board.groups[0]?.rows[0]?.status).toBe('waiting')
+  expect(board.groups[0]?.rows[0]?.lastActive).toBe(NOW - 30 * MINUTE)
 })
 
 it('splits idle into ready and idle on recency', () => {

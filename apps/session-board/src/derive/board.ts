@@ -32,7 +32,8 @@ export interface BoardRow {
   isTranscriptMissing: boolean
   status: RowStatus
   /**
-   * Unix seconds of the session's most recent event.
+   * Unix seconds of the session's most recent event, or of the last write to
+   * its transcript, whichever is later.
    *
    * How old that makes the row is left to the client, which works it out per
    * repaint against `staleSeconds`. Sending the age instead would freeze it at
@@ -85,7 +86,7 @@ function toBoardRow({
   sessionId,
   entry,
   missingProgressPaths,
-  transcriptSessionIds,
+  transcriptTimes,
   status,
   lastActive,
   cwd,
@@ -93,7 +94,7 @@ function toBoardRow({
   sessionId: string
   entry: SessionMetadata | undefined
   missingProgressPaths: Set<string>
-  transcriptSessionIds: Set<string>
+  transcriptTimes: Map<string, number>
   status: RowStatus
   lastActive: number
   cwd: string | undefined
@@ -108,7 +109,7 @@ function toBoardRow({
     progressPath,
     progressLabel: progressPath ? progressSlug(progressPath) : undefined,
     isProgressFileMissing: progressPath ? missingProgressPaths.has(progressPath) : false,
-    isTranscriptMissing: !transcriptSessionIds.has(sessionId),
+    isTranscriptMissing: !transcriptTimes.has(sessionId),
     status,
     lastActive,
     cwd,
@@ -172,7 +173,7 @@ export function buildBoard({
   knownGroups,
   liveSessionIds,
   missingProgressPaths,
-  transcriptSessionIds,
+  transcriptTimes,
   supersededSessionIds = new Set(),
   now,
   freshMinutes,
@@ -185,8 +186,11 @@ export function buildBoard({
   knownGroups: string[]
   liveSessionIds: Set<string>
   missingProgressPaths: Set<string>
-  /** Sessions Claude Code still holds a transcript for, so `--resume` can work. */
-  transcriptSessionIds: Set<string>
+  /**
+   * Sessions Claude Code still holds a transcript for, so `--resume` can work,
+   * against the unix seconds each transcript was last written to.
+   */
+  transcriptTimes: Map<string, number>
   /**
    * Ids that handed their work to another session, through `/clear` or a
    * resume. They are previous identities of a live session rather than sessions
@@ -211,7 +215,11 @@ export function buildBoard({
     const lastEvent = sessionEvents.at(-1)
     if (!lastEvent) continue
 
-    const lastActive = lastEvent.t
+    // A turn appends to the transcript as it runs, and a session stopped at a
+    // permission prompt appends nothing until the prompt is answered.
+    const wroteAt = transcriptTimes.get(sessionId) ?? 0
+    const hasWrittenSince = wroteAt > lastEvent.t
+    const lastActive = Math.max(lastEvent.t, wroteAt)
     const ageSeconds = Math.max(0, now - lastActive)
     const activity = deriveActivity(sessionEvents)
     const isAlive = liveSessionIds.has(sessionId)
@@ -219,6 +227,8 @@ export function buildBoard({
     let status: RowStatus
     if (activity === 'ended' || !isAlive) {
       status = 'gone'
+    } else if (activity === 'waiting' && hasWrittenSince) {
+      status = 'running'
     } else if (activity === 'running' || activity === 'waiting') {
       status = activity
     } else {
@@ -231,7 +241,7 @@ export function buildBoard({
       sessionId,
       entry,
       missingProgressPaths,
-      transcriptSessionIds,
+      transcriptTimes,
       status,
       lastActive,
       cwd: lastDefined({ events: sessionEvents, pick: event => event.cwd }),
@@ -263,7 +273,7 @@ export function buildBoard({
         sessionId,
         entry,
         missingProgressPaths,
-        transcriptSessionIds,
+        transcriptTimes,
         status: 'gone',
         lastActive,
         cwd: entry.cwd,
