@@ -811,3 +811,59 @@ it('gives an unclaimed row no board controls of its own', () => {
   expect(buttonNamed('link')).toBeUndefined()
   expect(buttonNamed('park')).toBeUndefined()
 })
+
+/** Collapse the one group on the page, the way the chevron does. */
+function collapseOnlyGroup() {
+  document.querySelector('.chevron-hit').click()
+}
+
+function isOnlyGroupCollapsed() {
+  return document.querySelector('.group').classList.contains('collapsed')
+}
+
+it('carries a collapsed group to its new name instead of springing it open', async () => {
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async () => ({ ok: true, json: async () => ({}) })),
+  )
+  render(boardWithGroups([{ name: 'Rename Me', rows: [aRow({ name: 'perf' })] }]))
+  collapseOnlyGroup()
+  expect(isOnlyGroupCollapsed()).toBe(true)
+
+  const title = document.querySelector('.group-name')
+  title.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }))
+  const input = title.querySelector('input.edit')
+  input.value = 'Renamed'
+  input.dispatchEvent(new Event('blur'))
+  await settle()
+
+  // The mark is filed under the name, so a rename leaves it on a name nothing
+  // has any more unless it is moved across.
+  render(boardWithGroups([{ name: 'Renamed', rows: [aRow({ name: 'perf' })] }]))
+
+  expect(isOnlyGroupCollapsed()).toBe(true)
+})
+
+it('forgets a group that is gone, so a later one reusing the name opens', () => {
+  render(boardWithGroups([{ name: 'Vanisher', rows: [aRow({ name: 'a' })] }]))
+  collapseOnlyGroup()
+  expect(isOnlyGroupCollapsed()).toBe(true)
+
+  render(boardWithGroups([{ name: 'Something Else', rows: [aRow({ name: 'b' })] }]))
+  render(boardWithGroups([{ name: 'Vanisher', rows: [aRow({ name: 'c' })] }]))
+
+  // Otherwise a brand new group opens collapsed, hiding rows nobody hid.
+  expect(isOnlyGroupCollapsed()).toBe(false)
+})
+
+it('keeps collapsed groups when a frame arrives carrying none', () => {
+  render(boardWithGroups([{ name: 'Persist', rows: [aRow({ name: 'a' })] }]))
+  collapseOnlyGroup()
+  expect(isOnlyGroupCollapsed()).toBe(true)
+
+  render({ claimedCount: 0, staleSeconds: 4 * 86_400, groups: [], unclaimed: [] })
+  render(boardWithGroups([{ name: 'Persist', rows: [aRow({ name: 'a' })] }]))
+
+  expect(isOnlyGroupCollapsed()).toBe(true)
+  document.querySelector('.chevron-hit').click()
+})

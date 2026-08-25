@@ -11,6 +11,9 @@ let dragged
 /** The group that means "no group", which clears the field rather than setting it. */
 const UNGROUPED_LABEL = 'Ungrouped'
 
+/** Not a group name: the drawer is drawn from `unclaimed`, not from a group. */
+const DRAWER_KEY = '__drawer__'
+
 /**
  * The nearest kebab-case name to what was typed.
  *
@@ -638,8 +641,46 @@ async function openProgressPicker(node, row) {
   select.addEventListener('click', event => event.stopPropagation())
 }
 
-function renameGroup(rows, value) {
-  return Promise.all(rows.map(row => patchSession(row.sessionId, { group: value || null })))
+/**
+ * A group is only the name written on its rows, so renaming one is renaming
+ * every row in it. There is no group to carry anything else across.
+ *
+ * Which is why the collapsed mark has to be moved by hand: it is filed under
+ * the name, so a rename would otherwise leave it behind on a name nothing has
+ * any more, and the group would spring open. Clearing the name drops the mark
+ * rather than moving it to Ungrouped, which is a group that already exists and
+ * has a state of its own.
+ */
+function renameGroup({ rows, from, to }) {
+  if (collapsed.delete(from)) {
+    if (to) collapsed.add(to)
+    saveCollapsed()
+  }
+
+  return Promise.all(rows.map(row => patchSession(row.sessionId, { group: to || null })))
+}
+
+/**
+ * Forget the groups that are gone.
+ *
+ * The mark is filed under a name, so without this a new group that happens to
+ * reuse an old name opens collapsed, hiding rows nobody hid. Skipped while the
+ * board has no groups at all, so a frame that arrives empty cannot wipe the
+ * lot. The drawer keeps its mark either way: it is drawn only when it has
+ * something in it, and emptying it is not a reason to forget.
+ */
+function pruneCollapsed(board) {
+  if (board.groups.length === 0) return
+
+  const live = new Set(board.groups.map(group => group.name))
+  let didDrop = false
+  for (const key of collapsed) {
+    if (live.has(key) || key === DRAWER_KEY) continue
+    collapsed.delete(key)
+    didDrop = true
+  }
+
+  if (didDrop) saveCollapsed()
 }
 
 function buildGroup({ key, label, count, rows, isRenameable = false, isDropTarget = false }) {
@@ -698,7 +739,7 @@ function buildGroup({ key, label, count, rows, isRenameable = false, isDropTarge
         host: title,
         current: label,
         placeholder: 'group name',
-        onCommit: value => renameGroup(rows, value),
+        onCommit: value => renameGroup({ rows, from: label, to: value }),
       }),
     )
   }
@@ -715,6 +756,7 @@ function buildGroup({ key, label, count, rows, isRenameable = false, isDropTarge
 export function render(board) {
   if (!board) return
   latest = board
+  pruneCollapsed(board)
 
   const boardEl = document.getElementById('board')
   const drawerEl = document.getElementById('drawer')
@@ -761,14 +803,14 @@ export function render(board) {
 
   drawerEl.replaceChildren(
     buildGroup({
-      key: '__drawer__',
+      key: DRAWER_KEY,
       label: 'Off the board',
       count: board.unclaimed.length,
       // Dragging one of these onto a group claims it into that group. The
       // drawer itself takes no drops: taking a row off the board is what `×`
       // is for, and a drop target that removes things is too easy to hit by
       // accident on the way past.
-      rows: board.unclaimed.map(row => ({ ...row, isClaimed: false, groupName: '__drawer__' })),
+      rows: board.unclaimed.map(row => ({ ...row, isClaimed: false, groupName: DRAWER_KEY })),
     }),
   )
 }
