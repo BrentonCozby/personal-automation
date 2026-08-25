@@ -83,9 +83,33 @@ function isEditing() {
   return document.activeElement?.classList.contains('edit')
 }
 
+/**
+ * When the mouse button went down, or undefined while it is up.
+ *
+ * A browser sends `click` to the nearest ancestor the press and the release
+ * still share. A repaint between the two throws away the element that was
+ * pressed, leaving no shared ancestor in the document, and then no click is
+ * sent at all: measured in Chrome, one press on a group chevron gave one
+ * mousedown, one mouseup and zero clicks, and the group did not collapse.
+ */
+let pointerDownAt
+
+/**
+ * How long a press may hold a repaint off.
+ *
+ * A press that never reports its release (the button let go outside the window,
+ * a pointer the browser forgets) would otherwise freeze the board for good.
+ * Longer than any click, and far shorter than the gap between snapshots.
+ */
+const POINTER_HOLD_MS = 2000
+
+function isPointerDown() {
+  return pointerDownAt !== undefined && Date.now() - pointerDownAt < POINTER_HOLD_MS
+}
+
 /** Whether a repaint has to wait: it would destroy what the pointer is holding. */
 function isBusy() {
-  return isEditing() || dragged !== undefined
+  return isEditing() || dragged !== undefined || isPointerDown()
 }
 
 // What each dot means, so the status is not carried by hue alone. Five states
@@ -831,6 +855,21 @@ export function start() {
     }
     render(board)
   })
+
+  // A press holds the repaint off until the button comes back up, then the
+  // board catches up with whatever arrived in between. On `document`, because
+  // the release often lands somewhere other than the element that was pressed.
+  document.addEventListener('pointerdown', () => {
+    pointerDownAt = Date.now()
+  })
+
+  const releasePointer = () => {
+    if (pointerDownAt === undefined) return
+    pointerDownAt = undefined
+    if (latest && !isBusy()) render(latest)
+  }
+  document.addEventListener('pointerup', releasePointer)
+  document.addEventListener('pointercancel', releasePointer)
 
   // Repaint so the ages move between snapshots. Each row works its own age
   // out from its timestamp, so a tick that runs late or not at all costs

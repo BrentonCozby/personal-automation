@@ -784,6 +784,40 @@ it('holds the repaint while a row is being dragged', () => {
   expect(document.querySelector('.row')).toBe(null)
 })
 
+it('holds the repaint while the pointer is down, so a click is not swallowed', () => {
+  const onMessage = {}
+  vi.stubGlobal(
+    'EventSource',
+    class {
+      addEventListener(type, handler) {
+        onMessage[type] = handler
+      }
+    },
+  )
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async () => ({ ok: true, json: async () => ({}) })),
+  )
+  start()
+  onMessage.message({ data: JSON.stringify(boardWith([aRow({ name: 'perf' })])) })
+
+  const row = rowNode()
+  document.dispatchEvent(new Event('pointerdown', { bubbles: true }))
+
+  // A browser sends `click` to the nearest ancestor the press and the release
+  // still share. Rebuilding between the two leaves no shared ancestor in the
+  // document, and no click is dispatched at all: measured in Chrome, one press
+  // gave one mousedown, one mouseup and zero clicks.
+  onMessage.message({ data: JSON.stringify(boardWith([aRow({ name: 'renamed' })])) })
+
+  expect(row.isConnected).toBe(true)
+
+  document.dispatchEvent(new Event('pointerup', { bubbles: true }))
+
+  // Whatever arrived while the button was held is drawn once it is released.
+  expect(rowNode().querySelector('.name').textContent).toBe('renamed')
+})
+
 it('lets a field be selected by giving up the drag while it is open', () => {
   render(boardWith([aRow({ name: 'perf' })]))
   const row = rowNode()
