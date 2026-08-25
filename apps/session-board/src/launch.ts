@@ -16,13 +16,23 @@ const execFileAsync = promisify(execFile)
 // to run on macOS, and `open -na Ghostty` starts a second Ghostty application
 // rather than adding a tab, so this is the only route that lands in the window
 // that is already open.
+//
+// A tab needs a window to go in, and `tell application` launches Ghostty when it
+// is closed but does not wait for its first window, so a board that outlives the
+// terminal (this one runs under launchd) has to be able to make one. `new
+// window` takes the same configuration and is what the board uses when it finds
+// no window to add to.
 const NEW_TAB_SCRIPT = `on run argv
   tell application "Ghostty"
     set cfg to new surface configuration
     set command of cfg to item 1 of argv
     set initial working directory of cfg to item 2 of argv
     try
-      new tab with configuration cfg
+      if (count of windows) is 0 then
+        new window with configuration cfg
+      else
+        new tab with configuration cfg
+      end if
     end try
   end tell
 end run`
