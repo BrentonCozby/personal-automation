@@ -4,6 +4,7 @@ import { join } from 'node:path'
 import { expect, it } from 'vitest'
 import type { Config } from './config.js'
 import type { HookEvent } from './events/types.js'
+import { createGroupStore } from './metadata/group-store.js'
 import { createMetadataStore } from './metadata/store.js'
 import type { MetadataBySession } from './metadata/types.js'
 import { buildSnapshot } from './snapshot.js'
@@ -14,6 +15,7 @@ function config(): Config {
   return {
     eventLogPath: '/unused/events.jsonl',
     metadataPath: '/unused/sessions.json',
+    groupsPath: '/unused/groups.json',
     port: 4747,
     staleDays: 4,
     freshMinutes: 15,
@@ -25,14 +27,18 @@ function config(): Config {
   }
 }
 
-async function storeWith(
-  metadata: MetadataBySession,
-): Promise<ReturnType<typeof createMetadataStore>> {
+async function storeWith(metadata: MetadataBySession): Promise<{
+  store: ReturnType<typeof createMetadataStore>
+  groups: ReturnType<typeof createGroupStore>
+}> {
   const dir = await mkdtemp(join(tmpdir(), 'session-board-snapshot-'))
   const path = join(dir, 'sessions.json')
   await writeFile(path, `${JSON.stringify(metadata, null, 2)}\n`)
 
-  return createMetadataStore({ path })
+  return {
+    store: createMetadataStore({ path }),
+    groups: createGroupStore({ path: join(dir, 'groups.json') }),
+  }
 }
 
 /** The two halves of a `/clear`: one session ends, the next starts on the same process. */
@@ -71,11 +77,12 @@ function namesOnBoard(board: { groups: { rows: { name?: string | undefined }[] }
 }
 
 it('carries a row forward when a cleared session had no name waiting on the other side', async () => {
-  const store = await storeWith({ before: { name: 'impact' } })
+  const { store, groups } = await storeWith({ before: { name: 'impact' } })
 
   const board = await buildSnapshot({
     events: handover({ from: 'before', to: 'after' }),
     store,
+    groups,
     config: config(),
     now: NOW,
   })
@@ -85,7 +92,7 @@ it('carries a row forward when a cleared session had no name waiting on the othe
 })
 
 it('leaves a session that was taken off the board out of the handover', async () => {
-  const store = await storeWith({
+  const { store, groups } = await storeWith({
     before: { isDismissed: true },
     after: { name: 'code-gardener', group: 'Bug week' },
   })
@@ -93,6 +100,7 @@ it('leaves a session that was taken off the board out of the handover', async ()
   const board = await buildSnapshot({
     events: handover({ from: 'before', to: 'after' }),
     store,
+    groups,
     config: config(),
     now: NOW,
   })
@@ -106,7 +114,7 @@ it('leaves a session that was taken off the board out of the handover', async ()
 })
 
 it('keeps both rows when the two named sessions sit at either end of a chain', async () => {
-  const store = await storeWith({
+  const { store, groups } = await storeWith({
     first: { name: 'impact', group: 'Bug week' },
     last: { name: 'bme-orders', group: 'BME' },
   })
@@ -120,6 +128,7 @@ it('keeps both rows when the two named sessions sit at either end of a chain', a
       ...handover({ from: 'middle', to: 'last', agoSeconds: 200 }),
     ],
     store,
+    groups,
     config: config(),
     now: NOW,
   })
@@ -128,7 +137,7 @@ it('keeps both rows when the two named sessions sit at either end of a chain', a
 })
 
 it('keeps both rows when a cleared terminal took up work that was already named', async () => {
-  const store = await storeWith({
+  const { store, groups } = await storeWith({
     before: { name: 'impact', group: 'Bug week' },
     after: { name: 'bme-orders', group: 'BME' },
   })
@@ -136,6 +145,7 @@ it('keeps both rows when a cleared terminal took up work that was already named'
   const board = await buildSnapshot({
     events: handover({ from: 'before', to: 'after' }),
     store,
+    groups,
     config: config(),
     now: NOW,
   })
@@ -149,7 +159,7 @@ it('keeps both rows when a cleared terminal took up work that was already named'
 })
 
 it('does not let a relaunched session claim itself back once its row has moved on', async () => {
-  const store = await storeWith({
+  const { store, groups } = await storeWith({
     old: { name: 'soc2', group: 'Bug week', relaunchedAt: NOW - 10 },
   })
 
@@ -162,15 +172,15 @@ it('does not let a relaunched session claim itself back once its row has moved o
     { session_id: 'fresh', hook_event_name: 'SessionStart', session_title: 'soc2', t: NOW - 8 },
   ]
 
-  await buildSnapshot({ events, store, config: config(), now: NOW })
-  const board = await buildSnapshot({ events, store, config: config(), now: NOW })
+  await buildSnapshot({ events, store, groups, config: config(), now: NOW })
+  const board = await buildSnapshot({ events, store, groups, config: config(), now: NOW })
 
   expect(namesOnBoard(board)).toEqual(['soc2'])
   expect(board.groups.map(group => group.name)).toEqual(['Bug week'])
 })
 
 it('moves a relaunched row onto the session the board started for it', async () => {
-  const store = await storeWith({
+  const { store, groups } = await storeWith({
     old: {
       name: 'technical-interview-round',
       group: 'Interviewing',
@@ -189,6 +199,7 @@ it('moves a relaunched row onto the session the board started for it', async () 
       },
     ],
     store,
+    groups,
     config: config(),
     now: NOW,
   })
@@ -207,4 +218,33 @@ it('moves a relaunched row onto the session the board started for it', async () 
     // the log, and this is what stops it claiming a row of its own again.
     old: { supersededBy: 'fresh' },
   })
+})
+
+it('registers a group it meets on a row, so emptying that group cannot delete it', async () => {
+  const { store, groups } = await storeWith({ a: { name: 'impact', group: 'Bug week' } })
+
+  await buildSnapshot({
+    events: [{ session_id: 'a', hook_event_name: 'Stop', t: NOW - 10 }],
+    store,
+    groups,
+    config: config(),
+    now: NOW,
+  })
+
+  expect(await groups.read()).toEqual(['Bug week'])
+})
+
+it('draws a group that was created before any session was put in it', async () => {
+  const { store, groups } = await storeWith({ a: { name: 'impact', group: 'Bug week' } })
+  await groups.add('Stash')
+
+  const board = await buildSnapshot({
+    events: [{ session_id: 'a', hook_event_name: 'Stop', t: NOW - 10 }],
+    store,
+    groups,
+    config: config(),
+    now: NOW,
+  })
+
+  expect(board.groups.map(group => group.name)).toEqual(['Bug week', 'Stash'])
 })

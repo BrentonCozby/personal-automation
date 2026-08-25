@@ -148,6 +148,44 @@
       .group-header .group-name { border-radius: 3px; cursor: text; }
       .group-header .group-name:hover { box-shadow: inset 0 0 0 1px var(--hairline); }
 
+      /* Pushed to the right edge, away from the chevron and the name, and drawn
+         only while the header is hovered or holds focus: a column of always-on
+         delete buttons down a board of eight groups is noise you can catch with
+         the pointer on the way past. */
+      .group-delete {
+        margin-left: auto;
+        flex: none;
+        display: none;
+        background: var(--bg);
+        border: 1px solid var(--faint);
+        color: var(--muted);
+        border-radius: 4px;
+        font-family: inherit;
+        font-size: 10px;
+        letter-spacing: normal;
+        text-transform: none;
+        /* 24px each way, which is the smallest a pointer target should be. The
+           × on its own is narrower than that. */
+        min-height: 24px;
+        min-width: 24px;
+        line-height: 1;
+        padding: 0 7px;
+        cursor: pointer;
+      }
+
+      .group-header:hover .group-delete,
+      .group-header:focus-within .group-delete { display: block; }
+
+      .group-delete:hover { color: var(--danger); border-color: var(--danger); }
+
+      .new-group {
+        border-radius: 3px;
+        padding: 2px 4px;
+        cursor: pointer;
+      }
+
+      .new-group:hover { color: var(--fg); box-shadow: inset 0 0 0 1px var(--hairline); }
+
       /* Drawn rather than typed. The small-triangle characters render far below
          the label they sit next to whatever the font-size, and the full-size
          ones come out as emoji in some fonts. Borders in em scale with the
@@ -186,6 +224,21 @@
         box-shadow: inset 0 0 0 1px var(--ready);
         border-radius: 4px;
       }
+
+      /* Drawn only in a group with no sessions, where the header would
+         otherwise be the whole drop target. Dashed, so it reads as somewhere to
+         put something rather than as a row that is already there. */
+      .drop-hint {
+        margin: 6px 12px 8px;
+        padding: 11px;
+        border: 1px dashed var(--faint);
+        border-radius: 4px;
+        text-align: center;
+        font-size: 11px;
+        color: var(--muted);
+      }
+
+      .group.drop-target .drop-hint { border-color: var(--ready); border-style: solid; }
 
       .row-top { display: flex; align-items: center; gap: 8px; }
 
@@ -405,6 +458,12 @@
       /* The header suppresses selection so a click reads as collapse, which
          would otherwise leave the rename field unselectable. */
       .group-header input.edit { width: 14ch; user-select: text; }
+
+      /* The second press on a group's ×. It asks in words, so it is wider than
+         the × and reads as the answer to a question rather than another way in.
+         It carries `edit` for the repaint guard, which is why it is styled down
+         here beside the fields rather than beside the × itself. */
+      button.group-delete.edit { color: var(--danger); border-color: var(--danger); }
 
       .edit-line { margin-top: 3px; margin-left: 14px; font-size: 11px; }
       .edit-line .pending { color: var(--muted); }

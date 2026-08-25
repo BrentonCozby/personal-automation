@@ -169,6 +169,7 @@ export function findSessionsToAutoClaim({
 export function buildBoard({
   events,
   metadata,
+  knownGroups,
   liveSessionIds,
   missingProgressPaths,
   transcriptSessionIds,
@@ -180,6 +181,8 @@ export function buildBoard({
 }: {
   events: HookEvent[]
   metadata: MetadataBySession
+  /** Every group that exists, so one holding no sessions is still drawn. */
+  knownGroups: string[]
   liveSessionIds: Set<string>
   missingProgressPaths: Set<string>
   /** Sessions Claude Code still holds a transcript for, so `--resume` can work. */
@@ -269,7 +272,12 @@ export function buildBoard({
     })
   }
 
-  const rowsByGroup = new Map<string, BoardRow[]>()
+  // Seeded with the groups that exist, so one whose last session was moved out
+  // stays on the board until it is deleted on purpose. Ungrouped is the absence
+  // of a group rather than one of them, so it is never drawn empty.
+  const rowsByGroup = new Map<string, BoardRow[]>(
+    knownGroups.filter(name => name !== UNGROUPED_LABEL).map(name => [name, []]),
+  )
   for (const { row, group } of claimedRows) {
     const existing = rowsByGroup.get(group)
     if (existing) {

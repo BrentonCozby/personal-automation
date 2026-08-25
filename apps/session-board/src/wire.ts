@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { UNGROUPED_LABEL } from './derive/board.js'
 import { isKebabCase } from './session-name.js'
 
 /**
@@ -29,3 +30,17 @@ export const patchBodySchema = z.object({
 })
 
 export const openBodySchema = z.object({ cwd: z.string().min(1) })
+
+// Free text, unlike a session name: a group name is never matched against a
+// filename, so the kebab-case rule that exists for the progress-file matcher
+// has no job here. Ungrouped is where a row with no group is drawn, so storing
+// it would put a second heading of that name beside the real one.
+export const groupBodySchema = z.object({
+  name: z
+    .string()
+    .trim()
+    .min(1, { message: 'a group needs a name' })
+    .refine(value => value.toLowerCase() !== UNGROUPED_LABEL.toLowerCase(), {
+      message: `${UNGROUPED_LABEL} is where a row with no group goes, so it cannot be a group`,
+    }),
+})

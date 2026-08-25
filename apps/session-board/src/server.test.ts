@@ -43,12 +43,15 @@ async function findFreePort(): Promise<number> {
 async function startBoard({
   events = [],
   metadata,
+  groups,
 }: {
   events?: Record<string, unknown>[]
   metadata?: Record<string, unknown>
+  groups?: string[]
 } = {}): Promise<{
   origin: string
   metadataPath: string
+  groupsPath: string
   port: number
   close: () => Promise<void>
 }> {
@@ -57,11 +60,13 @@ async function startBoard({
   await writeFile(eventLogPath, events.map(event => `${JSON.stringify(event)}\n`).join(''))
 
   if (metadata) await writeFile(join(dir, 'sessions.json'), JSON.stringify(metadata))
+  if (groups) await writeFile(join(dir, 'groups.json'), JSON.stringify(groups))
 
   const port = await findFreePort()
   const config: Config = {
     eventLogPath,
     metadataPath: join(dir, 'sessions.json'),
+    groupsPath: join(dir, 'groups.json'),
     port,
     staleDays: 4,
     freshMinutes: 15,
@@ -81,6 +86,7 @@ async function startBoard({
   return {
     origin: `http://127.0.0.1:${port}`,
     metadataPath: config.metadataPath,
+    groupsPath: config.groupsPath,
     port,
     close: () => board.close(),
   }
@@ -399,4 +405,107 @@ it('marks the row before the launch, so a fast session cannot start ahead of the
 
   expect(res.status).toBe(200)
   expect(markedBeforeLaunch).toMatchObject({ relaunchedAt: expect.any(Number) })
+})
+
+/** A request to the group endpoints, which take a name rather than a session id. */
+function groupRequest({
+  origin,
+  path,
+  method,
+  body,
+}: {
+  origin: string
+  path: string
+  method: string
+  body?: unknown
+}): Promise<Response> {
+  return fetch(`${origin}/api/groups${path}`, {
+    method,
+    headers: { origin, 'content-type': 'application/json' },
+    ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+  })
+}
+
+it('creates a group that has no sessions in it yet', async () => {
+  const board = await startBoard()
+
+  const res = await groupRequest({
+    origin: board.origin,
+    path: '',
+    method: 'POST',
+    body: { name: 'Bug week' },
+  })
+
+  expect(res.status).toBe(200)
+  expect(await readMetadata(board.groupsPath)).toEqual(['Bug week'])
+})
+
+it('refuses a second group of the same name', async () => {
+  const board = await startBoard({ groups: ['Bug week'] })
+
+  const res = await groupRequest({
+    origin: board.origin,
+    path: '',
+    method: 'POST',
+    body: { name: 'Bug week' },
+  })
+
+  expect(res.status).toBe(409)
+  expect(await readMetadata(board.groupsPath)).toEqual(['Bug week'])
+})
+
+it('refuses Ungrouped as a group name, and says why', async () => {
+  const board = await startBoard()
+
+  const res = await groupRequest({
+    origin: board.origin,
+    path: '',
+    method: 'POST',
+    body: { name: 'ungrouped' },
+  })
+
+  expect(res.status).toBe(400)
+  expect(await res.json()).toEqual({
+    error: 'Ungrouped is where a row with no group goes, so it cannot be a group',
+  })
+})
+
+it('renames a group and every row in it at once', async () => {
+  const board = await startBoard({
+    groups: ['Bug week'],
+    metadata: { abc: { name: 'impact', group: 'Bug week' }, xyz: { name: 'loose' } },
+  })
+
+  const res = await groupRequest({
+    origin: board.origin,
+    path: `/${encodeURIComponent('Bug week')}`,
+    method: 'PATCH',
+    body: { name: 'Bug month' },
+  })
+
+  expect(res.status).toBe(200)
+  expect(await readMetadata(board.groupsPath)).toEqual(['Bug month'])
+  // Both halves move together: the snapshot registers every group it meets on a
+  // row, so a row left behind would bring the old name straight back.
+  expect(await readMetadata(board.metadataPath)).toEqual({
+    abc: { name: 'impact', group: 'Bug month' },
+    xyz: { name: 'loose' },
+  })
+})
+
+it('deletes a group and drops its rows into Ungrouped', async () => {
+  const board = await startBoard({
+    groups: ['Bug week'],
+    metadata: { abc: { name: 'impact', group: 'Bug week' } },
+  })
+
+  const res = await groupRequest({
+    origin: board.origin,
+    path: `/${encodeURIComponent('Bug week')}`,
+    method: 'DELETE',
+  })
+
+  expect(res.status).toBe(200)
+  expect(await readMetadata(board.groupsPath)).toEqual([])
+  expect(await readMetadata(board.metadataPath)).toEqual({ abc: { name: 'impact' } })
 })

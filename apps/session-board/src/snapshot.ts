@@ -11,6 +11,7 @@ import { listProcesses } from './derive/processes.js'
 import { findProgressFiles, matchProgressFile, resolveRepoRoot } from './derive/progress-files.js'
 import { findTranscriptSessionIds } from './derive/transcripts.js'
 import type { HookEvent } from './events/types.js'
+import type { GroupStore } from './metadata/group-store.js'
 import type { MetadataStore } from './metadata/store.js'
 import type { MetadataBySession } from './metadata/types.js'
 
@@ -252,11 +253,13 @@ function findRowsToKeepApart({
 export async function buildSnapshot({
   events,
   store,
+  groups,
   config,
   now = Math.floor(Date.now() / MILLISECONDS_PER_SECOND),
 }: {
   events: HookEvent[]
   store: MetadataStore
+  groups: GroupStore
   config: Config
   now?: number
 }): Promise<Board> {
@@ -293,15 +296,26 @@ export async function buildSnapshot({
   const didLink = await linkProgressFiles({ events, metadata: await store.read(), store })
   if (claims.length > 0 || didLink || didMigrate) metadata = await store.read()
 
-  const [processes, missingProgressPaths, transcriptSessionIds] = await Promise.all([
+  // A group named on a row but never created through the board still has to
+  // survive its last session being moved out, so every name met here is taken
+  // as a group that exists.
+  await groups.register(
+    Object.values(metadata)
+      .map(entry => entry.group)
+      .filter(name => name !== undefined),
+  )
+
+  const [processes, missingProgressPaths, transcriptSessionIds, knownGroups] = await Promise.all([
     listProcesses(),
     findMissingProgressPaths(metadata),
     findTranscriptSessionIds({ roots: config.transcriptRoots }),
+    groups.read(),
   ])
 
   return buildBoard({
     events,
     metadata,
+    knownGroups,
     supersededSessionIds: new Set([...successors.keys()].filter(id => !keptApart.has(id))),
     liveSessionIds: resolveLiveSessions({ events, processes }),
     missingProgressPaths,

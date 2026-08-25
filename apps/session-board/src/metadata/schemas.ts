@@ -41,3 +41,7 @@ export const sessionMetadataSchema = z.object({
 // why there is no `claimed` field and no `state`: parked is exactly
 // `parkedReason` being set, and finishing with a session deletes its row.
 export const metadataFileSchema = z.record(z.string().min(1), sessionMetadataSchema)
+
+// Every group the board draws, in the order they were created. A group is also
+// the name written on its rows, and this is what keeps one that has no rows.
+export const groupsFileSchema = z.array(z.string().min(1))

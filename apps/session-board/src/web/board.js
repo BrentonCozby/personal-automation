@@ -670,23 +670,42 @@ async function openProgressPicker(node, row) {
   select.addEventListener('click', event => event.stopPropagation())
 }
 
+function createGroup(name) {
+  return api('/api/groups', { method: 'POST', body: JSON.stringify({ name }) })
+}
+
 /**
- * A group is only the name written on its rows, so renaming one is renaming
- * every row in it. There is no group to carry anything else across.
+ * Delete a group, which drops its sessions into Ungrouped.
  *
- * Which is why the collapsed mark has to be moved by hand: it is filed under
- * the name, so a rename would otherwise leave it behind on a name nothing has
- * any more, and the group would spring open. Clearing the name drops the mark
- * rather than moving it to Ungrouped, which is a group that already exists and
- * has a state of its own.
+ * The collapsed mark is filed under the name, so it goes with the group rather
+ * than following the rows to Ungrouped, which has a mark of its own.
  */
-function renameGroup({ rows, from, to }) {
+function deleteGroup(name) {
+  if (collapsed.delete(name)) saveCollapsed()
+
+  return api(`/api/groups/${encodeURIComponent(name)}`, { method: 'DELETE' })
+}
+
+/**
+ * Rename a group, or delete it when the name is cleared.
+ *
+ * The name is written on the group and on every row in it, and the server moves
+ * both halves in one request. The collapsed mark has to be moved here, since it
+ * is filed under the name and would otherwise be left on a name nothing has any
+ * more, springing the group open.
+ */
+function renameGroup({ from, to }) {
+  if (!to) return deleteGroup(from)
+
   if (collapsed.delete(from)) {
-    if (to) collapsed.add(to)
+    collapsed.add(to)
     saveCollapsed()
   }
 
-  return Promise.all(rows.map(row => patchSession(row.sessionId, { group: to || null })))
+  return api(`/api/groups/${encodeURIComponent(from)}`, {
+    method: 'PATCH',
+    body: JSON.stringify({ name: to }),
+  })
 }
 
 /**
@@ -710,6 +729,61 @@ function pruneCollapsed(board) {
   }
 
   if (didDrop) saveCollapsed()
+}
+
+/**
+ * The `×` that deletes a group.
+ *
+ * A group holding sessions asks twice, since one stray click would otherwise
+ * scatter every row in it into Ungrouped and putting them back means dragging
+ * each one. The second button carries the `edit` class and takes focus, which
+ * is what already holds a repaint off: without it an unrelated session's event
+ * would rebuild the header and take the question away mid-click.
+ */
+function buildGroupDelete({ label, count }) {
+  const moved = count === 1 ? '1 session' : `${count} sessions`
+  const button = el('button', 'group-delete', '×')
+  button.title =
+    count === 0
+      ? `Delete ${label}`
+      : `Delete ${label}. Its ${moved} ${count === 1 ? 'moves' : 'move'} to Ungrouped.`
+
+  button.addEventListener('click', event => {
+    event.stopPropagation()
+    if (count === 0) {
+      void deleteGroup(label)
+
+      return
+    }
+
+    let isAnswered = false
+    const confirm = el('button', 'group-delete edit', `delete? ${moved} to Ungrouped`)
+
+    confirm.addEventListener('click', () => {
+      isAnswered = true
+
+      // The question held the repaint off, and the repaint is what takes the
+      // group away, so a button that keeps hold of focus here leaves the board
+      // sitting exactly as it was until you press something else: the press
+      // reads as having done nothing. Say so on the button as well, since the
+      // request takes a moment and the row moves rather than disappearing.
+      confirm.classList.remove('edit')
+      confirm.textContent = 'deleting…'
+      confirm.disabled = true
+      confirm.blur()
+      void deleteGroup(label)
+    })
+
+    confirm.addEventListener('blur', () => {
+      if (isAnswered) return
+      confirm.replaceWith(button)
+    })
+
+    button.replaceWith(confirm)
+    confirm.focus()
+  })
+
+  return button
 }
 
 function buildGroup({ key, label, count, rows, isRenameable = false, isDropTarget = false }) {
@@ -762,20 +836,31 @@ function buildGroup({ key, label, count, rows, isRenameable = false, isDropTarge
   header.append(toggle, title, el('span', 'count', `(${count})`))
 
   if (isRenameable) {
-    title.title = 'Rename this group. Clearing the name moves its sessions to Ungrouped.'
+    title.title = 'Rename this group. Clearing the name deletes it.'
     makeActivatable(title, () =>
       editIn({
         host: title,
         current: label,
         placeholder: 'group name',
-        onCommit: value => renameGroup({ rows, from: label, to: value }),
+        onCommit: value => renameGroup({ from: label, to: value }),
       }),
     )
+
+    header.append(buildGroupDelete({ label, count }))
   }
 
   wrapper.append(header)
 
-  if (!collapsed.has(key)) for (const row of rows) wrapper.append(buildRow(row))
+  if (collapsed.has(key)) return wrapper
+
+  // An empty group is its header and nothing else, which on the real board is
+  // 38px to aim a drag at against 29px per row, and the same band that holds
+  // the rename field and the ×. This doubles the target and says what the
+  // group is waiting for.
+  if (rows.length === 0 && isDropTarget)
+    wrapper.append(el('div', 'drop-hint', 'Drag a session here'))
+
+  for (const row of rows) wrapper.append(buildRow(row))
 
   return wrapper
 }
@@ -845,9 +930,46 @@ export function render(board) {
   )
 }
 
+const NEW_GROUP_LABEL = '+ new group'
+
+/**
+ * The toolbar's "new group", which creates an empty group to drag rows into.
+ *
+ * It sits in the toolbar rather than on a group header, where `+` means
+ * something else. The toolbar is outside the part `render` rebuilds, so this is
+ * built once and has to put its own label back after an edit.
+ */
+function buildNewGroup() {
+  const host = el('span', 'new-group', NEW_GROUP_LABEL)
+  host.title = 'Create a group with no sessions in it, then drag rows into it'
+
+  makeActivatable(host, () =>
+    editIn({
+      host,
+      current: '',
+      placeholder: 'group name',
+      onCommit: async name => {
+        const result = await createGroup(name)
+        host.replaceChildren(NEW_GROUP_LABEL)
+        if (result.ok) return
+
+        showMessage(host.parentElement, result.error ?? 'could not create that group')
+      },
+    }),
+  )
+
+  return host
+}
+
 // The page calls this; importing the module does nothing on its own, which is
 // what lets a test load it without an event stream or a running server.
 export function start() {
+  // Before the count, so the toolbar reads left to right as sort, action,
+  // total rather than ending on a control.
+  document
+    .getElementById('toolbar')
+    ?.insertBefore(buildNewGroup(), document.getElementById('count'))
+
   const stream = new EventSource('/stream')
   stream.addEventListener('message', event => {
     const board = JSON.parse(event.data)

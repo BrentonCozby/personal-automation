@@ -907,6 +907,183 @@ it('carries a collapsed group to its new name instead of springing it open', asy
   expect(isOnlyGroupCollapsed()).toBe(true)
 })
 
+it('renames a group in one request rather than one per row', async () => {
+  const fetchMock = vi.fn(async () => ({ ok: true, json: async () => ({}) }))
+  vi.stubGlobal('fetch', fetchMock)
+  render(
+    boardWithGroups([
+      { name: 'Rename Me', rows: [aRow({ sessionId: 'a' }), aRow({ sessionId: 'b' })] },
+    ]),
+  )
+
+  const title = document.querySelector('.group-name')
+  title.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }))
+  const input = title.querySelector('input.edit')
+  input.value = 'Renamed'
+  input.dispatchEvent(new Event('blur'))
+  await settle()
+
+  // The group carries the name too, so the server moves it and the rows
+  // together: a row left behind brings the old group back on the next snapshot.
+  expect(fetchMock.mock.calls).toEqual([
+    [
+      '/api/groups/Rename%20Me',
+      expect.objectContaining({ method: 'PATCH', body: JSON.stringify({ name: 'Renamed' }) }),
+    ],
+  ])
+})
+
+it('deletes a group when its name is cleared', async () => {
+  const fetchMock = vi.fn(async () => ({ ok: true, json: async () => ({}) }))
+  vi.stubGlobal('fetch', fetchMock)
+  render(boardWithGroups([{ name: 'Doomed', rows: [aRow({ sessionId: 'a' })] }]))
+
+  const title = document.querySelector('.group-name')
+  title.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }))
+  const input = title.querySelector('input.edit')
+  input.value = ''
+  input.dispatchEvent(new Event('blur'))
+  await settle()
+
+  expect(fetchMock.mock.calls).toEqual([
+    ['/api/groups/Doomed', expect.objectContaining({ method: 'DELETE' })],
+  ])
+})
+
+it('deletes an empty group on one press of its ×', async () => {
+  const fetchMock = vi.fn(async () => ({ ok: true, json: async () => ({}) }))
+  vi.stubGlobal('fetch', fetchMock)
+  render(boardWithGroups([{ name: 'Empty', rows: [] }]))
+
+  document.querySelector('.group-delete').click()
+  await settle()
+
+  expect(fetchMock.mock.calls).toEqual([
+    ['/api/groups/Empty', expect.objectContaining({ method: 'DELETE' })],
+  ])
+})
+
+it('asks again before deleting a group that still holds sessions', async () => {
+  const fetchMock = vi.fn(async () => ({ ok: true, json: async () => ({}) }))
+  vi.stubGlobal('fetch', fetchMock)
+  render(
+    boardWithGroups([{ name: 'Busy', rows: [aRow({ sessionId: 'a' }), aRow({ sessionId: 'b' })] }]),
+  )
+
+  document.querySelector('.group-delete').click()
+  await settle()
+
+  // One stray click would otherwise scatter every row into Ungrouped, and
+  // putting them back means dragging each one.
+  expect(fetchMock).not.toHaveBeenCalled()
+  const confirm = document.querySelector('.group-delete')
+  expect(confirm.textContent).toBe('delete? 2 sessions to Ungrouped')
+
+  confirm.click()
+  await settle()
+
+  expect(fetchMock.mock.calls).toEqual([
+    ['/api/groups/Busy', expect.objectContaining({ method: 'DELETE' })],
+  ])
+})
+
+it('holds the repaint while the delete question is up', () => {
+  render(boardWithGroups([{ name: 'Busy', rows: [aRow({ sessionId: 'a' })] }]))
+
+  document.querySelector('.group-delete').click()
+
+  // An unrelated session's event would otherwise rebuild the header and take
+  // the question away mid-click.
+  expect(document.activeElement.classList.contains('edit')).toBe(true)
+})
+
+it('lets go of the repaint the moment the delete is answered', async () => {
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async () => ({ ok: true, json: async () => ({}) })),
+  )
+  render(boardWithGroups([{ name: 'Busy', rows: [aRow({ sessionId: 'a' })] }]))
+
+  document.querySelector('.group-delete').click()
+  const confirm = document.querySelector('.group-delete')
+  confirm.click()
+  await settle()
+
+  // The question is what held the repaint off, and the repaint is what takes
+  // the group away, so holding on past the press leaves the board sitting there
+  // as though the button did nothing.
+  expect(document.activeElement.classList.contains('edit')).toBe(false)
+  expect(confirm.textContent).toBe('deleting…')
+})
+
+it('keeps the question up when the press lands somewhere else', () => {
+  render(boardWithGroups([{ name: 'Busy', rows: [aRow({ sessionId: 'a' })] }]))
+
+  document.querySelector('.group-delete').click()
+  document.querySelector('.group-delete').blur()
+
+  expect(document.querySelector('.group-delete').textContent).toBe('×')
+})
+
+it('gives an empty group something to drop a session onto', () => {
+  render(boardWithGroups([{ name: 'Empty', rows: [] }]))
+
+  // The header alone is 38px of target on the real board, against 29px per row,
+  // and it is the same band that holds the rename field and the ×.
+  expect(document.querySelector('.drop-hint').textContent).toBe('Drag a session here')
+})
+
+it('draws no drop hint on a group that has sessions in it', () => {
+  render(boardWithGroups([{ name: 'Busy', rows: [aRow({ sessionId: 'a' })] }]))
+
+  expect(document.querySelector('.drop-hint')).toBe(null)
+})
+
+it('draws no drop hint on a collapsed group, which shows nothing else either', () => {
+  render(boardWithGroups([{ name: 'Empty', rows: [] }]))
+  collapseOnlyGroup()
+
+  expect(document.querySelector('.drop-hint')).toBe(null)
+})
+
+it('offers no × on Ungrouped, which is the absence of a group', () => {
+  render(boardWithGroups([{ name: 'Ungrouped', rows: [aRow({ sessionId: 'a' })] }]))
+
+  expect(document.querySelector('.group-delete')).toBe(null)
+})
+
+it('creates a group from the toolbar, with no session in it yet', async () => {
+  const fetchMock = vi.fn(async () => ({ ok: true, json: async () => ({}) }))
+  vi.stubGlobal('fetch', fetchMock)
+  const onMessage = {}
+  vi.stubGlobal(
+    'EventSource',
+    class {
+      addEventListener(type, handler) {
+        onMessage[type] = handler
+      }
+    },
+  )
+  start()
+
+  const host = document.querySelector('.new-group')
+  host.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }))
+  const input = host.querySelector('input.edit')
+  input.value = 'Bug week'
+  input.dispatchEvent(new Event('blur'))
+  await settle()
+
+  expect(fetchMock.mock.calls).toEqual([
+    [
+      '/api/groups',
+      expect.objectContaining({ method: 'POST', body: JSON.stringify({ name: 'Bug week' }) }),
+    ],
+  ])
+  // The toolbar is outside the part a repaint rebuilds, so the field would
+  // otherwise sit there for the rest of the session.
+  expect(host.textContent).toBe('+ new group')
+})
+
 it('forgets a group that is gone, so a later one reusing the name opens', () => {
   render(boardWithGroups([{ name: 'Vanisher', rows: [aRow({ name: 'a' })] }]))
   collapseOnlyGroup()

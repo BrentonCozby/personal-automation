@@ -27,6 +27,7 @@ function build({
   missing = [],
   superseded = [],
   transcripts,
+  knownGroups = [],
 }: {
   events: HookEvent[]
   metadata?: MetadataBySession
@@ -35,10 +36,12 @@ function build({
   superseded?: string[]
   /** Left out means every session in the fixture has one, which is the normal case. */
   transcripts?: string[]
+  knownGroups?: string[]
 }): Board {
   return buildBoard({
     events,
     metadata,
+    knownGroups,
     liveSessionIds: new Set(live),
     missingProgressPaths: new Set(missing),
     transcriptSessionIds: new Set(
@@ -187,6 +190,40 @@ it('pins Ungrouped last however old its sessions are', () => {
   })
 
   expect(board.groups.map(group => group.name)).toEqual(['Bug week', UNGROUPED_LABEL])
+})
+
+it('draws a group that holds no sessions, so taking the last one out cannot delete it', () => {
+  const board = build({
+    events: [event({ sessionId: 'grouped' })],
+    metadata: { grouped: { group: 'Bug week' } },
+    knownGroups: ['Bug week', 'Stash'],
+  })
+
+  expect(board.groups.map(group => group.name)).toEqual(['Bug week', 'Stash'])
+  expect(board.groups[1]?.rows).toEqual([])
+})
+
+it('sorts an empty group below every group that has a session in it', () => {
+  const board = build({
+    events: [
+      event({ sessionId: 'nogroup', agoSeconds: 30 * DAY }),
+      event({ sessionId: 'grouped', agoSeconds: 1 * DAY }),
+    ],
+    metadata: { nogroup: { name: 'loose' }, grouped: { group: 'Bug week' } },
+    knownGroups: ['Bug week', 'Stash'],
+  })
+
+  expect(board.groups.map(group => group.name)).toEqual(['Bug week', 'Stash', UNGROUPED_LABEL])
+})
+
+it('never draws Ungrouped as a group of its own, whatever the file says', () => {
+  const board = build({
+    events: [event({ sessionId: 'grouped' })],
+    metadata: { grouped: { group: 'Bug week' } },
+    knownGroups: [UNGROUPED_LABEL],
+  })
+
+  expect(board.groups.map(group => group.name)).toEqual(['Bug week'])
 })
 
 it('colors a session mid-turn as running', () => {

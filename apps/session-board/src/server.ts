@@ -10,11 +10,12 @@ import { listProgressCandidates, resolveRepoRoot } from './derive/progress-files
 import { createEventLogReader } from './events/read.js'
 import type { HookEvent } from './events/types.js'
 import { openFile, openSessionFromProgress, openSessionTab } from './launch.js'
+import { createGroupStore } from './metadata/group-store.js'
 import { createMetadataStore } from './metadata/store.js'
 import type { MetadataPatch } from './metadata/types.js'
 import { findRequestRejection, isSessionId } from './request-guard.js'
 import { buildSnapshot, fileExists, resolveSessionCwd } from './snapshot.js'
-import { openBodySchema, patchBodySchema } from './wire.js'
+import { groupBodySchema, openBodySchema, patchBodySchema } from './wire.js'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 
@@ -103,6 +104,7 @@ export interface BoardServer {
 
 export function createBoardServer({ config }: { config: Config }): BoardServer {
   const store = createMetadataStore({ path: config.metadataPath })
+  const groups = createGroupStore({ path: config.groupsPath })
   const reader = createEventLogReader({ path: config.eventLogPath })
   const streams = new Set<ServerResponse>()
 
@@ -127,7 +129,11 @@ export function createBoardServer({ config }: { config: Config }): BoardServer {
       // watch bound to one inode stops firing after a replace. Both are named
       // rather than only the log's: an edit to a row has to repaint the board
       // too, and the two files only share a directory by default.
-      const directories = new Set([dirname(config.eventLogPath), dirname(config.metadataPath)])
+      const directories = new Set([
+        dirname(config.eventLogPath),
+        dirname(config.metadataPath),
+        dirname(config.groupsPath),
+      ])
       watchers = [...directories].map(directory => watch(directory, scheduleRebuild))
     })
 
@@ -135,7 +141,7 @@ export function createBoardServer({ config }: { config: Config }): BoardServer {
   }
 
   function snapshot(): Promise<Board> {
-    return buildSnapshot({ events, store, config })
+    return buildSnapshot({ events, store, groups, config })
   }
 
   async function pushToStreams(): Promise<void> {
@@ -157,6 +163,90 @@ export function createBoardServer({ config }: { config: Config }): BoardServer {
     rebuildTimer = setTimeout(() => {
       void ingestNewEvents().then(pushToStreams)
     }, REBUILD_DEBOUNCE_MS)
+  }
+
+  /** Move every session in a group to another one, or out of any group at all. */
+  async function moveRowsOutOf({
+    group,
+    to,
+  }: {
+    group: string
+    to: string | undefined
+  }): Promise<void> {
+    const metadata = await store.read()
+    const members = Object.entries(metadata)
+      .filter(([, entry]) => entry.group === group)
+      .map(([sessionId]) => sessionId)
+
+    for (const sessionId of members) {
+      await store.patch({ sessionId, changes: { group: to } })
+    }
+  }
+
+  async function handleGroupApi({
+    req,
+    res,
+    url,
+  }: {
+    req: IncomingMessage
+    res: ServerResponse
+    url: URL
+  }): Promise<boolean> {
+    const groupMatch = /^\/api\/groups(?:\/(.+))?$/.exec(url.pathname)
+    if (!groupMatch) return false
+
+    const name = groupMatch[1] === undefined ? undefined : decodeURIComponent(groupMatch[1])
+
+    if (!name && req.method === 'POST') {
+      const body = groupBodySchema.safeParse(await readBody(req))
+      if (!body.success) {
+        sendJson({ res, status: 400, body: { error: body.error.issues[0]?.message } })
+
+        return true
+      }
+
+      const created = await groups.add(body.data.name)
+      if (!created) {
+        sendJson({ res, status: 409, body: { error: 'that group already exists' } })
+
+        return true
+      }
+
+      sendJson({ res, status: 200, body: { name: body.data.name } })
+      await pushToStreams()
+
+      return true
+    }
+
+    if (name && req.method === 'PATCH') {
+      const body = groupBodySchema.safeParse(await readBody(req))
+      if (!body.success) {
+        sendJson({ res, status: 400, body: { error: body.error.issues[0]?.message } })
+
+        return true
+      }
+
+      // The rows carry the name too, so both halves move or the group splits in
+      // two: the old name would come back on the next snapshot, which registers
+      // every group it meets on a row.
+      await groups.rename({ from: name, to: body.data.name })
+      await moveRowsOutOf({ group: name, to: body.data.name })
+      sendJson({ res, status: 200, body: { name: body.data.name } })
+      await pushToStreams()
+
+      return true
+    }
+
+    if (name && req.method === 'DELETE') {
+      await groups.remove(name)
+      await moveRowsOutOf({ group: name, to: undefined })
+      sendJson({ res, status: 200, body: { ok: true } })
+      await pushToStreams()
+
+      return true
+    }
+
+    return false
   }
 
   async function handleApi({
@@ -357,6 +447,7 @@ export function createBoardServer({ config }: { config: Config }): BoardServer {
           return
         }
 
+        if (await handleGroupApi({ req, res, url })) return
         if (await handleApi({ req, res, url })) return
 
         sendJson({ res, status: 404, body: { error: 'not found' } })

@@ -6,6 +6,7 @@ loadAppEnv(import.meta.url)
 const schema = z.object({
   BOARD_EVENT_LOG: z.string().min(1),
   BOARD_METADATA_FILE: z.string().min(1),
+  BOARD_GROUPS_FILE: z.string().min(1),
   BOARD_PORT: z.coerce.number().pipe(z.int().positive()),
   BOARD_STALE_DAYS: z.coerce.number().pipe(z.int().positive()),
   BOARD_FRESH_MINUTES: z.coerce.number().pipe(z.int().positive()),
@@ -21,6 +22,8 @@ export interface Config {
   eventLogPath: string
   /** Your annotations. The server is the only writer; no hook touches it. */
   metadataPath: string
+  /** The groups that exist, so one holding no sessions is still drawn. */
+  groupsPath: string
   port: number
   /** Days of silence after which a row's age is called out. */
   staleDays: number
@@ -51,6 +54,7 @@ export function loadConfig(): Config {
   return {
     eventLogPath: parsed.BOARD_EVENT_LOG,
     metadataPath: parsed.BOARD_METADATA_FILE,
+    groupsPath: parsed.BOARD_GROUPS_FILE,
     port: parsed.BOARD_PORT,
     staleDays: parsed.BOARD_STALE_DAYS,
     freshMinutes: parsed.BOARD_FRESH_MINUTES,
