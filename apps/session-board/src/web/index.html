@@ -152,6 +152,21 @@
 
       .row:hover { background: var(--hover); }
 
+      /* `grab` only on hover: a row is draggable everywhere, but showing the
+         hand over the whole board would suggest the page itself moves. */
+      .row:hover { cursor: grab; }
+      .row:active { cursor: grabbing; }
+      .row.dragging { opacity: 0.4; }
+
+      /* The drop lands on the group, so the whole group lights up rather than a
+         thin line between two rows: there is no ordering within a group to
+         aim at, only which group you end up in. */
+      .group.drop-target {
+        background: var(--hover);
+        box-shadow: inset 0 0 0 1px var(--ready);
+        border-radius: 4px;
+      }
+
       .row-top { display: flex; align-items: center; gap: 8px; }
 
       .dot {

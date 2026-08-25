@@ -1,6 +1,16 @@
 const collapsed = new Set(readCollapsed())
 let latest = null
 
+// The row being dragged between groups, and the group it started in. Held at
+// module level because the drop lands on a different element than the drag
+// started on, and because a repaint has to be held off for as long as a drag is
+// in flight: rebuilding the board mid-drag destroys the element under the
+// pointer and the drag dies with it.
+let dragged
+
+/** The group that means "no group", which clears the field rather than setting it. */
+const UNGROUPED_LABEL = 'Ungrouped'
+
 function readCollapsed() {
   try {
     const stored = JSON.parse(localStorage.getItem('collapsed') || '[]')
@@ -52,6 +62,11 @@ function el(tag, className, text) {
 
 function isEditing() {
   return document.activeElement?.classList.contains('edit')
+}
+
+/** Whether a repaint has to wait: it would destroy what the pointer is holding. */
+function isBusy() {
+  return isEditing() || dragged !== undefined
 }
 
 // What each dot means, so the status is not carried by hue alone. Five states
@@ -133,6 +148,12 @@ function editIn({ host, current, placeholder, onCommit }) {
   const role = host.getAttribute('role')
   host.removeAttribute('role')
 
+  // Text inside a draggable element cannot be selected with the mouse: the
+  // drag wins the gesture. The row gives dragging up for as long as one of its
+  // fields is open, or you could not click into the middle of a name to fix it.
+  const draggableRow = host.closest('.row')
+  if (draggableRow) draggableRow.draggable = false
+
   const input = el('input', 'edit')
   input.value = current || ''
   input.placeholder = placeholder
@@ -145,6 +166,7 @@ function editIn({ host, current, placeholder, onCommit }) {
     if (settled) return
     settled = true
     if (role) host.setAttribute('role', role)
+    if (draggableRow) draggableRow.draggable = true
     if (commit && input.value.trim() !== (current || '')) {
       onCommit(input.value.trim())
 
@@ -179,6 +201,24 @@ function buildRow(row) {
   const node = el('div', `row status-${row.status}`)
   const isAlive = row.status !== 'gone'
 
+  node.draggable = true
+  node.addEventListener('dragstart', event => {
+    dragged = { sessionId: row.sessionId, fromGroup: row.groupName }
+    node.classList.add('dragging')
+    event.dataTransfer.effectAllowed = 'move'
+    // Firefox will not start a drag whose transfer carries nothing.
+    event.dataTransfer.setData('text/plain', row.sessionId)
+  })
+  node.addEventListener('dragend', () => {
+    dragged = undefined
+    node.classList.remove('dragging')
+    for (const group of document.querySelectorAll('.group.drop-target')) {
+      group.classList.remove('drop-target')
+    }
+    // Snapshots that arrived during the drag were set aside rather than drawn.
+    render(latest)
+  })
+
   const top = el('div', 'row-top')
 
   const statusLabel = STATUS_LABELS[row.status] ?? row.status
@@ -208,11 +248,17 @@ function buildRow(row) {
   top.append(el('span', isStale ? 'age stale' : 'age', formatAge(ageSeconds)))
   node.append(top)
 
+  // The slug repeats the name whenever a session is named after its task,
+  // which is the naming the matcher rewards. Showing both wastes a line.
+  const hasProgressLine = Boolean(row.progressLabel) && row.progressLabel !== row.name
+
   // For a session with no name of its own, the working directory is the
   // only human-readable thing the board has. A named row gets it too when
-  // it has no progress file, since then nothing else says where it is.
+  // no progress line will run, since then nothing else says where it is.
+  // Keyed on the line actually rendering, not on a progress file existing: a
+  // row named after its own progress file suppresses both and showed nothing.
   const cwdLabel = row.cwd ? formatCwd(row.cwd) : ''
-  if (cwdLabel && (!row.name || !row.progressPath)) {
+  if (cwdLabel && (!row.name || !hasProgressLine)) {
     const cwd = el('div', 'sub cwd')
     cwd.append(el('span', 'icon', '⌂'), el('span', 'label', cwdLabel))
     cwd.title = row.cwd
@@ -233,9 +279,7 @@ function buildRow(row) {
     node.append(parked)
   }
 
-  // The slug repeats the name whenever a session is named after its task,
-  // which is the naming the matcher rewards. Showing both wastes a line.
-  if (row.progressLabel && row.progressLabel !== row.name) {
+  if (hasProgressLine) {
     const progress = el('div', row.isProgressFileMissing ? 'sub progress missing' : 'sub progress')
     // `≡` rather than a document character: U+2398 and the ones like it are
     // missing from most fonts and come out as an empty box.
@@ -469,8 +513,36 @@ function renameGroup(rows, value) {
   return Promise.all(rows.map(row => patchSession(row.sessionId, { group: value || null })))
 }
 
-function buildGroup({ key, label, count, rows, isRenameable = false }) {
+function buildGroup({ key, label, count, rows, isRenameable = false, isDropTarget = false }) {
   const wrapper = el('div', collapsed.has(key) ? 'group collapsed' : 'group')
+
+  if (isDropTarget) {
+    wrapper.addEventListener('dragover', event => {
+      // Without preventDefault the browser refuses the drop, and the pointer
+      // shows the "no" cursor the whole way.
+      if (!dragged || dragged.fromGroup === label) return
+      event.preventDefault()
+      event.dataTransfer.dropEffect = 'move'
+      wrapper.classList.add('drop-target')
+    })
+    wrapper.addEventListener('dragleave', event => {
+      // `dragleave` also fires crossing between children, so the highlight only
+      // clears once the pointer has really left the group.
+      if (!wrapper.contains(event.relatedTarget)) wrapper.classList.remove('drop-target')
+    })
+    wrapper.addEventListener('drop', event => {
+      event.preventDefault()
+      wrapper.classList.remove('drop-target')
+      if (!dragged || dragged.fromGroup === label) return
+
+      // Ungrouped is the absence of a group rather than one of them, so landing
+      // there clears the field instead of writing that word into it.
+      void patchSession(dragged.sessionId, {
+        group: label === UNGROUPED_LABEL ? null : label,
+      })
+      dragged = undefined
+    })
+  }
 
   const header = el('div', 'group-header')
   const title = el('span', isRenameable ? 'group-label group-name' : 'group-label', label)
@@ -542,10 +614,12 @@ export function render(board) {
         key: group.name,
         label: group.name,
         count: group.rows.length,
-        rows: group.rows.map(row => ({ ...row, isClaimed: true })),
+        // `groupName` is what a drag reads to know it has landed somewhere new.
+        rows: group.rows.map(row => ({ ...row, isClaimed: true, groupName: group.name })),
         // Ungrouped is the absence of a group rather than one of them, so
         // there is no name to change.
-        isRenameable: group.name !== 'Ungrouped',
+        isRenameable: group.name !== UNGROUPED_LABEL,
+        isDropTarget: true,
       }),
     )
   }
@@ -561,7 +635,11 @@ export function render(board) {
       key: '__drawer__',
       label: 'Off the board',
       count: board.unclaimed.length,
-      rows: board.unclaimed.map(row => ({ ...row, isClaimed: false })),
+      // Dragging one of these onto a group claims it into that group. The
+      // drawer itself takes no drops: taking a row off the board is what `×`
+      // is for, and a drop target that removes things is too easy to hit by
+      // accident on the way past.
+      rows: board.unclaimed.map(row => ({ ...row, isClaimed: false, groupName: '__drawer__' })),
     }),
   )
 }
@@ -573,8 +651,9 @@ export function start() {
   stream.addEventListener('message', event => {
     const board = JSON.parse(event.data)
     // Another session's event must not yank the field out from under a name
-    // being typed. The next snapshot is moments away.
-    if (isEditing()) {
+    // being typed, or the row out from under a drag. The next snapshot is
+    // moments away.
+    if (isBusy()) {
       latest = board
 
       return
@@ -586,6 +665,6 @@ export function start() {
   // out from its timestamp, so a tick that runs late or not at all costs
   // nothing but a delayed repaint.
   setInterval(() => {
-    if (latest && !isEditing()) render(latest)
+    if (latest && !isBusy()) render(latest)
   }, 30_000)
 }

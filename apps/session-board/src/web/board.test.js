@@ -2,7 +2,7 @@
  * @vitest-environment happy-dom
  */
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
-import { render } from './board.js'
+import { render, start } from './board.js'
 
 // Far enough in the future that a row written with a fixed `lastActive` has a
 // predictable age. Real time would make the age move between runs.
@@ -15,6 +15,54 @@ function boardWith(rows) {
     groups: [{ name: 'Bug week', rows }],
     unclaimed: [],
   }
+}
+
+function boardWithGroups(groups, unclaimed = []) {
+  return {
+    claimedCount: groups.reduce((total, group) => total + group.rows.length, 0),
+    staleSeconds: 4 * 86_400,
+    groups,
+    unclaimed,
+  }
+}
+
+/** A drag event happy-dom does not build for us: it has no DataTransfer. */
+function dragEvent(type, transfer) {
+  const event = new Event(type, { bubbles: true, cancelable: true })
+  event.dataTransfer = transfer
+
+  return event
+}
+
+function newTransfer() {
+  const data = {}
+
+  return {
+    effectAllowed: undefined,
+    dropEffect: undefined,
+    setData: (kind, value) => {
+      data[kind] = value
+    },
+    getData: kind => data[kind],
+  }
+}
+
+/** Drag the row whose name is `from` onto the group headed `toGroup`. */
+function dragRowToGroup(from, toGroup) {
+  const row = [...document.querySelectorAll('.row')].find(
+    node => node.querySelector('.name').textContent === from,
+  )
+  const target = [...document.querySelectorAll('.group')].find(
+    node => node.querySelector('.group-label').textContent === toGroup,
+  )
+  const transfer = newTransfer()
+
+  row.dispatchEvent(dragEvent('dragstart', transfer))
+  target.dispatchEvent(dragEvent('dragover', transfer))
+  target.dispatchEvent(dragEvent('drop', transfer))
+  row.dispatchEvent(dragEvent('dragend', transfer))
+
+  return { row, target }
 }
 
 function aRow(overrides) {
@@ -75,6 +123,54 @@ it('shows the working directory for a named row that has no progress file', () =
   render(boardWith([aRow({ name: 'perf', cwd: '/Users/x/Code/repo-worktrees/perf' })]))
 
   expect(rowNode().querySelector('.cwd .label').textContent).toBe('repo-worktrees/perf')
+})
+
+it('drops the progress line when its slug only repeats the name', () => {
+  render(
+    boardWith([
+      aRow({
+        name: 'code-gardener',
+        cwd: '/Users/x/Code/repo-worktrees/code-gardener',
+        progressPath: '/repo/code-gardener.progress.local.md',
+        progressLabel: 'code-gardener',
+      }),
+    ]),
+  )
+
+  expect(rowNode().querySelector('.progress')).toBe(null)
+})
+
+it('falls back to the directory when the progress line is dropped as a repeat', () => {
+  render(
+    boardWith([
+      aRow({
+        name: 'code-gardener',
+        cwd: '/Users/x/Code/repo-worktrees/code-gardener',
+        progressPath: '/repo/code-gardener.progress.local.md',
+        progressLabel: 'code-gardener',
+      }),
+    ]),
+  )
+
+  // Both rules firing at once used to leave the row with no second line at all,
+  // and it is the tidiest naming that trips them.
+  expect(rowNode().querySelector('.cwd .label').textContent).toBe('repo-worktrees/code-gardener')
+})
+
+it('prefers the progress slug over the directory when it says something new', () => {
+  render(
+    boardWith([
+      aRow({
+        name: 'perf',
+        cwd: '/Users/x/Code/repo-worktrees/perf',
+        progressPath: '/repo/marketplace-perf.progress.local.md',
+        progressLabel: 'marketplace-perf',
+      }),
+    ]),
+  )
+
+  expect(rowNode().querySelector('.progress .label').textContent).toBe('marketplace-perf')
+  expect(rowNode().querySelector('.cwd')).toBe(null)
 })
 
 it('strikes through a progress file that is no longer on disk', () => {
@@ -373,6 +469,140 @@ it('passes on what the server said when it refuses', async () => {
   expect(rowNode().querySelector('.edit-line .pending').textContent).toBe(
     'no working directory recorded',
   )
+})
+
+it('moves a row into the group it is dropped on', () => {
+  const fetchMock = vi.fn(async () => ({ ok: true, json: async () => ({}) }))
+  vi.stubGlobal('fetch', fetchMock)
+  render(
+    boardWithGroups([
+      { name: 'Bug week', rows: [aRow({ sessionId: 'a', name: 'perf' })] },
+      { name: 'Stash', rows: [aRow({ sessionId: 'b', name: 'other' })] },
+    ]),
+  )
+
+  dragRowToGroup('perf', 'Stash')
+
+  const patch = fetchMock.mock.calls.find(([, options]) => options?.method === 'PATCH')
+
+  expect(patch?.[0]).toBe('/api/sessions/a')
+  expect(JSON.parse(patch?.[1].body)).toEqual({ group: 'Stash' })
+})
+
+it('clears the group rather than writing the word when dropped on Ungrouped', () => {
+  const fetchMock = vi.fn(async () => ({ ok: true, json: async () => ({}) }))
+  vi.stubGlobal('fetch', fetchMock)
+  render(
+    boardWithGroups([
+      { name: 'Bug week', rows: [aRow({ sessionId: 'a', name: 'perf' })] },
+      { name: 'Ungrouped', rows: [aRow({ sessionId: 'b', name: 'loose' })] },
+    ]),
+  )
+
+  dragRowToGroup('perf', 'Ungrouped')
+
+  const patch = fetchMock.mock.calls.find(([, options]) => options?.method === 'PATCH')
+
+  expect(JSON.parse(patch?.[1].body)).toEqual({ group: null })
+})
+
+it('writes nothing when a row is dropped back on the group it came from', () => {
+  const fetchMock = vi.fn(async () => ({ ok: true, json: async () => ({}) }))
+  vi.stubGlobal('fetch', fetchMock)
+  render(boardWithGroups([{ name: 'Bug week', rows: [aRow({ sessionId: 'a', name: 'perf' })] }]))
+
+  dragRowToGroup('perf', 'Bug week')
+
+  expect(fetchMock.mock.calls.some(([, options]) => options?.method === 'PATCH')).toBe(false)
+})
+
+it('claims a drawer row into the group it is dropped on', () => {
+  const fetchMock = vi.fn(async () => ({ ok: true, json: async () => ({}) }))
+  vi.stubGlobal('fetch', fetchMock)
+  render(
+    boardWithGroups(
+      [{ name: 'Bug week', rows: [aRow({ sessionId: 'a', name: 'perf' })] }],
+      [aRow({ sessionId: 'z' })],
+    ),
+  )
+
+  dragRowToGroup('unnamed', 'Bug week')
+
+  const patch = fetchMock.mock.calls.find(([, options]) => options?.method === 'PATCH')
+
+  expect(patch?.[0]).toBe('/api/sessions/z')
+  expect(JSON.parse(patch?.[1].body)).toEqual({ group: 'Bug week' })
+})
+
+it('takes no drops on the drawer, so a row cannot be removed by dropping it', () => {
+  const fetchMock = vi.fn(async () => ({ ok: true, json: async () => ({}) }))
+  vi.stubGlobal('fetch', fetchMock)
+  render(
+    boardWithGroups(
+      [{ name: 'Bug week', rows: [aRow({ sessionId: 'a', name: 'perf' })] }],
+      [aRow({ sessionId: 'z' })],
+    ),
+  )
+
+  dragRowToGroup('perf', 'Off the board')
+
+  expect(fetchMock.mock.calls.some(([, options]) => options?.method === 'PATCH')).toBe(false)
+})
+
+it('holds the repaint while a row is being dragged', () => {
+  // Driven through the real event stream, since that is where the guard sits:
+  // calling `render` by hand would test a path no snapshot ever takes.
+  const onMessage = {}
+  vi.stubGlobal(
+    'EventSource',
+    class {
+      addEventListener(type, handler) {
+        onMessage[type] = handler
+      }
+    },
+  )
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async () => ({ ok: true, json: async () => ({}) })),
+  )
+  start()
+
+  const board = boardWithGroups([
+    { name: 'Bug week', rows: [aRow({ sessionId: 'a', name: 'perf' })] },
+    { name: 'Stash', rows: [aRow({ sessionId: 'b', name: 'other' })] },
+  ])
+  onMessage.message({ data: JSON.stringify(board) })
+  const row = [...document.querySelectorAll('.row')].find(
+    node => node.querySelector('.name').textContent === 'perf',
+  )
+
+  row.dispatchEvent(dragEvent('dragstart', newTransfer()))
+
+  // Rebuilding the board mid-drag destroys the element under the pointer and
+  // the drag dies with it, so a snapshot arriving now is set aside.
+  onMessage.message({ data: JSON.stringify(boardWithGroups([{ name: 'Bug week', rows: [] }])) })
+
+  expect(row.isConnected).toBe(true)
+
+  row.dispatchEvent(dragEvent('dragend', newTransfer()))
+
+  expect(document.querySelector('.row')).toBe(null)
+})
+
+it('lets a field be selected by giving up the drag while it is open', () => {
+  render(boardWith([aRow({ name: 'perf' })]))
+  const row = rowNode()
+
+  expect(row.draggable).toBe(true)
+
+  row.querySelector('.name').dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter' }))
+
+  // Text inside a draggable element cannot be selected with the mouse.
+  expect(row.draggable).toBe(false)
+
+  row.querySelector('input.edit').dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }))
+
+  expect(row.draggable).toBe(true)
 })
 
 it('gives an unclaimed row no board controls of its own', () => {
