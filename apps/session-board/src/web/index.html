@@ -226,6 +226,13 @@
       .status-waiting .name { color: var(--waiting); }
       .status-ready   .name { color: var(--ready); }
       .status-idle    .name { color: var(--fg); }
+
+      /* The three that are still yours to act on, and the only three carrying a
+         hue. Weight says so a second way, for a reader who cannot separate
+         them by color. */
+      .status-running .name,
+      .status-waiting .name,
+      .status-ready   .name { font-weight: 600; }
       /* `muted`, not `faint`: this is the name of the session, so it has to be
          readable even while the row is the quietest thing on the board. */
       .status-gone    .name { color: var(--muted); }
@@ -271,13 +278,11 @@
 
       .icon { flex: none; opacity: 0.75; }
 
-      /* In the row's left indent, which is the one strip the action bar never
-         covers: the bar is placed against the right edge and appears on the
-         same hover that has to reach the pin. */
+      /* Between the name and the age. `relative` so the popover hangs off it,
+         and `flex: none` so a long name shortens instead of squeezing it. */
       .pin {
-        position: absolute;
-        left: 8px;
-        top: 6px;
+        position: relative;
+        flex: none;
         width: 14px;
         font-size: 11px;
         color: var(--muted);
@@ -298,7 +303,9 @@
       .popover {
         display: none;
         position: absolute;
-        left: 0;
+        /* Anchored to its right edge so it opens back across the row. Hung off
+           the left it would start near the right edge and run off the page. */
+        right: 0;
         top: calc(100% + 4px);
         /* Above the rows it overlaps, the action bar of the row below (drawn on
            its own background) and the sticky toolbar, which all sit at 2. */
@@ -342,10 +349,11 @@
 
       .actions {
         position: absolute;
-        /* 12px row padding, 32px of age, 6px of gap. How long a session has sat
-           is the reason to reach for these buttons, so it stays readable while
-           the pointer is on the row. */
-        right: 50px;
+        /* 12px row padding, 32px of age, 14px of pin, two 8px gaps. How long a
+           session has sat is the reason to reach for these buttons, so the age
+           stays readable while the pointer is on the row, and the pin stays
+           pointable on the hover that draws these. */
+        right: 72px;
         top: 4px;
         display: none;
         gap: 3px;

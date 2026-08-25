@@ -277,9 +277,9 @@ const MESSAGE_MS = 4000
  * knows its directory. Both carry the detail in a popover the CSS opens on
  * hover and on focus, so the row itself stays one line.
  *
- * The gutter is the one part of a row the action bar cannot reach: the bar is
- * absolutely placed against the right edge and covers whatever sits under it
- * while the row is hovered, which is exactly when the pin has to be pointable.
+ * It sits between the name and the age. The action bar is parked to the left of
+ * both, since it is drawn on the same hover that has to reach the pin and would
+ * otherwise cover it exactly when it is wanted.
  *
  * `undefined` when there is nothing to point at, so a row can carry no pin
  * rather than an empty one.
@@ -367,6 +367,17 @@ function buildRow(row) {
   name.title = nameTitle(row, label)
   top.append(name)
 
+  // A named row says what it points at with a pin rather than a line of its
+  // own: 8 of 15 second lines repeated the name directly above them, and the
+  // slug is worth a hover rather than a line each. The pin keeps both jobs that
+  // line was doing, since it says a file is linked and opening one is still a
+  // click.
+  //
+  // An unnamed row keeps the directory as text. It is the only thing telling
+  // one from another there: the drawer is 16 rows all called "unnamed".
+  const pin = row.name ? buildPin(row) : undefined
+  if (pin) top.append(pin)
+
   // Worked out from the timestamp on every repaint rather than counted up
   // by the ticker. A ticker is throttled in a background tab and stops
   // dead while the machine sleeps, so a counted age silently falls behind
@@ -375,17 +386,6 @@ function buildRow(row) {
   const isStale = ageSeconds > (latest?.staleSeconds ?? Number.POSITIVE_INFINITY)
   top.append(el('span', isStale ? 'age stale' : 'age', formatAge(ageSeconds)))
   node.append(top)
-
-  // A named row says what it points at with a pin in the gutter rather than a
-  // line of its own: 8 of 15 second lines repeated the name directly above
-  // them, and the slug is worth a hover rather than a line each. The pin keeps
-  // both jobs that line was doing, since it says a file is linked and opening
-  // one is still a click.
-  //
-  // An unnamed row keeps the directory as text. It is the only thing telling
-  // one from another there: the drawer is 16 rows all called "unnamed".
-  const pin = row.name ? buildPin(row) : undefined
-  if (pin) node.append(pin)
 
   const cwdLabel = row.cwd ? formatCwd(row.cwd) : ''
   if (cwdLabel && !row.name) {
