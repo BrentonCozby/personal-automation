@@ -31,10 +31,14 @@ export interface BoardRow {
    */
   isTranscriptMissing: boolean
   status: RowStatus
-  /** Unix seconds of the session's most recent event. */
+  /**
+   * Unix seconds of the session's most recent event.
+   *
+   * How old that makes the row is left to the client, which works it out per
+   * repaint against `staleSeconds`. Sending the age instead would freeze it at
+   * the moment the frame was built, and frames are minutes apart.
+   */
   lastActive: number
-  ageSeconds: number
-  isStale: boolean
   cwd?: string | undefined
 }
 
@@ -84,8 +88,6 @@ function toBoardRow({
   transcriptSessionIds,
   status,
   lastActive,
-  ageSeconds,
-  staleDays,
   cwd,
 }: {
   sessionId: string
@@ -94,8 +96,6 @@ function toBoardRow({
   transcriptSessionIds: Set<string>
   status: RowStatus
   lastActive: number
-  ageSeconds: number
-  staleDays: number
   cwd: string | undefined
 }): BoardRow {
   const progressPath = entry?.progressPath
@@ -111,8 +111,6 @@ function toBoardRow({
     isTranscriptMissing: !transcriptSessionIds.has(sessionId),
     status,
     lastActive,
-    ageSeconds,
-    isStale: ageSeconds > staleDays * SECONDS_PER_DAY,
     cwd,
   }
 }
@@ -233,8 +231,6 @@ export function buildBoard({
       transcriptSessionIds,
       status,
       lastActive,
-      ageSeconds,
-      staleDays,
       cwd: lastDefined({ events: sessionEvents, pick: event => event.cwd }),
     })
 
@@ -267,8 +263,6 @@ export function buildBoard({
         transcriptSessionIds,
         status: 'gone',
         lastActive,
-        ageSeconds: Math.max(0, now - lastActive),
-        staleDays,
         cwd: entry.cwd,
       }),
       group: entry.group ?? UNGROUPED_LABEL,

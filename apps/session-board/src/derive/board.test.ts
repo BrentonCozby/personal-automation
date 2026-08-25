@@ -78,7 +78,7 @@ it('builds a row for an imported session the event log has never seen', () => {
       rows: [expect.objectContaining({ sessionId: 'imported', status: 'gone', cwd: '/repo/soc2' })],
     },
   ])
-  expect(board.groups[0]?.rows[0]?.ageSeconds).toBe(3 * DAY)
+  expect(board.groups[0]?.rows[0]?.lastActive).toBe(NOW - 3 * DAY)
 })
 
 it('leaves a hand-written metadata row off the board until something dates it', () => {
@@ -98,7 +98,7 @@ it('dates a session from its events rather than the value it was imported with',
   const rows = board.groups.flatMap(group => group.rows)
 
   expect(rows).toHaveLength(1)
-  expect(rows[0]?.ageSeconds).toBe(1 * MINUTE)
+  expect(rows[0]?.lastActive).toBe(NOW - 1 * MINUTE)
 })
 
 it('keeps an imported row off the board when its id was superseded', () => {
@@ -249,7 +249,7 @@ it('marks a session that ended cleanly as gone even while its process lives on',
   expect(board.groups[0]?.rows[0]?.status).toBe('gone')
 })
 
-it('turns a row stale past the threshold', () => {
+it('sends the stale threshold and the timestamps, and judges neither', () => {
   const board = build({
     events: [
       event({ sessionId: 'fresh', agoSeconds: 3 * DAY }),
@@ -260,8 +260,12 @@ it('turns a row stale past the threshold', () => {
 
   const rows = board.groups[0]?.rows ?? []
 
-  expect(rows.find(row => row.sessionId === 'fresh')?.isStale).toBe(false)
-  expect(rows.find(row => row.sessionId === 'stale')?.isStale).toBe(true)
+  // Which side of the threshold a row falls on is the client's to work out on
+  // every repaint. Deciding it here would freeze the answer at the moment the
+  // frame was built, and frames can be minutes apart.
+  expect(board.staleSeconds).toBe(4 * DAY)
+  expect(rows.find(row => row.sessionId === 'fresh')?.lastActive).toBe(NOW - 3 * DAY)
+  expect(rows.find(row => row.sessionId === 'stale')?.lastActive).toBe(NOW - 5 * DAY)
 })
 
 it('shows a progress file by slug alone', () => {
