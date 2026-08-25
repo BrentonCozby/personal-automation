@@ -359,3 +359,29 @@ it('marks a row relaunched so the fresh session takes the row over', async () =>
   }
   expect(stored.abc.relaunchedAt).toBeGreaterThan(0)
 })
+
+it('marks the row before the launch, so a fast session cannot start ahead of the mark', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'session-board-progress-'))
+  const progressPath = join(dir, 'soc2.progress.local.md')
+  await writeFile(progressPath, '# soc2\n')
+
+  const board = await startBoard({ metadata: { abc: { name: 'soc2', progressPath } } })
+
+  // Opening the tab takes about a second and the session it starts fires its
+  // first event moments later. A mark made after that returns is timed after
+  // the event it is meant to catch, and the row is never paired with the
+  // session it asked for.
+  let markedBeforeLaunch: unknown
+  vi.mocked(openSessionFromProgress).mockImplementationOnce(async () => {
+    markedBeforeLaunch = ((await readMetadata(board.metadataPath)) as { abc: unknown }).abc
+  })
+
+  const res = await fetch(`${board.origin}/api/sessions/abc/open`, {
+    method: 'POST',
+    headers: { origin: board.origin, 'content-type': 'application/json' },
+    body: JSON.stringify({ cwd: dir }),
+  })
+
+  expect(res.status).toBe(200)
+  expect(markedBeforeLaunch).toMatchObject({ relaunchedAt: expect.any(Number) })
+})

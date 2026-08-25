@@ -82,13 +82,18 @@ export function resolveSuccessors(events: HookEvent[]): Map<string, string> {
 const RELAUNCH_WINDOW_SECONDS = 300
 
 /**
- * Map a relaunched row to the session the board just started for it.
+ * Map a relaunched row to the session the board started for it.
  *
  * Resuming a row that has a progress file opens a brand new session rather than
  * the old conversation, so the two ids share no process and `resolveSuccessors`
  * cannot see the link. Without this the new session claims itself from the name
  * it was given and lands in Ungrouped, while the row you clicked stays behind in
  * its group: the same name twice, once live and once dead.
+ *
+ * Two records feed it. `relaunchedAt` is the click, and matches the first
+ * session to start under that name soon after. `supersededBy` is what the
+ * pairing leaves behind once it has been made, and it is what keeps an id the
+ * board named from claiming a row of its own for the rest of the log's life.
  */
 export function resolveRelaunchSuccessors({
   events,
@@ -99,6 +104,13 @@ export function resolveRelaunchSuccessors({
 }): Map<string, string> {
   const successor = new Map<string, string>()
   const taken = new Set<string>()
+
+  for (const [sessionId, entry] of Object.entries(metadata)) {
+    if (entry.supersededBy) {
+      successor.set(sessionId, entry.supersededBy)
+      taken.add(entry.supersededBy)
+    }
+  }
 
   for (const [sessionId, entry] of Object.entries(metadata)) {
     const { relaunchedAt, name } = entry

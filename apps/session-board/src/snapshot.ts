@@ -156,11 +156,13 @@ async function migrateSupersededSessions({
   store,
   successors,
   keptApart,
+  relaunched,
 }: {
   metadata: MetadataBySession
   store: MetadataStore
   successors: Map<string, string>
   keptApart: Set<string>
+  relaunched: Set<string>
 }): Promise<boolean> {
   if (successors.size === 0) return false
 
@@ -174,6 +176,11 @@ async function migrateSupersededSessions({
     // off the board for no reason. It belongs where it is.
     if (entry.isDismissed) continue
 
+    // Already migrated, and all that is left is the pointer saying so. Running
+    // it through again would rewrite the file on every snapshot, and each write
+    // wakes the watcher that asks for the next one.
+    if (entry.supersededBy) continue
+
     const current = resolveCurrentSessionId({ sessionId, successors })
     if (current === sessionId) continue
 
@@ -186,6 +193,15 @@ async function migrateSupersededSessions({
     // so anything it holds wins and the older row only fills the gaps.
     await store.patch({ sessionId: current, changes: { ...carried, ...metadata[current] } })
     await store.remove(sessionId)
+
+    // A `/clear` handover is written in the event log, so removing the row
+    // loses nothing. A relaunch is recorded nowhere else, and the id it leaves
+    // behind was launched with a name, so an empty row has to stay to say where
+    // its work went. It draws nothing: `buildBoard` skips a superseded id.
+    if (relaunched.has(sessionId)) {
+      await store.patch({ sessionId, changes: { supersededBy: current } })
+    }
+
     didMigrate = true
   }
 
@@ -256,7 +272,13 @@ export async function buildSnapshot({
   const isSuperseded = (sessionId: string): boolean =>
     !keptApart.has(sessionId) && resolveCurrentSessionId({ sessionId, successors }) !== sessionId
 
-  const didMigrate = await migrateSupersededSessions({ metadata, store, successors, keptApart })
+  const didMigrate = await migrateSupersededSessions({
+    metadata,
+    store,
+    successors,
+    keptApart,
+    relaunched: new Set(relaunches.keys()),
+  })
   if (didMigrate) metadata = await store.read()
 
   // A superseded id keeps its old `session_title` in the log forever, so

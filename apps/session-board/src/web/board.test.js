@@ -233,6 +233,42 @@ it('says why when the server refuses a name', async () => {
   )
 })
 
+it('locks resume while the tab opens, so a second press cannot start a second session', async () => {
+  const fetchSpy = vi.fn(async () => ({ ok: true }))
+  vi.stubGlobal('fetch', fetchSpy)
+  render(boardWith([aRow({ name: 'perf', cwd: '/repo' })]))
+
+  const resume = buttonNamed('resume ↗')
+  resume.click()
+  resume.click()
+  await settle()
+
+  expect(fetchSpy).toHaveBeenCalledTimes(1)
+  expect(rowNode().querySelector('.edit-line .pending').textContent).toBe('opening a tab…')
+})
+
+it('says so on the row when a tab could not be opened', async () => {
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async () => ({
+      ok: false,
+      status: 500,
+      text: async () => JSON.stringify({ error: 'osascript failed' }),
+    })),
+  )
+  vi.spyOn(console, 'error').mockImplementation(() => {
+    // The client logs every refusal. This test is about the row.
+  })
+  render(boardWith([aRow({ name: 'perf', cwd: '/repo' })]))
+
+  buttonNamed('resume ↗').click()
+  await settle()
+
+  // Replaced rather than stacked under the line that said it was opening.
+  expect(rowNode().querySelectorAll('.edit-line')).toHaveLength(1)
+  expect(rowNode().querySelector('.edit-line .pending').textContent).toBe('osascript failed')
+})
+
 it('names the status of the dot, which otherwise carries it in hue alone', () => {
   render(boardWith([aRow({ name: 'perf', status: 'waiting' })]))
 

@@ -148,12 +148,19 @@ async function api(path, options) {
   }
 }
 
-/** A short-lived line under a row, for something the row itself cannot show. */
+/**
+ * A short-lived line under a row, for something the row itself cannot show.
+ *
+ * Returns the line so a caller waiting on an answer can replace what it says
+ * rather than stacking a second line under the first.
+ */
 function showMessage(node, text) {
   const line = el('div', 'edit-line')
   line.append(el('span', 'pending', text))
   node.append(line)
   setTimeout(() => line.remove(), MESSAGE_MS)
+
+  return line
 }
 
 // Answers with the parsed body whatever the status, because the server says
@@ -360,9 +367,21 @@ function buildRow(row) {
   openButton.title = blocked || resumeTitle(row)
   openButton.addEventListener('click', event => {
     event.stopPropagation()
+
+    // Opening a tab takes about a second, during which the row looks exactly as
+    // it did before the press. A second press in that time starts a second
+    // session on the same work, in its own tab. The next repaint builds a fresh
+    // button, and one arrives within 30 seconds even if nothing else happens.
+    openButton.disabled = true
+    const message = showMessage(node, 'opening a tab…')
+
     void api(`/api/sessions/${encodeURIComponent(row.sessionId)}/open`, {
       method: 'POST',
       body: JSON.stringify({ cwd: row.cwd }),
+    }).then(result => {
+      if (result.ok) return
+
+      message.replaceChildren(el('span', 'pending', result.error ?? 'could not open a tab'))
     })
   })
   actions.append(openButton)

@@ -182,6 +182,18 @@ export function createBoardServer({ config }: { config: Config }): BoardServer {
       const progressPath = entry?.progressPath
       const name = entry?.name
       if (progressPath && name && (await fileExists(progressPath))) {
+        // Written before the launch, not after. The session about to start is a
+        // new id that shares nothing with this one, and this mark is the only
+        // record that the two are the same work: the snapshot pairs them by
+        // matching a SessionStart at or after it, so a mark made once the tab
+        // is already up can miss the event it exists to catch. A launch that
+        // then fails leaves the mark behind with no session to pair it to,
+        // which costs nothing: it only ever matches a session that started.
+        await store.patch({
+          sessionId,
+          changes: { relaunchedAt: Math.floor(Date.now() / MILLISECONDS_PER_SECOND) },
+        })
+
         await openSessionFromProgress({
           sessionId,
           name,
@@ -189,14 +201,6 @@ export function createBoardServer({ config }: { config: Config }): BoardServer {
           cwd: body.data.cwd,
           commandTemplate: config.progressCommand,
           promptTemplate: config.progressPrompt,
-        })
-
-        // The session about to start is a new id that shares nothing with this
-        // one, so this is the only record that the two are the same work. The
-        // next snapshot reads it and moves the row onto the new session.
-        await store.patch({
-          sessionId,
-          changes: { relaunchedAt: Math.floor(Date.now() / MILLISECONDS_PER_SECOND) },
         })
       } else {
         await openSessionTab({

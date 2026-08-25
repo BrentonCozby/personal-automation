@@ -148,6 +148,27 @@ it('keeps both rows when a cleared terminal took up work that was already named'
   })
 })
 
+it('does not let a relaunched session claim itself back once its row has moved on', async () => {
+  const store = await storeWith({
+    old: { name: 'soc2', group: 'Bug week', relaunchedAt: NOW - 10 },
+  })
+
+  // Every session the board launches is given a name, so the id it leaves
+  // behind keeps a `session_title` in the log forever and claims itself the
+  // moment it has no row. The pairing that moved the row away lived on the row
+  // that was deleted, so nothing was left to say the two ids are one session.
+  const events: HookEvent[] = [
+    { session_id: 'old', hook_event_name: 'SessionStart', session_title: 'soc2', t: NOW - 500 },
+    { session_id: 'fresh', hook_event_name: 'SessionStart', session_title: 'soc2', t: NOW - 8 },
+  ]
+
+  await buildSnapshot({ events, store, config: config(), now: NOW })
+  const board = await buildSnapshot({ events, store, config: config(), now: NOW })
+
+  expect(namesOnBoard(board)).toEqual(['soc2'])
+  expect(board.groups.map(group => group.name)).toEqual(['Bug week'])
+})
+
 it('moves a relaunched row onto the session the board started for it', async () => {
   const store = await storeWith({
     old: {
@@ -182,5 +203,8 @@ it('moves a relaunched row onto the session the board started for it', async () 
       group: 'Interviewing',
       progressPath: '/repo/technical-interview-round.progress.local.md',
     },
+    // Empty but for the pointer: the id the board launched keeps its name in
+    // the log, and this is what stops it claiming a row of its own again.
+    old: { supersededBy: 'fresh' },
   })
 })
