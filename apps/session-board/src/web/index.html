@@ -299,7 +299,7 @@
         display: none;
         position: absolute;
         left: 0;
-        top: 18px;
+        top: calc(100% + 4px);
         /* Above the rows it overlaps, the action bar of the row below (drawn on
            its own background) and the sticky toolbar, which all sit at 2. */
         z-index: 3;
@@ -311,6 +311,20 @@
         box-shadow: 0 3px 10px rgb(0 0 0 / 25%);
         padding: 6px 8px;
         text-align: left;
+      }
+
+      /* The pin is 14px wide and the card opens below it, so a pointer heading
+         for the card leaves the pin before it arrives and the popover closes
+         under it. This fills that band, the full width of the card, so the
+         whole path across is still inside the pin. Invisible, and only present
+         while the popover is. */
+      .popover::before {
+        content: '';
+        position: absolute;
+        left: 0;
+        right: 0;
+        top: -20px;
+        height: 20px;
       }
 
       .pin:hover .popover,
