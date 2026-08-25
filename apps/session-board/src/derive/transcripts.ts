@@ -67,7 +67,14 @@ export async function findTranscripts({
               .filter(file => file.endsWith(TRANSCRIPT_SUFFIX))
               .map(async file => {
                 const at = await writtenAt(join(directory, file))
-                if (at !== undefined) times.set(file.slice(0, -TRANSCRIPT_SUFFIX.length), at)
+                if (at === undefined) return
+
+                // The same session can have a transcript under more than one
+                // root, and the roots are read at the same time, so without this
+                // whichever answered last would win and the session's age would
+                // change from one snapshot to the next.
+                const sessionId = file.slice(0, -TRANSCRIPT_SUFFIX.length)
+                times.set(sessionId, Math.max(times.get(sessionId) ?? 0, at))
               }),
           )
         }),
