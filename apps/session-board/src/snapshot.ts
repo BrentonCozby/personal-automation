@@ -80,14 +80,35 @@ async function linkProgressFiles({
   metadata: MetadataBySession
   store: MetadataStore
 }): Promise<boolean> {
-  const unlinked = Object.entries(metadata).filter(([, entry]) => !entry.progressPath)
+  const unlinked = Object.entries(metadata).filter(
+    // A dismissed row is off the board and a superseded one is an empty
+    // pointer. Neither is ever drawn, so neither can show a link, and each one
+    // left in here costs a `git rev-parse` on every snapshot to work out a
+    // repository nothing will read. On the real board that was all 19 of the
+    // rows without a path, and half a second of every snapshot.
+    ([, entry]) => !entry.progressPath && !entry.isDismissed && !entry.supersededBy,
+  )
+
+  const cwdBySessionId = new Map<string, string>()
+  for (const [sessionId] of unlinked) {
+    const cwd = resolveSessionCwd({ events, metadata, sessionId })
+    if (cwd) cwdBySessionId.set(sessionId, cwd)
+  }
+
+  // One `git rev-parse` per directory rather than per session, and all of them
+  // at once: sessions working in one repository share the answer.
+  const rootByCwd = new Map(
+    await Promise.all(
+      [...new Set(cwdBySessionId.values())].map(
+        async cwd => [cwd, await resolveRepoRoot(cwd)] as const,
+      ),
+    ),
+  )
 
   const byRoot = new Map<string, { sessionId: string; name?: string | undefined }[]>()
   for (const [sessionId, entry] of unlinked) {
-    const cwd = resolveSessionCwd({ events, metadata, sessionId })
-    if (!cwd) continue
-
-    const root = await resolveRepoRoot(cwd)
+    const cwd = cwdBySessionId.get(sessionId)
+    const root = cwd === undefined ? undefined : rootByCwd.get(cwd)
     if (!root) continue
 
     const sessions = byRoot.get(root) ?? []

@@ -1,6 +1,8 @@
-import { mkdtemp, writeFile } from 'node:fs/promises'
+import { execFile } from 'node:child_process'
+import { mkdtemp, realpath, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { promisify } from 'node:util'
 import { expect, it } from 'vitest'
 import type { Config } from './config.js'
 import type { HookEvent } from './events/types.js'
@@ -10,6 +12,19 @@ import type { MetadataBySession } from './metadata/types.js'
 import { buildSnapshot } from './snapshot.js'
 
 const NOW = 1_800_000_000
+
+const execFileAsync = promisify(execFile)
+
+/** A repository holding one progress file per name given. */
+async function repoWithProgressFiles(names: string[]): Promise<string> {
+  const root = await realpath(await mkdtemp(join(tmpdir(), 'session-board-repo-')))
+  await execFileAsync('git', ['-C', root, 'init', '-q'])
+  for (const name of names) {
+    await writeFile(join(root, `${name}.progress.local.md`), `# ${name}\n`)
+  }
+
+  return root
+}
 
 function config(): Config {
   return {
@@ -246,6 +261,39 @@ it('keeps a placeholder row while the session it started still has time to appea
   // its way to claim it.
   expect(await store.read()).toEqual({
     'pending-1111': { name: 'review-perf', relaunchedAt: NOW - 30 },
+  })
+})
+
+it('links a progress file to a live row and leaves the rows that draw nothing alone', async () => {
+  const root = await repoWithProgressFiles(['live-work', 'dismissed-work', 'superseded-work'])
+  const { store, groups } = await storeWith({
+    live: { name: 'live-work' },
+    dropped: { name: 'dismissed-work', isDismissed: true },
+    handed: { name: 'superseded-work', supersededBy: 'somewhere-else' },
+  })
+  const at = (sessionId: string): HookEvent => ({
+    session_id: sessionId,
+    hook_event_name: 'SessionStart',
+    t: NOW - 100,
+    cwd: root,
+  })
+
+  await buildSnapshot({
+    events: [at('live'), at('dropped'), at('handed')],
+    store,
+    groups,
+    config: config(),
+    now: NOW,
+  })
+
+  // Neither of the other two can ever show a link: one is off the board and the
+  // other is an empty pointer. Every row without a path costs a `git rev-parse`
+  // on every snapshot, and snapshots run on every hook event, so on the real
+  // board this was 19 of them and 0.5 seconds spent to link nothing.
+  expect(await store.read()).toEqual({
+    live: { name: 'live-work', progressPath: join(root, 'live-work.progress.local.md') },
+    dropped: { name: 'dismissed-work', isDismissed: true },
+    handed: { name: 'superseded-work', supersededBy: 'somewhere-else' },
   })
 })
 
