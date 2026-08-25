@@ -19,10 +19,20 @@
         --hover: #f0ede9;
         --running: #257f40;
         --waiting: #956600;
+        /* The dot only, where 3:1 is the bar. At the 4.5:1 the name beside it
+           has to clear, amber comes out brown. */
+        --waiting-mark: #b8760a;
         --ready: #2771bf;
-        --idle: #928c85;
+        /* Darker than `--gone`, which it used to match to within 5 of 255 in
+           every channel. `--gone` cannot go lighter and still clear 3:1, so the
+           two separate in the direction that is left. */
+        --idle: #7d776f;
         --gone: #968b80;
         --danger: #c8452f;
+        /* The status mark's box, and the gap after it. `.sub` adds the two to
+           line its second line up under the name. */
+        --mark: 9px;
+        --mark-gap: 8px;
         --sans: ui-sans-serif, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
         --mono: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace;
       }
@@ -40,6 +50,9 @@
           --hover: #191919;
           --running: #4ec46f;
           --waiting: #e0a318;
+          /* Already amber against a dark page, so the mark and the name share
+             one value here. */
+          --waiting-mark: #e0a318;
           --ready: #4d9df0;
           --idle: #6b665f;
           --gone: #68625b;
@@ -148,12 +161,13 @@
       .group-header .group-name { border-radius: 3px; cursor: text; }
       .group-header .group-name:hover { box-shadow: inset 0 0 0 1px var(--hairline); }
 
-      /* Pushed to the right edge, away from the chevron and the name, and drawn
-         only while the header is hovered or holds focus: a column of always-on
-         delete buttons down a board of eight groups is noise you can catch with
-         the pointer on the way past. */
+      /* Drawn only while the header is hovered or holds focus: a column of
+         always-on delete buttons down a board of eight groups is noise you can
+         catch with the pointer on the way past. The `+` ahead of it takes the
+         free space, so the two sit together at the right edge; a second
+         `margin-left: auto` here would split that space and strand the `+` in
+         the middle of the header. */
       .group-delete {
-        margin-left: auto;
         flex: none;
         display: none;
         background: var(--bg);
@@ -267,21 +281,51 @@
 
       .group.drop-target .drop-hint { border-color: var(--ready); border-style: solid; }
 
-      .row-top { display: flex; align-items: center; gap: 8px; }
+      .row-top { display: flex; align-items: center; gap: var(--mark-gap); }
 
+      /* Each status draws a different shape. Six pixels left room for hue and
+         nothing else, and in light mode hue was carrying it alone: all five
+         colors landed between 3.2:1 and 4.8:1 against the page, so the five
+         dots were the same darkness and only told apart by looking straight at
+         them. Nine pixels is enough for a shape to read at a glance. */
       .dot {
-        width: 6px;
-        height: 6px;
+        width: var(--mark);
+        height: var(--mark);
         border-radius: 50%;
         flex: none;
       }
 
+      /* Working. The only solid one. */
       .status-running .dot { background: var(--running); }
-      .status-waiting .dot { background: var(--waiting); }
-      .status-ready   .dot { background: var(--ready); }
-      .status-idle    .dot { background: var(--idle); }
-      /* Hollow, because a finished session is an absence, not a state. */
-      .status-gone    .dot { background: none; box-shadow: inset 0 0 0 1px var(--gone); }
+
+      /* Waiting for you. The one shape that is not a circle, because it is the
+         only status that asks you to do something. */
+      .status-waiting .dot {
+        border-radius: 0;
+        background: var(--waiting-mark);
+        clip-path: polygon(50% 0, 100% 92%, 0 92%);
+      }
+
+      /* Just went idle: half filled, between running's solid and idle's ring. */
+      .status-ready .dot {
+        background: linear-gradient(90deg, var(--ready) 0 50%, transparent 50%);
+        box-shadow: inset 0 0 0 1.5px var(--ready);
+      }
+
+      /* Idle: an empty ring. */
+      .status-idle .dot {
+        background: none;
+        box-shadow: inset 0 0 0 1.5px var(--idle);
+      }
+
+      /* Not running: a dash, which is an absence rather than a state a ring
+         could hold. It has to be the quietest mark on the board, not the
+         loudest, because most rows are `gone` most of the time: eleven of the
+         sixteen here, and a column of eleven crosses read as eleven errors. */
+      .status-gone .dot {
+        border-radius: 0;
+        background: linear-gradient(var(--gone) 0 0) center / 100% 1.5px no-repeat;
+      }
 
       .name {
         flex: 1;
@@ -340,7 +384,7 @@
         gap: 5px;
         font-size: 11px;
         margin-top: 3px;
-        margin-left: 14px;
+        margin-left: calc(var(--mark) + var(--mark-gap));
         overflow: hidden;
       }
 
@@ -501,13 +545,39 @@
         gap: 6px;
         margin: 0 12px 8px;
         padding: 8px;
-        border: 1px solid var(--ready);
+        /* A hairline, not `--ready`: that blue means "just went idle" on every
+           row, and a panel wearing it reads as a status. */
+        border: 1px solid var(--hairline);
         border-top: none;
         border-radius: 0 0 4px 4px;
         font-size: 11px;
       }
 
-      .start-panel input.edit { font-size: 11px; }
+      .start-panel input.edit {
+        font-size: 11px;
+        /* The 24px the buttons beside them already keep. */
+        min-height: 24px;
+      }
+
+      /* Drawn over the border rather than outside it, so a focused field is one
+         ring instead of a blue border inside a blue halo. */
+      .start-panel input.edit:focus-visible {
+        outline: 2px solid var(--ready);
+        outline-offset: -1px;
+      }
+
+      /* Back to a native-sized box: `input.edit` sizes text fields, and a
+         checkbox stretched to `width: 100%` inside a blue border was the
+         loudest thing on a panel meant to be quiet. */
+      .start-panel input.edit[type='checkbox'] {
+        width: auto;
+        flex: none;
+        min-height: 0;
+        border: none;
+        padding: 0;
+        margin: 0;
+        accent-color: var(--fg);
+      }
 
       .start-actions {
         display: flex;
@@ -515,10 +585,14 @@
         gap: 6px;
       }
 
+      /* Never shrinks: as a shrinkable flex item it gave its width to the
+         buttons and broke "create a progress file" across three lines. */
       .start-check {
         display: flex;
         align-items: center;
+        flex: none;
         gap: 5px;
+        white-space: nowrap;
         color: var(--muted);
         cursor: pointer;
       }
@@ -540,7 +614,23 @@
 
       .start-actions button:hover:not(:disabled) { color: var(--fg); border-color: var(--ready); }
       .start-actions button:disabled { cursor: default; color: var(--faint); }
-      .start-actions .start-go { color: var(--fg); border-color: var(--ready); }
+
+      /* Filled, alone on the panel: `start` is what the panel is for, and an
+         outline shared with `cancel` made the two read as the same offer. */
+      .start-actions .start-go {
+        background: var(--ready);
+        border-color: var(--ready);
+        color: var(--bg);
+        font-weight: 600;
+      }
+
+      .start-actions .start-go:hover:not(:disabled) { color: var(--bg); opacity: 0.88; }
+
+      .start-actions .start-go:disabled {
+        background: var(--bg);
+        border-color: var(--faint);
+        color: var(--faint);
+      }
 
       /* Empty until there is something to say, so it takes no room on a panel
          that is going well. */
