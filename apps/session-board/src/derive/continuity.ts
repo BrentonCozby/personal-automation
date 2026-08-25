@@ -79,7 +79,16 @@ export function resolveSuccessors(events: HookEvent[]): Map<string, string> {
  * shell, and it is short enough that a `claude -n <the same name>` you start by
  * hand later in the day is not swallowed into the row.
  */
-const RELAUNCH_WINDOW_SECONDS = 300
+export const RELAUNCH_WINDOW_SECONDS = 300
+
+/**
+ * The prefix a row carries while it is waiting for the session it asked for.
+ *
+ * `POST /api/sessions` has no session id to file a row under: none exists until
+ * a session starts and fires a hook. It mints one of these instead, and the
+ * pairing below hands the row to the real id moments later.
+ */
+export const PLACEHOLDER_ID_PREFIX = 'pending-'
 
 /**
  * Map a relaunched row to the session the board started for it.

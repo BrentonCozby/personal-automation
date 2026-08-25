@@ -220,6 +220,35 @@ it('moves a relaunched row onto the session the board started for it', async () 
   })
 })
 
+it('drops a placeholder row once no session can pair with it any more', async () => {
+  const { store, groups } = await storeWith({
+    'pending-1111': { name: 'review-perf', group: 'Bug week', relaunchedAt: NOW - 600 },
+  })
+
+  const board = await buildSnapshot({ events: [], store, groups, config: config(), now: NOW })
+
+  // The tab opened but no session ever started in it, so nothing will pair. The
+  // row draws nothing without a `lastActive`, so left in the file it would hold
+  // `review-perf` against the next attempt with no row on screen to delete.
+  expect(namesOnBoard(board)).toEqual([])
+  expect(await store.read()).toEqual({})
+})
+
+it('keeps a placeholder row while the session it started still has time to appear', async () => {
+  const { store, groups } = await storeWith({
+    'pending-1111': { name: 'review-perf', relaunchedAt: NOW - 30 },
+  })
+
+  await buildSnapshot({ events: [], store, groups, config: config(), now: NOW })
+
+  // A session takes a second or two to fire its first hook, and a snapshot runs
+  // in between. Reaping on that one would take the row away from the session on
+  // its way to claim it.
+  expect(await store.read()).toEqual({
+    'pending-1111': { name: 'review-perf', relaunchedAt: NOW - 30 },
+  })
+})
+
 it('registers a group it meets on a row, so emptying that group cannot delete it', async () => {
   const { store, groups } = await storeWith({ a: { name: 'impact', group: 'Bug week' } })
 

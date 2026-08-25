@@ -2,6 +2,8 @@ import { access } from 'node:fs/promises'
 import type { Config } from './config.js'
 import { type Board, buildBoard, findSessionsToAutoClaim } from './derive/board.js'
 import {
+  PLACEHOLDER_ID_PREFIX,
+  RELAUNCH_WINDOW_SECONDS,
   resolveCurrentSessionId,
   resolveRelaunchSuccessors,
   resolveSuccessors,
@@ -241,6 +243,48 @@ function findRowsToKeepApart({
   return kept
 }
 
+/**
+ * Drop the rows the board wrote for a session that never turned up.
+ *
+ * A row waits under a placeholder id until the session it asked for fires its
+ * first hook and the pairing hands the row over. Past the pairing window no
+ * session can take it any more: it has no events of its own and no `lastActive`
+ * either, so it draws nothing at all, and left in the file it holds its name
+ * against every later attempt with no row on screen to delete.
+ */
+async function dropUnpairedPlaceholders({
+  events,
+  metadata,
+  store,
+  relaunches,
+  now,
+}: {
+  events: HookEvent[]
+  metadata: MetadataBySession
+  store: MetadataStore
+  relaunches: Map<string, string>
+  now: number
+}): Promise<boolean> {
+  const sessionIdsWithEvents = new Set(events.map(event => event.session_id))
+  let didDrop = false
+
+  for (const [sessionId, entry] of Object.entries(metadata)) {
+    if (!sessionId.startsWith(PLACEHOLDER_ID_PREFIX)) continue
+    // Paired, whether that happened on this snapshot or on an earlier one: the
+    // pairing reads `supersededBy` back out of the file.
+    if (relaunches.has(sessionId)) continue
+    if (sessionIdsWithEvents.has(sessionId) || entry.lastActive) continue
+
+    const { relaunchedAt } = entry
+    if (relaunchedAt && now - relaunchedAt <= RELAUNCH_WINDOW_SECONDS) continue
+
+    await store.remove(sessionId)
+    didDrop = true
+  }
+
+  return didDrop
+}
+
 export async function buildSnapshot({
   events,
   store,
@@ -257,6 +301,9 @@ export async function buildSnapshot({
   let metadata = await store.read()
 
   const relaunches = resolveRelaunchSuccessors({ events, metadata })
+  const didDrop = await dropUnpairedPlaceholders({ events, metadata, store, relaunches, now })
+  if (didDrop) metadata = await store.read()
+
   const successors = new Map([...resolveSuccessors(events), ...relaunches])
   const keptApart = findRowsToKeepApart({
     successors,

@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto'
 import { type FSWatcher, watch } from 'node:fs'
-import { readFile } from 'node:fs/promises'
+import { readFile, rm } from 'node:fs/promises'
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -392,13 +392,28 @@ export function createBoardServer({ config }: { config: Config }): BoardServer {
       },
     })
 
-    await openNewSession({
-      sessionId,
-      name,
-      prompt,
-      cwd: root,
-      commandTemplate: config.progressCommand,
-    })
+    try {
+      await openNewSession({
+        sessionId,
+        name,
+        prompt,
+        cwd: root,
+        commandTemplate: config.progressCommand,
+      })
+    } catch (error) {
+      // No session started, so nothing will ever pair with this row, and it
+      // carries no `lastActive` and so draws nothing. Left behind it would hold
+      // its name against every later attempt, with no row on screen to delete.
+      await store.remove(sessionId)
+
+      // Only a file this request wrote, and only ever the empty template: one
+      // that already held work is linked as it stands and is somebody's state.
+      // Left behind, the next attempt would find it and tell its session to
+      // carry on from three empty headings.
+      if (created?.isNew) await rm(created.path, { force: true })
+
+      throw error
+    }
 
     sendJson({
       res,

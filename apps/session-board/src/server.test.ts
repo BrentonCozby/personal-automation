@@ -823,3 +823,35 @@ it('stores no group at all for a session started from Ungrouped', async () => {
     [sessionId]: { name: 'review-perf', relaunchedAt: expect.any(Number) },
   })
 })
+
+it('takes the row back when the tab could not be opened', async () => {
+  const root = await gitRepo()
+  const board = await startBoard()
+  vi.mocked(openNewSession).mockRejectedValueOnce(new Error('Ghostty would not open a tab'))
+
+  const failed = await postSession(board, {
+    name: 'review-perf',
+    cwd: root,
+    createProgressFile: true,
+  })
+
+  expect(failed.status).toBe(500)
+  // The row is written before the launch so the session about to start can be
+  // paired with it. No session started, so nothing will ever pair, and the row
+  // carries no `lastActive` and so draws nothing: left behind it would hold the
+  // name against every later attempt with no row on screen to delete.
+  expect(await readMetadata(board.metadataPath)).toEqual({})
+  // The file was written for that session too. Left behind, the next attempt
+  // would find it already there and tell its session to carry on from a
+  // template holding nothing.
+  expect(await findProgressFiles(root)).toEqual([])
+
+  const second = await postSession(board, {
+    name: 'review-perf',
+    cwd: root,
+    createProgressFile: true,
+  })
+
+  expect(second.status).toBe(200)
+  expect(await second.json()).toMatchObject({ isProgressFileNew: true })
+})
