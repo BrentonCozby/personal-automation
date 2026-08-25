@@ -336,6 +336,21 @@ it('still serves the board page, which sends no origin of its own', async () => 
   expect(res.headers.get('content-type')).toContain('text/html')
 })
 
+it('clears the group when one is renamed to Ungrouped rather than storing that word', async () => {
+  const board = await startBoard({ metadata: { abc: { name: 'soc2', group: 'Bug week' } } })
+
+  const res = await fetch(`${board.origin}/api/sessions/abc`, {
+    method: 'PATCH',
+    headers: { origin: board.origin, 'content-type': 'application/json' },
+    body: JSON.stringify({ group: 'Ungrouped' }),
+  })
+
+  // Storing it would stand a second heading of that name beside the one
+  // buildBoard invents for the rows that have no group.
+  expect(res.status).toBe(200)
+  expect(await readMetadata(board.metadataPath)).toEqual({ abc: { name: 'soc2' } })
+})
+
 it('marks a row relaunched so the fresh session takes the row over', async () => {
   const dir = await mkdtemp(join(tmpdir(), 'session-board-progress-'))
   const progressPath = join(dir, 'soc2.progress.local.md')

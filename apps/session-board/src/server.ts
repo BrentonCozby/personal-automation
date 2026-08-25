@@ -5,7 +5,7 @@ import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import type { z } from 'zod'
 import type { Config } from './config.js'
-import type { Board } from './derive/board.js'
+import { type Board, UNGROUPED_LABEL } from './derive/board.js'
 import { listProgressCandidates, resolveRepoRoot } from './derive/progress-files.js'
 import { createEventLogReader } from './events/read.js'
 import type { HookEvent } from './events/types.js'
@@ -76,6 +76,14 @@ function toPatch(body: z.infer<typeof patchBodySchema>): MetadataPatch {
     patch[field] = body[field] || undefined
   }
 
+  // Ungrouped is the absence of a group, and `buildBoard` invents that heading
+  // for the rows that have none. Storing the word would put a second heading of
+  // the same name beside it, one renameable and one not. Renaming a group to it
+  // is the way in: dragging onto it already clears the field.
+  if (patch.group?.trim().toLowerCase() === UNGROUPED_LABEL.toLowerCase()) {
+    patch.group = undefined
+  }
+
   return patch
 }
 
@@ -101,7 +109,8 @@ export function createBoardServer({ config }: { config: Config }): BoardServer {
   let events: HookEvent[] = []
   let rebuildTimer: NodeJS.Timeout | undefined
   let loaded: Promise<void> | undefined
-  let watcher: FSWatcher | undefined
+  let watchers: FSWatcher[] = []
+  let isClosed = false
 
   // Reading the log takes a moment, and a request that arrives first would
   // otherwise be answered from zero events: an empty board, and no migration of
@@ -110,9 +119,16 @@ export function createBoardServer({ config }: { config: Config }): BoardServer {
     loaded ??= reader.readAll().then(({ events: initial }) => {
       events = initial
 
-      // Watch the directory, not the file. The log may not exist yet, and a
-      // watch bound to one inode stops firing after a replace.
-      watcher = watch(dirname(config.eventLogPath), scheduleRebuild)
+      // `close` can land while the log is still being read, and a watcher
+      // started after it is one nobody will ever close.
+      if (isClosed) return
+
+      // Watch the directories, not the files. Neither may exist yet, and a
+      // watch bound to one inode stops firing after a replace. Both are named
+      // rather than only the log's: an edit to a row has to repaint the board
+      // too, and the two files only share a directory by default.
+      const directories = new Set([dirname(config.eventLogPath), dirname(config.metadataPath)])
+      watchers = [...directories].map(directory => watch(directory, scheduleRebuild))
     })
 
     return loaded
@@ -355,8 +371,9 @@ export function createBoardServer({ config }: { config: Config }): BoardServer {
   })
 
   async function close(): Promise<void> {
-    watcher?.close()
-    watcher = undefined
+    isClosed = true
+    for (const watcher of watchers) watcher.close()
+    watchers = []
 
     if (rebuildTimer) clearTimeout(rebuildTimer)
     rebuildTimer = undefined
