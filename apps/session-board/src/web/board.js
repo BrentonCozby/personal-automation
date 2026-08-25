@@ -1,6 +1,11 @@
 const collapsed = new Set(readCollapsed())
 let latest = null
 
+// Whether `latest` arrived while a repaint was held off and so has never been
+// drawn. Without it every release repaints, which wipes the feedback a button
+// just wrote on its own row.
+let hasUndrawnSnapshot = false
+
 // The row being dragged between groups, and the group it started in. Held at
 // module level because the drop lands on a different element than the drag
 // started on, and because a repaint has to be held off for as long as a drag is
@@ -780,6 +785,7 @@ function buildGroup({ key, label, count, rows, isRenameable = false, isDropTarge
 export function render(board) {
   if (!board) return
   latest = board
+  hasUndrawnSnapshot = false
   pruneCollapsed(board)
 
   const boardEl = document.getElementById('board')
@@ -850,6 +856,7 @@ export function start() {
     // moments away.
     if (isBusy()) {
       latest = board
+      hasUndrawnSnapshot = true
 
       return
     }
@@ -866,7 +873,14 @@ export function start() {
   const releasePointer = () => {
     if (pointerDownAt === undefined) return
     pointerDownAt = undefined
-    if (latest && !isBusy()) render(latest)
+
+    // The browser dispatches `pointerup`, then `mouseup`, then `click`, without
+    // running a timer in between. Rebuilding here throws the pressed node away
+    // before it has worked out where the click goes, so the hold would end one
+    // event too early and swallow the click it exists to protect.
+    setTimeout(() => {
+      if (hasUndrawnSnapshot && !isBusy()) render(latest)
+    })
   }
   document.addEventListener('pointerup', releasePointer)
   document.addEventListener('pointercancel', releasePointer)

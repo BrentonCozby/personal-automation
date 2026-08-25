@@ -814,8 +814,37 @@ it('holds the repaint while the pointer is down, so a click is not swallowed', (
 
   document.dispatchEvent(new Event('pointerup', { bubbles: true }))
 
-  // Whatever arrived while the button was held is drawn once it is released.
+  // `click` follows `pointerup` with no timer in between, so drawing here
+  // throws the pressed node away before the browser can dispatch it.
+  expect(row.isConnected).toBe(true)
+
+  vi.advanceTimersByTime(0)
+
+  // Whatever arrived while the button was held is drawn once the click is past.
   expect(rowNode().querySelector('.name').textContent).toBe('renamed')
+})
+
+it('leaves the board alone on a release that had no snapshot to catch up on', () => {
+  const onMessage = {}
+  vi.stubGlobal(
+    'EventSource',
+    class {
+      addEventListener(type, handler) {
+        onMessage[type] = handler
+      }
+    },
+  )
+  start()
+  onMessage.message({ data: JSON.stringify(boardWith([aRow({ name: 'perf' })])) })
+
+  const row = rowNode()
+  document.dispatchEvent(new Event('pointerdown', { bubbles: true }))
+  document.dispatchEvent(new Event('pointerup', { bubbles: true }))
+  vi.advanceTimersByTime(0)
+
+  // A button writes its own feedback into the row it sits in, so a release that
+  // repaints with nothing new to show wipes the answer to the press.
+  expect(rowNode()).toBe(row)
 })
 
 it('lets a field be selected by giving up the drag while it is open', () => {
