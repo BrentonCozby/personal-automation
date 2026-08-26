@@ -400,6 +400,42 @@ it('says why when the server refuses a name', async () => {
   expect(rowNode().querySelector('.edit-line .pending').textContent).toBe(
     'a session name is kebab-case',
   )
+  // And the field itself has to go, or the refusal is written under a box still
+  // holding the name the server would not take.
+  expect(rowNode().querySelector('input.edit')).toBeNull()
+})
+
+it('closes the field on commit, since a save that changes nothing repaints nothing', () => {
+  const fetchMock = vi.fn(async () => ({ ok: true, json: async () => ({}) }))
+  vi.stubGlobal('fetch', fetchMock)
+  render(boardWith([aRow({ name: 'soc2' })]))
+
+  const name = rowNode().querySelector('.name')
+  name.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }))
+  const input = name.querySelector('input.edit')
+  // Kebab-cases straight back to the name the row already has, so the server
+  // writes the same value, the snapshot comes out identical and the frame is
+  // dropped. Nothing repaints, so the field has to take itself away.
+  input.value = 'SOC2'
+  input.dispatchEvent(new Event('blur'))
+
+  expect(rowNode().querySelector('input.edit')).toBeNull()
+  expect(rowNode().querySelector('.name').textContent).toBe('soc2')
+})
+
+it('takes the parked field away on commit rather than leaving an empty line', () => {
+  const fetchMock = vi.fn(async () => ({ ok: true, json: async () => ({}) }))
+  vi.stubGlobal('fetch', fetchMock)
+  render(boardWith([aRow({ name: 'soc2' })]))
+
+  buttonNamed('park').click()
+  const input = rowNode().querySelector('.edit-line input.edit')
+  input.value = 'a review'
+  input.dispatchEvent(new Event('blur'))
+
+  // The line was made to carry this field and nothing else, so it goes with it.
+  expect(rowNode().querySelector('.edit-line')).toBeNull()
+  expect(JSON.parse(fetchMock.mock.calls[0]?.[1].body)).toEqual({ parkedReason: 'a review' })
 })
 
 it('locks resume while the tab opens, so a second press cannot start a second session', async () => {

@@ -262,17 +262,19 @@ function editIn({ host, current, placeholder, onCommit, commitUnchanged = false 
     // `commitUnchanged` is for a field that opened on a suggestion rather than
     // on what the row already holds, where leaving it alone is an answer. An
     // empty field never counts as one either way: there is nothing to save.
-    if (commit && (value !== (current || '') || (commitUnchanged && value))) {
-      onCommit(value)
+    const isSaving = commit && (value !== (current || '') || (commitUnchanged && value))
 
-      return
-    }
-
+    // The field closes whether or not anything is saved, rather than leaving
+    // the repaint to clear it: an edit the server writes as the same value
+    // (`SOC2` over `soc2`) sends no frame, and the field sat there looking
+    // unsaved until the 30 second tick. A refusal sends none either.
     host.replaceChildren(...previous)
     // A host that held nothing was made to carry this input and nothing
     // else, so leaving it behind stacks an empty line on the row for
     // every edit that gets cancelled.
     if (previous.length === 0) host.remove()
+
+    if (isSaving) onCommit(value)
   }
 
   input.addEventListener('keydown', event => {
@@ -1238,7 +1240,7 @@ const NEW_GROUP_LABEL = '+ new group'
  *
  * It sits in the toolbar rather than on a group header, where `+` means
  * something else. The toolbar is outside the part `render` rebuilds, so this is
- * built once and has to put its own label back after an edit.
+ * built once and never replaced.
  */
 function buildNewGroup() {
   const host = el('span', 'new-group', NEW_GROUP_LABEL)
@@ -1251,7 +1253,6 @@ function buildNewGroup() {
       placeholder: 'group name',
       onCommit: async name => {
         const result = await createGroup(name)
-        host.replaceChildren(NEW_GROUP_LABEL)
         if (result.ok) return
 
         showMessage(host.parentElement, result.error ?? 'could not create that group')
