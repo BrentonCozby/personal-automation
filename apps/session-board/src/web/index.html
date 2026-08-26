@@ -5,59 +5,35 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>sessions</title>
     <style>
-      /* Every color that carries text clears 4.5:1 against its background, and
-         every one that only draws an edge or a dot clears 3:1. Light was the
-         half that failed: the old values sat between 2.1 and 3.9, so a name in
-         any status color, the age, and the whole directory line were all below
-         the line. `faint` is the one token that is never text. */
+      /* One palette, so the board stays dark on a machine set to light. Every
+         color that carries text clears 4.5:1 against `--bg`. `faint`, `idle`
+         and `gone` never carry text, and clear the 3:1 a dot or an edge needs. */
       :root {
-        --bg: #fbfaf9;
-        --fg: #1a1a1a;
-        --muted: #736f6a;
-        --faint: #948b83;
-        --hairline: #e6e2de;
-        --hover: #f0ede9;
-        --running: #257f40;
-        --waiting: #956600;
-        /* The dot only, where 3:1 is the bar. At the 4.5:1 the name beside it
-           has to clear, amber comes out brown. */
-        --waiting-mark: #b8760a;
-        --ready: #2771bf;
-        /* Darker than `--gone`, which it used to match to within 5 of 255 in
-           every channel. `--gone` cannot go lighter and still clear 3:1, so the
-           two separate in the direction that is left. */
-        --idle: #7d776f;
-        --gone: #968b80;
-        --danger: #c8452f;
+        color-scheme: dark;
+        --bg: #0e0e0e;
+        --fg: #e8e6e3;
+        --muted: #837e79;
+        --faint: #68625c;
+        /* Rows carry a second line only sometimes, so the separator is what
+           says where one ends. At #1f1f1f it was there but not visible, which
+           let a two-line row read as two rows. */
+        --hairline: #302c29;
+        --hover: #191919;
+        --running: #4ec46f;
+        --waiting: #e0a318;
+        /* Two tokens holding one value: the dot only has to clear 3:1 where the
+           name beside it needs 4.5:1, and this amber clears both. */
+        --waiting-mark: #e0a318;
+        --ready: #4d9df0;
+        --idle: #6b665f;
+        --gone: #68625b;
+        --danger: #f0664c;
         /* The status mark's box, and the gap after it. `.sub` adds the two to
            line its second line up under the name. */
         --mark: 9px;
         --mark-gap: 8px;
         --sans: ui-sans-serif, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
         --mono: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace;
-      }
-
-      @media (prefers-color-scheme: dark) {
-        :root {
-          --bg: #0e0e0e;
-          --fg: #e8e6e3;
-          --muted: #837e79;
-          --faint: #68625c;
-          /* Rows carry a second line only sometimes, so the separator is what
-             says where one ends. At #1f1f1f it was there but not visible, which
-             let a two-line row read as two rows. */
-          --hairline: #302c29;
-          --hover: #191919;
-          --running: #4ec46f;
-          --waiting: #e0a318;
-          /* Already amber against a dark page, so the mark and the name share
-             one value here. */
-          --waiting-mark: #e0a318;
-          --ready: #4d9df0;
-          --idle: #6b665f;
-          --gone: #68625b;
-          --danger: #f0664c;
-        }
       }
 
       * { box-sizing: border-box; }
