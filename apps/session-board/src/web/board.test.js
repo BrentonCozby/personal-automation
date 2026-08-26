@@ -1020,6 +1020,61 @@ it('carries a collapsed group to its new name instead of springing it open', asy
   expect(isOnlyGroupCollapsed()).toBe(true)
 })
 
+it('says why when the server refuses a group rename', async () => {
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async () => ({
+      ok: false,
+      status: 400,
+      text: async () => JSON.stringify({ error: 'Ungrouped is where a row with no group goes' }),
+    })),
+  )
+  vi.spyOn(console, 'error').mockImplementation(() => {
+    // The client logs every refusal. This test is about the group.
+  })
+  render(boardWithGroups([{ name: 'Rename Me', rows: [aRow({ name: 'perf' })] }]))
+
+  const title = document.querySelector('.group-name')
+  title.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }))
+  const input = title.querySelector('input.edit')
+  input.value = 'Ungrouped'
+  input.dispatchEvent(new Event('blur'))
+  await settle()
+
+  // Nothing repaints on a refusal, so the header goes back to the old name with
+  // no word of why. Every other field on this board says.
+  expect(document.querySelector('.group .edit-line .pending').textContent).toBe(
+    'Ungrouped is where a row with no group goes',
+  )
+})
+
+it('leaves a collapsed group collapsed under its own name when a rename is refused', async () => {
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async () => ({ ok: false, status: 400, text: async () => '{}' })),
+  )
+  vi.spyOn(console, 'error').mockImplementation(() => {
+    // The client logs every refusal. This test is about the mark.
+  })
+  render(boardWithGroups([{ name: 'Rename Me', rows: [aRow({ name: 'perf' })] }]))
+  collapseOnlyGroup()
+
+  const title = document.querySelector('.group-name')
+  title.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }))
+  const input = title.querySelector('input.edit')
+  input.value = 'Ungrouped'
+  input.dispatchEvent(new Event('blur'))
+  await settle()
+
+  // The mark moves before the request so the frame the rename pushes finds it
+  // already filed. A refused rename has to put it back, or it sits under a name
+  // no group has and the group springs open, or worse: under Ungrouped, which
+  // is a real heading and would collapse instead.
+  render(boardWithGroups([{ name: 'Rename Me', rows: [aRow({ name: 'perf' })] }]))
+
+  expect(isOnlyGroupCollapsed()).toBe(true)
+})
+
 it('renames a group in one request rather than one per row', async () => {
   const fetchMock = vi.fn(async () => ({ ok: true, json: async () => ({}) }))
   vi.stubGlobal('fetch', fetchMock)

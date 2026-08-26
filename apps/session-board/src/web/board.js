@@ -726,19 +726,38 @@ function deleteGroup(name) {
  * both halves in one request. The collapsed mark has to be moved here, since it
  * is filed under the name and would otherwise be left on a name nothing has any
  * more, springing the group open.
+ *
+ * `host` is where a refusal is written, since nothing repaints on one and the
+ * header goes back to the old name with no word of why.
  */
-function renameGroup({ from, to }) {
+async function renameGroup({ from, to, host }) {
   if (!to) return deleteGroup(from)
 
-  if (collapsed.delete(from)) {
+  // Moved before the request, so the frame the rename pushes finds the mark
+  // already filed under the new name.
+  const wasCollapsed = collapsed.delete(from)
+  if (wasCollapsed) {
     collapsed.add(to)
     saveCollapsed()
   }
 
-  return api(`/api/groups/${encodeURIComponent(from)}`, {
+  const result = await api(`/api/groups/${encodeURIComponent(from)}`, {
     method: 'PATCH',
     body: JSON.stringify({ name: to }),
   })
+  if (result.ok) return result
+
+  // Put back, or the mark sits under a name no group has and the group springs
+  // open. Worse for the refusal you can actually type: `Ungrouped` is a real
+  // heading, so the mark would land on it and collapse that instead.
+  if (wasCollapsed) {
+    collapsed.delete(to)
+    collapsed.add(from)
+    saveCollapsed()
+  }
+  showMessage(host, result.error ?? 'could not rename that group')
+
+  return result
 }
 
 /**
@@ -1137,7 +1156,7 @@ function buildGroup({
         host: title,
         current: label,
         placeholder: 'group name',
-        onCommit: value => renameGroup({ from: label, to: value }),
+        onCommit: value => void renameGroup({ from: label, to: value, host: wrapper }),
       }),
     )
 
