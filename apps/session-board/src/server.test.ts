@@ -99,12 +99,28 @@ async function startBoard({
 }
 
 /**
+ * How long a frame is waited for before the assertion is allowed to fail.
+ *
+ * Building a snapshot spawns `ps` and stats every transcript, and advancing a
+ * fake timer only drains microtasks, so the wait is for real I/O. A fixed 150ms
+ * sleep stood here and failed whenever the machine was busy, which for a test
+ * suite is most of the time. Well under `testTimeout`, so a frame that never
+ * comes still reaches the assertion that fails with the real count; wait on
+ * several streams together rather than in turn, or the bounds add up past it.
+ */
+const FRAME_WAIT_MS = 2000
+
+/**
  * Open an event stream and keep every frame it sends.
  *
  * The count matters as much as the content: a test that only reads the newest
  * frame cannot tell a push that happened from one that never did.
  */
-async function openFrames(port: number): Promise<{ socket: Socket; frames: Board[] }> {
+async function openFrames(port: number): Promise<{
+  socket: Socket
+  frames: Board[]
+  waitFor(count: number): Promise<void>
+}> {
   const frames: Board[] = []
   let buffer = ''
   let onFrame: (() => void) | undefined
@@ -129,7 +145,40 @@ async function openFrames(port: number): Promise<{ socket: Socket; frames: Board
     onFrame = resolve
   })
 
-  return { socket, frames }
+  // Bounded, and it resolves rather than throwing: a frame that never comes has
+  // to reach the caller's own assertion, which fails with the real count. An
+  // open-ended wait for "the next frame" hangs on a trigger that is broken, and
+  // a hanging test reports nothing at all.
+  function waitFor(count: number): Promise<void> {
+    if (frames.length >= count) return Promise.resolve()
+
+    return new Promise<void>(resolve => {
+      // Held as a plain `() => void`, because a bare `resolve()` reads to the
+      // linter as a promise nobody handled.
+      const done: () => void = resolve
+      const timer = setTimeout(done, FRAME_WAIT_MS)
+      onFrame = () => {
+        if (frames.length < count) return
+        clearTimeout(timer)
+        done()
+      }
+    })
+  }
+
+  return { socket, frames, waitFor }
+}
+
+function parkedReasonIn(frame: Board | undefined): string | undefined {
+  return frame?.groups.flatMap(group => group.rows)[0]?.parkedReason
+}
+
+/** A change the board really draws, for the tests that watch it arrive. */
+function patchParkedReason(origin: string): Promise<Response> {
+  return fetch(`${origin}/api/sessions/abc`, {
+    method: 'PATCH',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ parkedReason: 'a review' }),
+  })
 }
 
 /** Resolves once the first frame has arrived, so the stream is really open. */
@@ -235,7 +284,7 @@ it('rebuilds on a timer, with no file it watches having changed', async () => {
 
   vi.setSystemTime((startedAt + 120) * 1000)
   await vi.advanceTimersByTimeAsync(10_000)
-  await new Promise(resolve => setTimeout(resolve, 150))
+  await stream.waitFor(2)
 
   // Frame count, not just content: without the timer this stays at the one
   // frame the stream opened with, and the drawer keeps the row for good.
@@ -255,8 +304,36 @@ it('sends nothing on a tick that leaves the board exactly as it was', async () =
 
   await vi.advanceTimersByTimeAsync(30_000)
 
-  expect(stream.frames).toHaveLength(1)
+  // A real change afterwards, waited for. Whatever arrives next is frame two,
+  // so a duplicate from one of the three ticks is caught as a second frame
+  // carrying nothing new. Waiting a fixed stretch for a frame that never comes
+  // is the alternative, and it is both slow and load-dependent.
+  await patchParkedReason(board.origin)
+  await stream.waitFor(2)
+
+  expect(parkedReasonIn(stream.frames[1])).toBe('a review')
+  expect(stream.frames).toHaveLength(2)
   stream.socket.destroy()
+})
+
+it('sends a change to every tab, not only the one that asked for it', async () => {
+  const board = await startBoard({
+    events: [{ session_id: 'abc', hook_event_name: 'SessionStart', t: 1_700_000_000 }],
+    metadata: { abc: { name: 'impact-scoring' } },
+  })
+  const first = await openFrames(board.port)
+  const second = await openFrames(board.port)
+
+  await patchParkedReason(board.origin)
+  // Together, not one after the other: two bounds in a row add up past vitest's
+  // own test timeout, and the test then reports a timeout rather than the frame
+  // that went missing.
+  await Promise.all([first.waitFor(2), second.waitFor(2)])
+
+  expect(parkedReasonIn(first.frames[1])).toBe('a review')
+  expect(parkedReasonIn(second.frames[1])).toBe('a review')
+  first.socket.destroy()
+  second.socket.destroy()
 })
 
 it('lists the progress files of the repo the session was working in', async () => {

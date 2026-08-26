@@ -9,6 +9,12 @@ export default defineConfig({
     // run twice and from stale output.
     include: ['apps/**/*.test.ts', 'packages/**/*.test.ts', 'apps/**/src/web/*.test.js'],
     environment: 'node',
+    // Over the 5 second default, because these tests do real work: they start
+    // HTTP servers, spawn `git` and `ps`, and stat every Claude Code transcript
+    // on the machine. This machine also runs a dozen Claude sessions at once,
+    // and at a load average near its core count a `git init` alone has taken
+    // more than five seconds. A passing test never waits this out.
+    testTimeout: 20_000,
     coverage: {
       provider: 'v8',
       reporter: ['text', 'html'],

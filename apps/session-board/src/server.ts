@@ -136,12 +136,20 @@ export function createBoardServer({ config }: { config: Config }): BoardServer {
   const store = createMetadataStore({ path: config.metadataPath })
   const groups = createGroupStore({ path: config.groupsPath })
   const reader = createEventLogReader({ path: config.eventLogPath })
-  const streams = new Set<ServerResponse>()
+
+  /**
+   * Every open event stream, against the last frame that stream was sent.
+   *
+   * Per stream rather than one "last frame" for the server, because a tab is
+   * handed the board as it connects and that frame is the newest state there
+   * is: recording it server-wide would count every other tab as having seen it
+   * and hold the change back from them for good.
+   */
+  const streams = new Map<ServerResponse, string>()
 
   let events: HookEvent[] = []
   let rebuildTimer: NodeJS.Timeout | undefined
   let ticker: NodeJS.Timeout | undefined
-  let lastFrame: string | undefined
   let loaded: Promise<void> | undefined
   let watchers: FSWatcher[] = []
   let isClosed = false
@@ -190,13 +198,17 @@ export function createBoardServer({ config }: { config: Config }): BoardServer {
 
     const board = await snapshot()
     const frame = `data: ${JSON.stringify(board)}\n\n`
-    // A subscriber is sent the board as it connects, so skipping an identical
-    // frame costs a new one nothing and keeps the timer below silent while the
-    // board sits still.
-    if (frame === lastFrame) return
 
-    lastFrame = frame
-    for (const stream of streams) stream.write(frame)
+    // Skipping a frame a stream already has keeps the timer below silent while
+    // the board sits still, and a tab redraws its whole panel on every frame it
+    // is sent. Checked and recorded in the same turn, with no await between, so
+    // two rebuilds that overlap cannot both decide to write the same frame.
+    for (const [stream, sent] of streams) {
+      if (sent === frame) continue
+
+      streams.set(stream, frame)
+      stream.write(frame)
+    }
   }
 
   async function ingestNewEvents(): Promise<void> {
@@ -624,8 +636,12 @@ export function createBoardServer({ config }: { config: Config }): BoardServer {
             'cache-control': 'no-cache',
             connection: 'keep-alive',
           })
-          streams.add(res)
-          res.write(`data: ${JSON.stringify(await snapshot())}\n\n`)
+          // Registered after its own frame is built, not before: a broadcast
+          // landing during the snapshot would otherwise reach this tab first
+          // and leave it drawing the older board last.
+          const frame = `data: ${JSON.stringify(await snapshot())}\n\n`
+          streams.set(res, frame)
+          res.write(frame)
           req.on('close', () => {
             streams.delete(res)
           })
@@ -659,7 +675,7 @@ export function createBoardServer({ config }: { config: Config }): BoardServer {
     if (ticker) clearInterval(ticker)
     ticker = undefined
 
-    for (const stream of streams) stream.end()
+    for (const stream of streams.keys()) stream.end()
     streams.clear()
 
     if (!server.listening) return
