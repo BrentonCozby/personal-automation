@@ -15,7 +15,7 @@ import {
 import {
   collectGroupDirectories,
   collectSessionDirectories,
-  listRepoRoots,
+  createRepoRoots,
 } from './derive/repos.js'
 import { createSessionNamer } from './derive/session-names.js'
 import { createEventLogReader } from './events/read.js'
@@ -142,6 +142,7 @@ export function createBoardServer({ config }: { config: Config }): BoardServer {
   const store = createMetadataStore({ path: config.metadataPath })
   const groups = createGroupStore({ path: config.groupsPath })
   const reader = createEventLogReader({ path: config.eventLogPath })
+  const repoRoots = createRepoRoots()
 
   /**
    * Every open event stream, against the last frame that stream was sent.
@@ -337,9 +338,9 @@ export function createBoardServer({ config }: { config: Config }): BoardServer {
       // uses most: on the real board those differ for four of the six groups.
       const group = toStoredGroup(url.searchParams.get('group') ?? undefined)
       const preferred = group
-        ? await listRepoRoots(collectGroupDirectories({ events, metadata, group }))
+        ? await repoRoots.list(collectGroupDirectories({ events, metadata, group }))
         : []
-      const everything = await listRepoRoots(collectSessionDirectories({ events, metadata }))
+      const everything = await repoRoots.list(collectSessionDirectories({ events, metadata }))
 
       sendJson({ res, status: 200, body: { repos: [...new Set([...preferred, ...everything])] } })
 

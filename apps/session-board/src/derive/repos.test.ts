@@ -1,5 +1,5 @@
 import { execFile } from 'node:child_process'
-import { mkdir, mkdtemp, realpath } from 'node:fs/promises'
+import { mkdir, mkdtemp, realpath, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { promisify } from 'node:util'
@@ -8,8 +8,8 @@ import type { HookEvent } from '../events/types.js'
 import {
   collectGroupDirectories,
   collectSessionDirectories,
+  createRepoRoots,
   isThrowawayRoot,
-  listRepoRoots,
 } from './repos.js'
 
 const execFileAsync = promisify(execFile)
@@ -80,7 +80,7 @@ it('answers the root itself for a directory that is one', async () => {
   const root = await tempDir()
   await git(root, 'init', '-q')
 
-  expect(await listRepoRoots([root])).toEqual([root])
+  expect(await createRepoRoots().list([root])).toEqual([root])
 })
 
 it('collapses a subdirectory onto its root', async () => {
@@ -89,7 +89,7 @@ it('collapses a subdirectory onto its root', async () => {
   const nested = join(root, 'packages', 'common')
   await mkdir(nested, { recursive: true })
 
-  expect(await listRepoRoots([nested])).toEqual([root])
+  expect(await createRepoRoots().list([nested])).toEqual([root])
 })
 
 it('collapses a worktree onto the repository it belongs to', async () => {
@@ -99,7 +99,7 @@ it('collapses a worktree onto the repository it belongs to', async () => {
   const worktree = join(await tempDir(), 'wt')
   await git(root, 'worktree', 'add', '-q', worktree, '-b', 'side')
 
-  expect(await listRepoRoots([worktree])).toEqual([root])
+  expect(await createRepoRoots().list([worktree])).toEqual([root])
 })
 
 // The reason worktrees are excluded rather than offered: a progress file lives
@@ -112,24 +112,24 @@ it('offers a repository only ever seen through a worktree', async () => {
   const worktree = join(await tempDir(), 'only-wt')
   await git(root, 'worktree', 'add', '-q', worktree, '-b', 'side')
 
-  expect(await listRepoRoots([worktree])).toContain(root)
+  expect(await createRepoRoots().list([worktree])).toContain(root)
 })
 
 it('drops a directory that is in no repository', async () => {
   const plain = await tempDir()
 
-  expect(await listRepoRoots([plain])).toEqual([])
+  expect(await createRepoRoots().list([plain])).toEqual([])
 })
 
 it('drops a directory that no longer exists', async () => {
-  expect(await listRepoRoots(['/Users/nobody/gone-worktrees/deleted'])).toEqual([])
+  expect(await createRepoRoots().list(['/Users/nobody/gone-worktrees/deleted'])).toEqual([])
 })
 
 it('drops a throwaway repository', async () => {
   const root = await realpath(await mkdtemp('/private/tmp/session-board-probe-'))
   await git(root, 'init', '-q')
 
-  expect(await listRepoRoots([root])).toEqual([])
+  expect(await createRepoRoots().list([root])).toEqual([])
 })
 
 it('puts the root that most directories collapsed onto first', async () => {
@@ -140,7 +140,7 @@ it('puts the root that most directories collapsed onto first', async () => {
   const nested = join(busy, 'apps')
   await mkdir(nested)
 
-  expect(await listRepoRoots([quiet, busy, nested])).toEqual([busy, quiet])
+  expect(await createRepoRoots().list([quiet, busy, nested])).toEqual([busy, quiet])
 })
 
 it('breaks a tie on the path, so the order never wobbles between requests', async () => {
@@ -155,7 +155,44 @@ it('breaks a tie on the path, so the order never wobbles between requests', asyn
   await git(alpha, 'init', '-q')
   await git(beta, 'init', '-q')
 
-  expect(await listRepoRoots([beta, alpha])).toEqual([alpha, beta])
+  expect(await createRepoRoots().list([beta, alpha])).toEqual([alpha, beta])
+})
+
+// Taking the repository away is how the test sees that git was not asked twice:
+// a lookup that went again would find nothing there.
+it('remembers a root it has already answered', async () => {
+  const root = await tempDir()
+  await git(root, 'init', '-q')
+  const repoRoots = createRepoRoots()
+  expect(await repoRoots.list([root])).toEqual([root])
+
+  await rm(join(root, '.git'), { recursive: true })
+
+  expect(await repoRoots.list([root])).toEqual([root])
+})
+
+// The other half of the same saving: 28 of the 76 directories in the real log
+// are in no repository, and they cost a process each.
+it('remembers that a directory is in no repository', async () => {
+  const plain = await tempDir()
+  const repoRoots = createRepoRoots()
+  expect(await repoRoots.list([plain])).toEqual([])
+
+  await git(plain, 'init', '-q')
+
+  expect(await repoRoots.list([plain])).toEqual([])
+})
+
+// Held per board rather than per module, which is what lets a test drive a
+// lookup that has seen nothing.
+it('answers a fresh lookup from disk rather than from what another one found', async () => {
+  const root = await tempDir()
+  await git(root, 'init', '-q')
+  expect(await createRepoRoots().list([root])).toEqual([root])
+
+  await rm(join(root, '.git'), { recursive: true })
+
+  expect(await createRepoRoots().list([root])).toEqual([])
 })
 
 it("collects only the directories of one group's sessions", () => {
