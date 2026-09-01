@@ -20,7 +20,13 @@ import {
 import { createSessionNamer } from './derive/session-names.js'
 import { createEventLogReader } from './events/read.js'
 import type { HookEvent } from './events/types.js'
-import { openFile, openNewSession, openSessionFromProgress, openSessionTab } from './launch.js'
+import {
+  buildSystemPrompt,
+  openFile,
+  openNewSession,
+  openSessionFromProgress,
+  openSessionTab,
+} from './launch.js'
 import { createGroupStore } from './metadata/group-store.js'
 import { createMetadataStore } from './metadata/store.js'
 import type { MetadataPatch } from './metadata/types.js'
@@ -386,6 +392,18 @@ export function createBoardServer({ config }: { config: Config }): BoardServer {
         ? config.progressPrompt.replaceAll('{{progress}}', created.path)
         : undefined
 
+    // What the first prompt cannot carry goes here instead. A session that gets
+    // no prompt is told nothing at all otherwise, and the standing rule about
+    // keeping a progress file would have it write the file the checkbox just
+    // said not to.
+    const systemPrompt = buildSystemPrompt([
+      // Read per launch rather than at boot, so editing the grant takes effect
+      // on the next click instead of waiting for a board restart.
+      await readFile(config.subagentGrantPath, 'utf8'),
+      wantsProgressFile ? undefined : config.noProgressNote,
+      created?.isNew ? config.newProgressNote.replaceAll('{{progress}}', created.path) : undefined,
+    ])
+
     // No session id exists until a session starts and fires a hook, so the row
     // is written under a placeholder and the two are paired afterwards by the
     // same `relaunchedAt` machinery a resume uses. `pending-` rather than a
@@ -414,6 +432,7 @@ export function createBoardServer({ config }: { config: Config }): BoardServer {
         sessionId,
         name,
         prompt,
+        systemPrompt,
         cwd: root,
         commandTemplate: config.progressCommand,
       })
@@ -485,6 +504,14 @@ export function createBoardServer({ config }: { config: Config }): BoardServer {
       const entry = (await store.read())[sessionId]
       const progressPath = entry?.progressPath
       const name = entry?.name
+
+      // Neither branch has a first prompt to grant subagents in: one reopens a
+      // conversation, the other carries the prompt that reads the progress file.
+      // The grant only, and no progress-file note: a row records the path it was
+      // given, never that the start panel was told to skip one, so a resume
+      // cannot tell "declined" from "not linked yet".
+      const systemPrompt = buildSystemPrompt([await readFile(config.subagentGrantPath, 'utf8')])
+
       if (progressPath && name && (await fileExists(progressPath))) {
         // Written before the launch, not after. The session about to start is a
         // new id that shares nothing with this one, and this mark is the only
@@ -502,6 +529,7 @@ export function createBoardServer({ config }: { config: Config }): BoardServer {
           sessionId,
           name,
           progressPath,
+          systemPrompt,
           cwd: body.data.cwd,
           commandTemplate: config.progressCommand,
           promptTemplate: config.progressPrompt,
@@ -509,6 +537,7 @@ export function createBoardServer({ config }: { config: Config }): BoardServer {
       } else {
         await openSessionTab({
           sessionId,
+          systemPrompt,
           cwd: body.data.cwd,
           commandTemplate: config.launchCommand,
         })

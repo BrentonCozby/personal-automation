@@ -8,9 +8,15 @@ import {
   buildOpenFileArgv,
   buildProgressScript,
   buildSessionScript,
+  buildSystemPrompt,
+  openSessionTab,
   resolveLaunchCwd,
   shellQuote,
 } from './launch.js'
+import { isSessionId, type SessionId } from './request-guard.js'
+
+const TEMPLATE = 'claude-auto -n {{name}} --append-system-prompt-file {{system}} {{prompt}}'
+const SYSTEM_PATH = '/tmp/session-board-system-abc.md'
 
 const execFileAsync = promisify(execFile)
 
@@ -99,7 +105,8 @@ it('passes the name and the prompt as one argument each', async () => {
     buildProgressScript({
       name: 'review perf',
       progressPath: '/repo/marketplace-perf.progress.local.md',
-      commandTemplate: 'claude-auto -n {{name}} {{prompt}}',
+      systemPromptPath: SYSTEM_PATH,
+      commandTemplate: TEMPLATE,
       promptTemplate: 'Read {{progress}} and carry on.',
     }),
   )
@@ -107,6 +114,8 @@ it('passes the name and the prompt as one argument each', async () => {
   expect(argv).toEqual([
     '-n',
     'review perf',
+    '--append-system-prompt-file',
+    SYSTEM_PATH,
     'Read /repo/marketplace-perf.progress.local.md and carry on.',
   ])
 })
@@ -116,7 +125,8 @@ it('keeps a name holding an apostrophe in one piece', async () => {
     buildProgressScript({
       name: "don't ship",
       progressPath: '/repo/x.progress.local.md',
-      commandTemplate: 'claude-auto -n {{name}} {{prompt}}',
+      systemPromptPath: SYSTEM_PATH,
+      commandTemplate: TEMPLATE,
       promptTemplate: 'Read {{progress}}.',
     }),
   )
@@ -129,35 +139,101 @@ it('treats shell syntax in a name as part of the name', async () => {
     buildProgressScript({
       name: '$(whoami); echo pwned',
       progressPath: '/repo/x.progress.local.md',
-      commandTemplate: 'claude-auto -n {{name}} {{prompt}}',
+      systemPromptPath: SYSTEM_PATH,
+      commandTemplate: TEMPLATE,
       promptTemplate: 'Read {{progress}}.',
     }),
   )
 
   // Reaches the binary as text. Unquoted it would have run two commands.
-  expect(argv).toEqual(['-n', '$(whoami); echo pwned', 'Read /repo/x.progress.local.md.'])
+  expect(argv).toEqual([
+    '-n',
+    '$(whoami); echo pwned',
+    '--append-system-prompt-file',
+    SYSTEM_PATH,
+    'Read /repo/x.progress.local.md.',
+  ])
 })
 
-it('passes only the name when the new session has nothing to read', async () => {
+it('keeps a system prompt path holding a space in one argument', async () => {
   const argv = await argvFromScript(
     buildSessionScript({
       name: 'review-perf',
-      commandTemplate: 'claude-auto -n {{name}} {{prompt}}',
+      systemPromptPath: '/var/folders/T x/session-board-system-abc.md',
+      commandTemplate: TEMPLATE,
     }),
   )
 
-  // Two arguments, not three. An empty pair of quotes would have reached Claude
+  expect(argv.at(-1)).toBe('/var/folders/T x/session-board-system-abc.md')
+})
+
+it('refuses a template that would drop the appended system prompt', () => {
+  expect(() =>
+    buildSessionScript({
+      name: 'review-perf',
+      systemPromptPath: SYSTEM_PATH,
+      commandTemplate: 'claude-auto -n {{name}} {{prompt}}',
+    }),
+  ).toThrow('{{system}}')
+})
+
+it('passes only the name and the system prompt when there is nothing to read', async () => {
+  const argv = await argvFromScript(
+    buildSessionScript({
+      name: 'review-perf',
+      systemPromptPath: SYSTEM_PATH,
+      commandTemplate: TEMPLATE,
+    }),
+  )
+
+  // Four arguments, not five. An empty pair of quotes would have reached Claude
   // Code as a first prompt that happens to be blank.
-  expect(argv).toEqual(['-n', 'review-perf'])
+  expect(argv).toEqual(['-n', 'review-perf', '--append-system-prompt-file', SYSTEM_PATH])
 })
 
 it('quotes a name that needs it even with no prompt to follow', async () => {
   const argv = await argvFromScript(
     buildSessionScript({
       name: '$(whoami); echo pwned',
-      commandTemplate: 'claude-auto -n {{name}} {{prompt}}',
+      systemPromptPath: SYSTEM_PATH,
+      commandTemplate: TEMPLATE,
     }),
   )
 
-  expect(argv).toEqual(['-n', '$(whoami); echo pwned'])
+  expect(argv).toEqual(['-n', '$(whoami); echo pwned', '--append-system-prompt-file', SYSTEM_PATH])
+})
+
+function asSessionId(value: string): SessionId {
+  if (!isSessionId(value)) throw new Error(`${value} is not a session id`)
+
+  return value
+}
+
+it('rejects a resume template with no {{system}} before it opens a tab', async () => {
+  // The check has to come before the tab, not inside the script the tab runs:
+  // this path hands its command straight to Ghostty, so a launch that got past
+  // here would be a real window with the grant missing.
+  await expect(
+    openSessionTab({
+      sessionId: asSessionId('abc'),
+      systemPrompt: 'Subagents are allowed.',
+      cwd: '/repo',
+      commandTemplate: 'claude --resume {{id}}',
+    }),
+  ).rejects.toThrow('{{system}}')
+})
+
+it('separates the parts of one appended system prompt', () => {
+  expect(buildSystemPrompt(['Subagents are allowed.', 'No progress file.'])).toBe(
+    'Subagents are allowed.\n\nNo progress file.',
+  )
+})
+
+it('drops the parts that do not apply to this launch', () => {
+  // The caller passes a slot per note and leaves the ones that are off absent,
+  // so what arrives is mostly nothing. Keeping those slots would open the
+  // appended prompt with the blank lines of two notes never written.
+  expect(buildSystemPrompt(['Subagents are allowed.', undefined, '   '])).toBe(
+    'Subagents are allowed.',
+  )
 })

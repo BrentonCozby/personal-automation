@@ -34,10 +34,13 @@ function config(): Config {
     port: 4747,
     staleDays: 4,
     freshMinutes: 15,
-    launchCommand: 'claude --resume {{id}}',
+    launchCommand: 'claude --resume {{id}} --append-system-prompt-file {{system}}',
     openFileCommand: 'code -- {{path}}',
-    progressCommand: 'claude -n {{name}} {{prompt}}',
+    progressCommand: 'claude -n {{name}} --append-system-prompt-file {{system}} {{prompt}}',
     progressPrompt: 'Read {{progress}} and carry on.',
+    subagentGrantPath: '/unused/subagent-grant.md',
+    noProgressNote: 'Do not create a progress file.',
+    newProgressNote: 'A progress file is waiting at {{progress}}.',
     transcriptRoots: [],
   }
 }

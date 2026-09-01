@@ -52,16 +52,40 @@ export function resolveLaunchCwd(cwd: string): string {
   return resolve(cwd)
 }
 
+/**
+ * Refuse a template that would take a system prompt path and then drop it.
+ *
+ * A launch that quietly appended nothing reads as a session ignoring its
+ * instructions rather than as a command that never carried them.
+ */
+function requireSystemPlaceholder(commandTemplate: string): void {
+  if (!commandTemplate.includes('{{system}}')) {
+    throw new Error('the session command template has no {{system}} in it')
+  }
+}
+
 export async function openSessionTab({
   sessionId,
+  systemPrompt,
   cwd,
   commandTemplate,
 }: {
   sessionId: SessionId
+  systemPrompt: string
   cwd: string
   commandTemplate: string
 }): Promise<void> {
-  const command = commandTemplate.replaceAll('{{id}}', sessionId)
+  requireSystemPlaceholder(commandTemplate)
+
+  const systemPromptPath = await writeSystemPromptFile({ sessionId, text: systemPrompt })
+
+  // Unquoted, unlike the same placeholder inside a launch script: this command
+  // goes to Ghostty, which quotes the whole string again, so a quote of ours
+  // would end that string early. Safe on the same footing as the launch script's
+  // own path below, `$TMPDIR` plus a session id the request guard has limited.
+  const command = commandTemplate
+    .replaceAll('{{id}}', sessionId)
+    .replaceAll('{{system}}', systemPromptPath)
 
   await execFileAsync('osascript', ['-e', NEW_TAB_SCRIPT, command, resolveLaunchCwd(cwd)])
 }
@@ -90,14 +114,19 @@ export function shellQuote(value: string): string {
 export function buildSessionScript({
   name,
   prompt,
+  systemPromptPath,
   commandTemplate,
 }: {
   name: string
   prompt?: string | undefined
+  systemPromptPath: string
   commandTemplate: string
 }): string {
+  requireSystemPlaceholder(commandTemplate)
+
   const command = commandTemplate
     .replaceAll('{{name}}', shellQuote(name))
+    .replaceAll('{{system}}', shellQuote(systemPromptPath))
     // A session started with nothing to read has no first prompt, and the
     // placeholder is removed along with the space in front of it rather than
     // filled with an empty pair of quotes: Claude Code would take that as a
@@ -112,19 +141,54 @@ export function buildSessionScript({
 export function buildProgressScript({
   name,
   progressPath,
+  systemPromptPath,
   commandTemplate,
   promptTemplate,
 }: {
   name: string
   progressPath: string
+  systemPromptPath: string
   commandTemplate: string
   promptTemplate: string
 }): string {
   return buildSessionScript({
     name,
     prompt: promptTemplate.replaceAll('{{progress}}', progressPath),
+    systemPromptPath,
     commandTemplate,
   })
+}
+
+/**
+ * Join the parts of one session's appended system prompt.
+ *
+ * Claude Code reads only the last `--append-system-prompt-file` on a command
+ * line, so a launch that has two things to say cannot say them in two files.
+ */
+export function buildSystemPrompt(parts: (string | undefined)[]): string {
+  return parts
+    .map(part => part?.trim())
+    .filter(Boolean)
+    .join('\n\n')
+}
+
+/**
+ * Write one session's appended system prompt, and answer where it landed.
+ *
+ * Claude Code reads it once, as it starts, so the file only has to outlive the
+ * launch. Named after the session id, the way the launch script is.
+ */
+async function writeSystemPromptFile({
+  sessionId,
+  text,
+}: {
+  sessionId: SessionId
+  text: string
+}): Promise<string> {
+  const path = join(tmpdir(), `session-board-system-${sessionId}.md`)
+  await writeFile(path, `${text}\n`, { mode: 0o600 })
+
+  return path
 }
 
 /**
@@ -158,6 +222,7 @@ export async function openSessionFromProgress({
   sessionId,
   name,
   progressPath,
+  systemPrompt,
   cwd,
   commandTemplate,
   promptTemplate,
@@ -165,13 +230,26 @@ export async function openSessionFromProgress({
   sessionId: SessionId
   name: string
   progressPath: string
+  systemPrompt: string
   cwd: string
   commandTemplate: string
   promptTemplate: string
 }): Promise<void> {
+  // Before the write, not after: `buildSessionScript` checks the same thing, but
+  // by then a rejected launch has already left a file in the temp directory.
+  requireSystemPlaceholder(commandTemplate)
+
+  const systemPromptPath = await writeSystemPromptFile({ sessionId, text: systemPrompt })
+
   await openScriptInTab({
     sessionId,
-    script: buildProgressScript({ name, progressPath, commandTemplate, promptTemplate }),
+    script: buildProgressScript({
+      name,
+      progressPath,
+      systemPromptPath,
+      commandTemplate,
+      promptTemplate,
+    }),
     cwd,
   })
 }
@@ -188,18 +266,24 @@ export async function openNewSession({
   sessionId,
   name,
   prompt,
+  systemPrompt,
   cwd,
   commandTemplate,
 }: {
   sessionId: SessionId
   name: string
   prompt?: string | undefined
+  systemPrompt: string
   cwd: string
   commandTemplate: string
 }): Promise<void> {
+  requireSystemPlaceholder(commandTemplate)
+
+  const systemPromptPath = await writeSystemPromptFile({ sessionId, text: systemPrompt })
+
   await openScriptInTab({
     sessionId,
-    script: buildSessionScript({ name, prompt, commandTemplate }),
+    script: buildSessionScript({ name, prompt, systemPromptPath, commandTemplate }),
     cwd,
   })
 }

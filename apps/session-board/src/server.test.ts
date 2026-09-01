@@ -8,12 +8,13 @@ import { afterEach, expect, it, vi } from 'vitest'
 import type { Config } from './config.js'
 import type { Board } from './derive/board.js'
 import { findProgressFiles } from './derive/progress-files.js'
-import { openNewSession, openSessionFromProgress } from './launch.js'
+import { openNewSession, openSessionFromProgress, openSessionTab } from './launch.js'
 import { createBoardServer } from './server.js'
 
 // Launching is the one thing a request does outside this process: it opens a
 // terminal tab. Everything up to that point runs for real.
-vi.mock('./launch.js', () => ({
+vi.mock('./launch.js', async () => ({
+  ...(await vi.importActual<typeof import('./launch.js')>('./launch.js')),
   openFile: vi.fn(),
   openNewSession: vi.fn(),
   openSessionFromProgress: vi.fn(),
@@ -68,6 +69,10 @@ async function startBoard({
   if (metadata) await writeFile(join(dir, 'sessions.json'), JSON.stringify(metadata))
   if (groups) await writeFile(join(dir, 'groups.json'), JSON.stringify(groups))
 
+  // Read for real on every launch, so it has to exist on disk.
+  const subagentGrantPath = join(dir, 'subagent-grant.md')
+  await writeFile(subagentGrantPath, 'Subagents are allowed.\n')
+
   const port = await findFreePort()
   const config: Config = {
     eventLogPath,
@@ -76,10 +81,13 @@ async function startBoard({
     port,
     staleDays: 4,
     freshMinutes: 15,
-    launchCommand: 'claude --resume {{id}}',
+    launchCommand: 'claude --resume {{id}} --append-system-prompt-file {{system}}',
     openFileCommand: 'code -- {{path}}',
-    progressCommand: 'claude -n {{name}} {{prompt}}',
+    progressCommand: 'claude -n {{name}} --append-system-prompt-file {{system}} {{prompt}}',
     progressPrompt: 'Read {{progress}} and carry on.',
+    subagentGrantPath,
+    noProgressNote: 'Do not create a progress file.',
+    newProgressNote: 'A progress file is waiting at {{progress}}.',
     transcriptRoots,
   }
 
@@ -536,12 +544,34 @@ it('marks a row relaunched so the fresh session takes the row over', async () =>
   expect(res.status).toBe(200)
   expect(openSessionFromProgress).toHaveBeenCalledOnce()
 
+  // A resume has no message to grant subagents in, so the grant arrives
+  // appended to the system prompt instead.
+  expect(vi.mocked(openSessionFromProgress).mock.calls.at(-1)?.[0]).toMatchObject({
+    systemPrompt: 'Subagents are allowed.',
+  })
+
   // Without this the new session claims itself from the name it was given and
   // the row that was clicked stays behind, showing the same name twice.
   const stored = (await readMetadata(board.metadataPath)) as {
     abc: { relaunchedAt?: number }
   }
   expect(stored.abc.relaunchedAt).toBeGreaterThan(0)
+})
+
+it('grants subagents to a row with no progress file, which reopens its conversation', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'session-board-plain-'))
+  const board = await startBoard({ metadata: { abc: { name: 'soc2' } } })
+
+  const res = await fetch(`${board.origin}/api/sessions/abc/open`, {
+    method: 'POST',
+    headers: { origin: board.origin, 'content-type': 'application/json' },
+    body: JSON.stringify({ cwd: dir }),
+  })
+
+  expect(res.status).toBe(200)
+  expect(vi.mocked(openSessionTab).mock.calls.at(-1)?.[0]).toMatchObject({
+    systemPrompt: 'Subagents are allowed.',
+  })
 })
 
 it('marks the row before the launch, so a fast session cannot start ahead of the mark', async () => {
@@ -789,6 +819,46 @@ it('starts no progress file when the box is unchecked', async () => {
 
   expect(await findProgressFiles(root)).toEqual([])
   expect(vi.mocked(openNewSession).mock.calls.at(-1)?.[0]).toMatchObject({ prompt: undefined })
+})
+
+/** What the last new session had appended to its system prompt. */
+function lastSystemPrompt(): string {
+  const args = vi.mocked(openNewSession).mock.calls.at(-1)?.[0]
+  if (!args) throw new Error('no session was launched')
+
+  return args.systemPrompt
+}
+
+it('tells a session started with the box unchecked not to write a progress file', async () => {
+  const root = await gitRepo()
+  const board = await startBoard()
+
+  await postSession(board, { name: 'review-perf', cwd: root, createProgressFile: false })
+
+  // This session is given no first prompt, so the appended system prompt is the
+  // only thing that reaches it before you type.
+  expect(lastSystemPrompt()).toBe('Subagents are allowed.\n\nDo not create a progress file.')
+})
+
+it('names the progress file it just created, since no first prompt does', async () => {
+  const root = await gitRepo()
+  const board = await startBoard()
+
+  await postSession(board, { name: 'review-perf', cwd: root, createProgressFile: true })
+
+  expect(lastSystemPrompt()).toBe(
+    `Subagents are allowed.\n\nA progress file is waiting at ${join(root, 'review-perf.progress.local.md')}.`,
+  )
+})
+
+it('appends neither note when the first prompt already names the file', async () => {
+  const root = await gitRepo()
+  await writeFile(join(root, 'review-perf.progress.local.md'), 'half done\n')
+  const board = await startBoard()
+
+  await postSession(board, { name: 'review-perf', cwd: root, createProgressFile: true })
+
+  expect(lastSystemPrompt()).toBe('Subagents are allowed.')
 })
 
 it('launches at the repo root when a worktree was typed, and says which root', async () => {
