@@ -10,8 +10,8 @@
     "build": "tsc -b"
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.98.0",
-    "zod": "^4.4.3"
+    "@anthropic-ai/sdk": "^0.124.0",
+    "zod": "^4.5.4"
   },
   "devDependencies": {
     "@personal-automation/common": "workspace:*"

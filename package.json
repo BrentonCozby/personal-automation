@@ -4,14 +4,14 @@
   "description": "Personal automation monorepo: small scheduled jobs and the shared libraries they build on.",
   "type": "module",
   "private": true,
-  "packageManager": "pnpm@11.2.2",
+  "packageManager": "pnpm@11.25.0",
   "volta": {
-    "node": "26.2.0",
-    "pnpm": "11.2.2"
+    "node": "26.8.1",
+    "pnpm": "11.25.0"
   },
   "engines": {
-    "node": ">=26.0.0",
-    "pnpm": ">=11"
+    "node": ">=26.8.1",
+    "pnpm": ">=11.25.0"
   },
   "scripts": {
     "build": "pnpm -r build",
@@ -25,18 +25,18 @@
     "prepare": "husky"
   },
   "devDependencies": {
-    "@biomejs/biome": "2.4.15",
-    "@commitlint/cli": "^21.0.1",
-    "@commitlint/config-conventional": "^21.0.1",
-    "@types/node": "^25.9.1",
-    "@vitest/coverage-v8": "^4.1.7",
-    "happy-dom": "^20.11.6",
+    "@biomejs/biome": "2.5.12",
+    "@commitlint/cli": "^21.2.2",
+    "@commitlint/config-conventional": "^21.2.2",
+    "@types/node": "^25.9.5",
+    "@vitest/coverage-v8": "^4.1.11",
+    "happy-dom": "^20.14.0",
     "husky": "^9.1.7",
-    "lint-staged": "^17.0.5",
-    "msw": "^2.14.6",
-    "tsx": "^4.22.3",
+    "lint-staged": "^17.5.0",
+    "msw": "^2.15.0",
+    "tsx": "^4.23.13",
     "typescript": "^6.0.3",
-    "vitest": "^4.1.7"
+    "vitest": "^4.1.11"
   },
   "lint-staged": {
     "*.{ts,json,md}": "biome check --write --no-errors-on-unmatched"
