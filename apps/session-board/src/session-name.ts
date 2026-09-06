@@ -28,3 +28,18 @@ export function toKebabCase(value: string): string {
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-+|-+$/g, '')
 }
+
+/**
+ * What Claude Code adds to a title a session running now already uses.
+ *
+ * It is how two windows on one conversation are told apart in the tab strip, so
+ * it belongs to the window rather than to the work. A name from `claude -n` can
+ * never end this way: the board holds those to kebab-case, which has no spaces
+ * or parentheses in it.
+ */
+const WINDOW_NUMBER = / \(\d+\)$/
+
+/** The title as the work is named, with any window number taken off. */
+export function withoutWindowNumber(title: string): string {
+  return title.replace(WINDOW_NUMBER, '')
+}

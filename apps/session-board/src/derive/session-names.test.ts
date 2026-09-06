@@ -41,6 +41,16 @@ it('keeps the last title a session reported, since a rename replaces it', () => 
   expect(titles.get('aaa')).toBe('second')
 })
 
+it('drops the number Claude Code adds to a title a second window is already using', () => {
+  const titles = findEventTitles({
+    events: [event({ session_id: 'aaa', session_title: 'technical-interview-round (2)' })],
+  })
+
+  // `technical-interview-round-2` reads as a second job, gets its own row, and
+  // links to the same progress file as the first.
+  expect(titles.get('aaa')).toBe('technical-interview-round')
+})
+
 it('has no title for a session that never reported one', () => {
   const titles = findEventTitles({ events: [event({ session_id: 'aaa' })] })
 

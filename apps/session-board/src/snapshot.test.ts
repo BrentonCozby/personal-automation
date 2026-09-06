@@ -3,8 +3,9 @@ import { mkdtemp, realpath, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { promisify } from 'node:util'
-import { expect, it } from 'vitest'
+import { expect, it, vi } from 'vitest'
 import type { Config } from './config.js'
+import { listProcesses } from './derive/processes.js'
 import type { HookEvent } from './events/types.js'
 import { createGroupStore } from './metadata/group-store.js'
 import { createMetadataStore } from './metadata/store.js'
@@ -12,6 +13,10 @@ import type { MetadataBySession } from './metadata/types.js'
 import { buildSnapshot } from './snapshot.js'
 
 const NOW = 1_800_000_000
+
+// No pid these tests invent is a `claude` process on this machine, so the real
+// reader answers with nothing useful. Mocked, a test can say which pid is live.
+vi.mock('./derive/processes.js', () => ({ listProcesses: vi.fn(async () => new Map()) }))
 
 const execFileAsync = promisify(execFile)
 
@@ -236,6 +241,164 @@ it('moves a relaunched row onto the session the board started for it', async () 
     // the log, and this is what stops it claiming a row of its own again.
     old: { supersededBy: 'fresh' },
   })
+})
+
+it('keeps the row when a resume walks back to the session a relaunch moved it off', async () => {
+  const { store, groups } = await storeWith({
+    old: { name: 'ssr-iframe-main', group: 'ssr iframe', relaunchedAt: NOW - 600 },
+  })
+
+  const untilTheResume: HookEvent[] = [
+    {
+      session_id: 'old',
+      hook_event_name: 'SessionStart',
+      session_title: 'ssr-iframe-main',
+      t: NOW - 900,
+    },
+    {
+      session_id: 'fresh',
+      hook_event_name: 'SessionStart',
+      session_title: 'ssr-iframe-main',
+      t: NOW - 598,
+    },
+  ]
+
+  // Pairs the click to `fresh` and writes the pointer the second snapshot has
+  // to argue with.
+  await buildSnapshot({ events: untilTheResume, store, groups, config: config(), now: NOW })
+
+  const board = await buildSnapshot({
+    // `/resume` in the tab the board opened, picking the session the relaunch
+    // moved the row off. The pointer still says `old` handed its work to
+    // `fresh`, so the two records close a loop, and reading the loop as a chain
+    // makes both ends superseded: the row is drawn neither on the board nor in
+    // the drawer, and there is no way left to reach the work.
+    events: [
+      ...untilTheResume,
+      {
+        session_id: 'fresh',
+        hook_event_name: 'SessionEnd',
+        reason: 'resume',
+        hook_ppid: 900,
+        t: NOW - 100,
+      },
+      {
+        session_id: 'old',
+        hook_event_name: 'SessionStart',
+        source: 'resume',
+        hook_ppid: 900,
+        t: NOW - 99,
+      },
+      { session_id: 'old', hook_event_name: 'Stop', hook_ppid: 900, t: NOW - 50 },
+    ],
+    store,
+    groups,
+    config: config(),
+    now: NOW,
+  })
+
+  expect(namesOnBoard(board)).toEqual(['ssr-iframe-main'])
+  expect(board.groups.flatMap(group => group.rows).map(row => row.sessionId)).toEqual(['old'])
+  expect(await store.read()).toEqual({ old: { name: 'ssr-iframe-main', group: 'ssr iframe' } })
+})
+
+it('erases the pointer of a row the resume walked back to', async () => {
+  const { store, groups } = await storeWith({
+    resumed: { name: 'ssr-iframe-main', supersededBy: 'relaunched' },
+    // Nothing but the pointer, which is the whole of a row whose work has moved
+    // on. Emptying it would leave a claimed row the board draws as unnamed.
+    tombstone: { supersededBy: 'relaunched' },
+  })
+
+  const board = await buildSnapshot({
+    // Both rows have been worked in since `relaunched` last fired, so neither
+    // pointer describes a handover any more.
+    events: [
+      { session_id: 'relaunched', hook_event_name: 'SessionStart', t: NOW - 500 },
+      { session_id: 'tombstone', hook_event_name: 'SessionStart', t: NOW - 200 },
+      { session_id: 'resumed', hook_event_name: 'SessionStart', t: NOW - 100 },
+    ],
+    store,
+    groups,
+    config: config(),
+    now: NOW,
+  })
+
+  expect(namesOnBoard(board)).toEqual(['ssr-iframe-main'])
+  // A name a live row holds has to read as taken, or the board starts a second
+  // session under it.
+  expect(await store.read()).toEqual({ resumed: { name: 'ssr-iframe-main' } })
+})
+
+it('takes the finished row off the board when a live session holds the same name', async () => {
+  const { store, groups } = await storeWith({
+    finished: { name: 'ssr-iframe-main', group: 'ssr iframe' },
+    live: { name: 'ssr-iframe-main' },
+  })
+
+  vi.mocked(listProcesses).mockResolvedValueOnce(
+    new Map([[900, { pid: 900, startedAt: NOW - 1000, command: 'claude' }]]),
+  )
+
+  const board = await buildSnapshot({
+    events: [
+      { session_id: 'finished', hook_event_name: 'SessionStart', t: NOW - 800 },
+      {
+        session_id: 'finished',
+        hook_event_name: 'SessionEnd',
+        reason: 'prompt_input_exit',
+        t: NOW - 700,
+      },
+      { session_id: 'live', hook_event_name: 'SessionStart', hook_ppid: 900, t: NOW - 600 },
+      { session_id: 'live', hook_event_name: 'Stop', hook_ppid: 900, t: NOW - 60 },
+    ],
+    store,
+    groups,
+    config: config(),
+    now: NOW,
+  })
+
+  expect(board.groups.flatMap(group => group.rows).map(row => row.sessionId)).toEqual(['live'])
+  expect(board.unclaimed.map(row => row.sessionId)).toEqual(['finished'])
+  // The group is still on the row, so editing it in the drawer puts the work
+  // back where it was rather than leaving it to be filed again.
+  expect((await store.read())['finished']).toEqual({
+    name: 'ssr-iframe-main',
+    group: 'ssr iframe',
+    isDismissed: true,
+  })
+})
+
+it('keeps both rows of one name while two sessions under it are running', async () => {
+  const { store, groups } = await storeWith({
+    first: { name: 'ssr-iframe-main' },
+    second: { name: 'ssr-iframe-main' },
+  })
+
+  // Two terminals on the same work. Nothing says which row to keep, so the
+  // board says so by leaving both.
+  vi.mocked(listProcesses).mockResolvedValueOnce(
+    new Map([
+      [900, { pid: 900, startedAt: NOW - 1000, command: 'claude' }],
+      [901, { pid: 901, startedAt: NOW - 1000, command: 'claude' }],
+    ]),
+  )
+
+  const board = await buildSnapshot({
+    events: [
+      { session_id: 'first', hook_event_name: 'SessionStart', hook_ppid: 900, t: NOW - 600 },
+      { session_id: 'second', hook_event_name: 'SessionStart', hook_ppid: 901, t: NOW - 500 },
+    ],
+    store,
+    groups,
+    config: config(),
+    now: NOW,
+  })
+
+  expect(board.groups.flatMap(group => group.rows).map(row => row.sessionId)).toEqual([
+    'first',
+    'second',
+  ])
 })
 
 it('drops a placeholder row once no session can pair with it any more', async () => {

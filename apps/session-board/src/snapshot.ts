@@ -2,6 +2,7 @@ import { access } from 'node:fs/promises'
 import type { Config } from './config.js'
 import { type Board, buildBoard, findSessionsToAutoClaim } from './derive/board.js'
 import {
+  dropReturnedHandovers,
   PLACEHOLDER_ID_PREFIX,
   RELAUNCH_WINDOW_SECONDS,
   resolveCurrentSessionId,
@@ -271,6 +272,45 @@ function findRowsToKeepApart({
 }
 
 /**
+ * Erase the pointers that no longer describe a handover.
+ *
+ * A pointer the work came back from is pruned out of the successor map on every
+ * snapshot, so the row draws right without this. What it cannot do is stop the
+ * rest of the board reading the file: a row carrying one is passed over by the
+ * progress-file matcher, and `POST /api/sessions` does not count its name as
+ * taken, so the board will start a second session under a name a live row is
+ * already holding. That is the duplicate this whole path exists to prevent.
+ */
+async function clearStalePointers({
+  metadata,
+  store,
+  successors,
+}: {
+  metadata: MetadataBySession
+  store: MetadataStore
+  successors: Map<string, string>
+}): Promise<boolean> {
+  let didClear = false
+
+  for (const [sessionId, entry] of Object.entries(metadata)) {
+    const { supersededBy, ...rest } = entry
+    if (!supersededBy || successors.get(sessionId) === supersededBy) continue
+
+    // Removed rather than emptied. An entry with no fields left is still a
+    // claimed row, which the board draws as unnamed.
+    if (Object.keys(rest).length === 0) {
+      await store.remove(sessionId)
+    } else {
+      await store.patch({ sessionId, changes: { supersededBy: undefined } })
+    }
+
+    didClear = true
+  }
+
+  return didClear
+}
+
+/**
  * Drop the rows the board wrote for a session that never turned up.
  *
  * A row waits under a placeholder id until the session it asked for fires its
@@ -312,6 +352,57 @@ async function dropUnpairedPlaceholders({
   return didDrop
 }
 
+/**
+ * Take the finished half of a duplicated name off the board.
+ *
+ * A name is one piece of work, but a session id is not. Resuming an old
+ * conversation, or starting `claude -n` under a name a row already holds, files
+ * the same work under a second id, and an id is what a row is keyed by. Both
+ * rows then draw the same name with nothing to tell them apart, and the dead
+ * one is as likely to be clicked as the live one. `POST /api/sessions` already
+ * refuses a name a row is holding, so one row per name is what the rest of the
+ * board assumes.
+ *
+ * Everything written about the work stays on the row rather than being wiped
+ * the way `dismiss` does it, so editing the row in the drawer puts it back.
+ */
+async function dismissDeadTwins({
+  metadata,
+  store,
+  liveSessionIds,
+}: {
+  metadata: MetadataBySession
+  store: MetadataStore
+  liveSessionIds: Set<string>
+}): Promise<boolean> {
+  const byName = new Map<string, string[]>()
+  for (const [sessionId, entry] of Object.entries(metadata)) {
+    if (!entry.name || entry.isDismissed || entry.supersededBy) continue
+
+    byName.set(entry.name, [...(byName.get(entry.name) ?? []), sessionId])
+  }
+
+  let didDismiss = false
+
+  for (const sessionIds of byName.values()) {
+    if (sessionIds.length < 2) continue
+
+    // Exactly one running session, or nothing is moved. Two of them under one
+    // name are two terminals on the same work, and there is no answer to which
+    // row to keep; none of them running says only that the work is idle.
+    if (sessionIds.filter(sessionId => liveSessionIds.has(sessionId)).length !== 1) continue
+
+    for (const sessionId of sessionIds) {
+      if (liveSessionIds.has(sessionId)) continue
+
+      await store.patch({ sessionId, changes: { isDismissed: true } })
+      didDismiss = true
+    }
+  }
+
+  return didDismiss
+}
+
 export async function buildSnapshot({
   events,
   store,
@@ -338,12 +429,28 @@ export async function buildSnapshot({
   const didDrop = await dropUnpairedPlaceholders({ events, metadata, store, relaunches, now })
   if (didDrop) metadata = await store.read()
 
-  const successors = new Map([...resolveSuccessors(events), ...relaunches])
-  const keptApart = findRowsToKeepApart({
-    successors,
-    metadata,
-    relaunched: new Set(relaunches.keys()),
+  // The relaunch pointers are pruned before the merge as well as after it. A
+  // pointer the work has come back from would otherwise go on shadowing the
+  // handover the event log recorded for the same id, which is the one still
+  // true, and the merged map would lose both.
+  const successors = dropReturnedHandovers({
+    successors: new Map([
+      ...resolveSuccessors(events),
+      ...dropReturnedHandovers({ successors: relaunches, events }),
+    ]),
+    events,
   })
+  // Only the pairings that survived the pruning. A row whose relaunch the work
+  // has since come back from is an ordinary row again, and treating it as
+  // relaunched would exempt it from `findRowsToKeepApart` and write the stale
+  // pointer back out.
+  const relaunched = new Set(
+    [...relaunches].filter(([sessionId, to]) => successors.get(sessionId) === to).map(([id]) => id),
+  )
+
+  if (await clearStalePointers({ metadata, store, successors })) metadata = await store.read()
+
+  const keptApart = findRowsToKeepApart({ successors, metadata, relaunched })
   const isSuperseded = (sessionId: string): boolean =>
     !keptApart.has(sessionId) && resolveCurrentSessionId({ sessionId, successors }) !== sessionId
 
@@ -352,7 +459,7 @@ export async function buildSnapshot({
     store,
     successors,
     keptApart,
-    relaunched: new Set(relaunches.keys()),
+    relaunched,
   })
   if (didMigrate) metadata = await store.read()
 
@@ -398,13 +505,16 @@ export async function buildSnapshot({
       namer.derive({ sessions: unnamed }),
     ])
 
+  const liveSessionIds = resolveLiveSessions({ events, processes })
+  if (await dismissDeadTwins({ metadata, store, liveSessionIds })) metadata = await store.read()
+
   return buildBoard({
     events,
     metadata,
     knownGroups,
     derivedNames,
     supersededSessionIds: new Set([...successors.keys()].filter(id => !keptApart.has(id))),
-    liveSessionIds: resolveLiveSessions({ events, processes }),
+    liveSessionIds,
     missingProgressPaths,
     transcriptTimes,
     now,

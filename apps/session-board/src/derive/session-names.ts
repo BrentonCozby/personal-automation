@@ -1,7 +1,7 @@
 import { type FileHandle, open } from 'node:fs/promises'
 import { z } from 'zod'
 import type { HookEvent } from '../events/types.js'
-import { toKebabCase } from '../session-name.js'
+import { toKebabCase, withoutWindowNumber } from '../session-name.js'
 
 /**
  * How much of a transcript is read looking for a name.
@@ -30,7 +30,10 @@ export function findEventTitles({ events }: { events: HookEvent[] }): Map<string
   for (const event of events) {
     if (!event.session_title) continue
 
-    const name = toKebabCase(event.session_title)
+    // Kept out of the name: read as part of it, `technical-interview-round (2)`
+    // kebab-cases into a second row for the same job, linked to the same
+    // progress file as the first.
+    const name = toKebabCase(withoutWindowNumber(event.session_title))
     if (!name) continue
 
     titles.set(event.session_id, name)

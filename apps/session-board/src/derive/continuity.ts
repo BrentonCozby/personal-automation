@@ -1,5 +1,6 @@
 import type { HookEvent } from '../events/types.js'
 import type { MetadataBySession } from '../metadata/types.js'
+import { withoutWindowNumber } from '../session-name.js'
 
 // The reasons Claude Code hands one session's process to another. `/clear`
 // mints a fresh session id in the same process, and resuming does the same when
@@ -128,7 +129,11 @@ export function resolveRelaunchSuccessors({
     const started = events.find(
       event =>
         event.hook_event_name === 'SessionStart' &&
-        event.session_title === name &&
+        // The board launches with `-n <the row's name>`, so the title comes
+        // back as that name. Resuming a row while another window is on the same
+        // work gets a number on the end of it, and matching the raw title would
+        // leave that relaunch unpaired: two rows, both named, one of them dead.
+        withoutWindowNumber(event.session_title || '') === name &&
         event.session_id !== sessionId &&
         !taken.has(event.session_id) &&
         event.t >= relaunchedAt &&
@@ -147,8 +152,7 @@ export function resolveRelaunchSuccessors({
  * Follow a chain of handovers to the session that is current now.
  *
  * Clearing twice makes a chain, so the first id has to walk all the way to the
- * last. The seen set stops a cycle from spinning, which malformed or replayed
- * events could otherwise produce.
+ * last.
  */
 export function resolveCurrentSessionId({
   sessionId,
@@ -162,9 +166,54 @@ export function resolveCurrentSessionId({
 
   for (;;) {
     const next = successors.get(current)
-    if (!next || seen.has(next)) return current
+    if (!next) return current
+
+    // A loop means the handovers lead back where they started, so no session in
+    // it is a later identity of another. Answering with a member of the loop
+    // instead marks every one of them superseded, and `buildBoard` draws none
+    // of them: the row disappears from the board and the drawer both.
+    if (seen.has(next)) return sessionId
 
     seen.add(next)
     current = next
   }
+}
+
+/**
+ * Drop the handovers the work has since come back from.
+ *
+ * `supersededBy` is written once and never revisited, but `/resume` can reopen
+ * a session the board already recorded as superseded, which makes that pointer
+ * a lie for the rest of the log's life. Left in, it hides a session that is
+ * running right now behind the dead id that took over from it, and when the
+ * resume chain leads back to that id the graph closes into a loop.
+ */
+export function dropReturnedHandovers({
+  successors,
+  events,
+}: {
+  successors: Map<string, string>
+  events: HookEvent[]
+}): Map<string, string> {
+  const lastEventAt = new Map<string, number>()
+  for (const event of events) {
+    lastEventAt.set(event.session_id, Math.max(event.t, lastEventAt.get(event.session_id) ?? 0))
+  }
+
+  return new Map(
+    [...successors].filter(([from, to]) => {
+      const fromLastEventAt = lastEventAt.get(from)
+      const toLastEventAt = lastEventAt.get(to)
+
+      // The session that fired an event after the one that took over from it
+      // last fired is the one holding the work now. Either end having no events
+      // keeps the handover, which is what a row waiting under a `pending-` id
+      // needs: the id it was filed under never fires anything.
+      return (
+        fromLastEventAt === undefined ||
+        toLastEventAt === undefined ||
+        fromLastEventAt <= toLastEventAt
+      )
+    }),
+  )
 }
