@@ -15,7 +15,7 @@
     "@personal-automation/common": "workspace:*",
     "@personal-automation/gmail": "workspace:*",
     "@personal-automation/ynab": "workspace:*",
-    "p-limit": "^7.3.0",
-    "zod": "^4.4.3"
+    "p-limit": "^7.3.2",
+    "zod": "^4.5.4"
   }
 }
