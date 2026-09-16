@@ -25,9 +25,9 @@ fi
 
 cd "$APP_DIR" || exit 1
 
-# Through a login shell, the way run.sh does. node here is a Volta shim under
-# ~/.volta/bin, which is on the PATH the login profile sets and not on the bare one
-# launchd hands a job: without this the tsx launcher dies with "node: not found".
+# Through a login shell, the way run.sh does. node here is a mise shim under
+# ~/.local/share/mise/shims, which ~/.zprofile puts on PATH and launchd's bare PATH does
+# not have: without this the tsx launcher dies with "node: not found".
 # Both `exec`s are load-bearing. They leave launchd's direct child as the node process, so
 # the SIGTERM from `launchctl bootout` or from logging out reaches the board's own
 # shutdown rather than a shell wrapping it, and the board frees port 4747 on the way out.
