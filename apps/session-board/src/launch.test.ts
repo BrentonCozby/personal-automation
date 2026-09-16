@@ -5,6 +5,7 @@ import { join } from 'node:path'
 import { promisify } from 'node:util'
 import { expect, it } from 'vitest'
 import {
+  automationDenialMessage,
   buildOpenFileArgv,
   buildProgressScript,
   buildSessionScript,
@@ -221,6 +222,24 @@ it('rejects a resume template with no {{system}} before it opens a tab', async (
       commandTemplate: 'claude --resume {{id}}',
     }),
   ).rejects.toThrow('{{system}}')
+})
+
+it('answers a refused Apple event with what to do about it', () => {
+  // What Node hands back: the whole script pasted into the message, with the
+  // one line that matters at the end of it.
+  const message = automationDenialMessage(
+    'Command failed: osascript -e on run argv tell application "Ghostty" ... end run\n' +
+      '56:81: execution error: Not authorized to send Apple events to Ghostty. (-1743)\n',
+  )
+
+  expect(message).toContain('Restart the board')
+  expect(message).not.toContain('osascript')
+})
+
+it('leaves every other osascript failure to speak for itself', () => {
+  expect(
+    automationDenialMessage('51:58: execution error: Ghostty got an error: Can’t get window 1.'),
+  ).toBeUndefined()
 })
 
 it('separates the parts of one appended system prompt', () => {

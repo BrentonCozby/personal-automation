@@ -22,6 +22,9 @@ const execFileAsync = promisify(execFile)
 // terminal (this one runs under launchd) has to be able to make one. `new
 // window` takes the same configuration and is what the board uses when it finds
 // no window to add to.
+//
+// "Not authorized to send Apple events to Ghostty. (-1743)" is macOS, not the
+// script: see `automationDenialMessage`.
 const NEW_TAB_SCRIPT = `on run argv
   tell application "Ghostty"
     set cfg to new surface configuration
@@ -36,6 +39,40 @@ const NEW_TAB_SCRIPT = `on run argv
     end try
   end tell
 end run`
+
+/**
+ * Turn macOS refusing the board's Apple events into a message worth reading.
+ *
+ * Returns nothing for every other osascript failure, whose own text is already
+ * about the script.
+ */
+export function automationDenialMessage(failure: string): string | undefined {
+  // The grant is keyed to the binary sending the event, so a node upgrade drops
+  // it, and a board still on the deleted one is refused with no prompt shown.
+  if (!failure.includes('(-1743)')) return undefined
+
+  return 'macOS has not approved this board to open Ghostty tabs. Restart the board (launchctl kickstart -k gui/$UID/com.personal-automation.session-board) and approve the prompt, or turn it on under System Settings > Privacy & Security > Automation.'
+}
+
+/** Everything an `execFile` rejection can say about why it failed. */
+function failureText(error: unknown): string {
+  const message = error instanceof Error ? error.message : String(error)
+  if (typeof error !== 'object' || error === null || !('stderr' in error)) return message
+
+  return typeof error.stderr === 'string' ? `${message}\n${error.stderr}` : message
+}
+
+/** Open one Ghostty tab on a command, or say why macOS would not let us. */
+async function runInNewTab({ command, cwd }: { command: string; cwd: string }): Promise<void> {
+  try {
+    await execFileAsync('osascript', ['-e', NEW_TAB_SCRIPT, command, resolveLaunchCwd(cwd)])
+  } catch (error) {
+    const denial = automationDenialMessage(failureText(error))
+    if (!denial) throw error
+
+    throw new Error(denial)
+  }
+}
 
 /**
  * Flatten `..` out of a working directory before a session is resumed there.
@@ -87,7 +124,7 @@ export async function openSessionTab({
     .replaceAll('{{id}}', sessionId)
     .replaceAll('{{system}}', systemPromptPath)
 
-  await execFileAsync('osascript', ['-e', NEW_TAB_SCRIPT, command, resolveLaunchCwd(cwd)])
+  await runInNewTab({ command, cwd })
 }
 
 /**
@@ -210,12 +247,7 @@ async function openScriptInTab({
   const scriptPath = join(tmpdir(), `session-board-launch-${sessionId}.sh`)
   await writeFile(scriptPath, script, { mode: 0o700 })
 
-  await execFileAsync('osascript', [
-    '-e',
-    NEW_TAB_SCRIPT,
-    `/bin/zsh -l ${scriptPath}`,
-    resolveLaunchCwd(cwd),
-  ])
+  await runInNewTab({ command: `/bin/zsh -l ${scriptPath}`, cwd })
 }
 
 export async function openSessionFromProgress({
