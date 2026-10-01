@@ -24,6 +24,7 @@ These are the conventions this monorepo follows that aren't visible from just re
 apps/
   ynab-categorize/     # daily Amazon-categorizer CLI
   ynab-enrich-memos/   # writes Amazon receipt items into transaction memos; runs before ynab-categorize
+  ynab-spending-export/ # on-demand CSV of monthly spending per category (totals only); not scheduled
   notify/              # emails a digest after the daily run on audit-log errors
   tasks/               # Obsidian task state model: the twice-weekly review of #active tasks that
                        # have gone quiet, plus promote/schedule/abandon (own launchd agent)

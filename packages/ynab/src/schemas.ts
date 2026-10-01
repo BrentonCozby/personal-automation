@@ -31,6 +31,25 @@ export const transactionSchema = z.object({
   category_id: z.string().nullable(),
 })
 
+export const monthCategorySchema = categorySchema.extend({
+  activity: z.number(),
+})
+
+export const monthsResponseSchema = z.object({
+  data: z.object({
+    months: z.array(z.object({ month: z.string(), deleted: z.boolean() })),
+  }),
+})
+
+export const monthResponseSchema = z.object({
+  data: z.object({
+    month: z.object({
+      month: z.string(),
+      categories: z.array(monthCategorySchema),
+    }),
+  }),
+})
+
 export const categoryGroupsResponseSchema = z.object({
   data: z.object({
     category_groups: z.array(categoryGroupSchema),

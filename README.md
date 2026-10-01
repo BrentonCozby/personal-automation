@@ -4,6 +4,7 @@ A catch-all monorepo for my personal automation: a pnpm workspace of small sched
 
 - **`apps/ynab-categorize`**: daily CLI that auto-categorizes Amazon transactions using the Anthropic API (Claude Haiku by default).
 - **`apps/ynab-enrich-memos`**: reads Amazon receipt emails, parses the product list, and PATCHes it into the `memo` of matching YNAB transactions so the categorizer has real item names to work from. Runs before `ynab-categorize` in the daily run.
+- **`apps/ynab-spending-export`**: on demand, writes spending per YNAB category for each of the last 12 finished months to a CSV. Totals only, no payees or transactions. Run with `pnpm --filter @personal-automation/ynab-spending-export ynab-spending-export --out <file.csv>`. The `future-home` repo reads the file.
 - **`apps/notify`**: emails an error digest after the daily run when any app's audit log shows errors.
 - **`apps/tasks`**: a state model over Obsidian todos, with a scheduled review that emails the committed tasks that have gone quiet (one next action each) plus a record of what was finished and dropped, and a daily job that pushes what is due to the phone.
 - **`packages/anthropic`**: shared Claude API client (`messages.parse` + `zodOutputFormat`).

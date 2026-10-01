@@ -129,6 +129,18 @@ importers:
         specifier: ^4.4.3
         version: 4.4.3
 
+  apps/ynab-spending-export:
+    dependencies:
+      '@personal-automation/common':
+        specifier: workspace:*
+        version: link:../../packages/common
+      '@personal-automation/ynab':
+        specifier: workspace:*
+        version: link:../../packages/ynab
+      zod:
+        specifier: ^4.4.3
+        version: 4.4.3
+
   packages/anthropic:
     dependencies:
       '@anthropic-ai/sdk':

@@ -3,10 +3,12 @@ import { withRetry } from '@personal-automation/common/retry'
 import { YNAB_API_BASE_URL, YNAB_REQUEST_TIMEOUT_MS } from './constants.js'
 import {
   categoryGroupsResponseSchema,
+  monthResponseSchema,
+  monthsResponseSchema,
   patchTransactionsResponseSchema,
   transactionsResponseSchema,
 } from './schemas.js'
-import type { CategoryGroup, Transaction, TransactionPatch } from './types.js'
+import type { CategoryGroup, MonthCategory, Transaction, TransactionPatch } from './types.js'
 
 type YnabClientInit = { token: string; budgetId: string }
 
@@ -14,6 +16,10 @@ export type PatchTransactionsResult = { updatedIds: string[] }
 
 export type YnabClient = {
   getCategoryGroups: () => Promise<CategoryGroup[]>
+  /** Each category's activity in one month, in milliunits, spending negative. `month` is the first day, as 2026-08-01. */
+  getMonthCategories: (month: string) => Promise<MonthCategory[]>
+  /** The months the budget has, as first-of-month dates, oldest first. A request for any other month is a 404. */
+  listMonths: () => Promise<string[]>
   getTransactionsForAccounts: ({
     accountIds,
     sinceDate,
@@ -67,6 +73,24 @@ export function createYnabClient({ token, budgetId }: YnabClientInit): YnabClien
     return res.data.category_groups
   }
 
+  async function getMonthCategories(month: string): Promise<MonthCategory[]> {
+    const res = await request({
+      path: `/budgets/${budgetId}/months/${month}`,
+      schema: monthResponseSchema,
+    })
+
+    return res.data.month.categories
+  }
+
+  async function listMonths(): Promise<string[]> {
+    const res = await request({ path: `/budgets/${budgetId}/months`, schema: monthsResponseSchema })
+
+    return res.data.months
+      .filter(m => !m.deleted)
+      .map(m => m.month)
+      .sort()
+  }
+
   async function getTransactionsForAccounts({
     accountIds,
     sinceDate,
@@ -100,5 +124,11 @@ export function createYnabClient({ token, budgetId }: YnabClientInit): YnabClien
     return { updatedIds: res.data.transaction_ids }
   }
 
-  return { getCategoryGroups, getTransactionsForAccounts, patchTransactions }
+  return {
+    getCategoryGroups,
+    getMonthCategories,
+    listMonths,
+    getTransactionsForAccounts,
+    patchTransactions,
+  }
 }

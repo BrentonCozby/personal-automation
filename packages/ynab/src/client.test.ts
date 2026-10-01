@@ -13,6 +13,67 @@ function makeClient(): ReturnType<typeof createYnabClient> {
   return createYnabClient({ token: 'test-token', budgetId: VALID_UUID })
 }
 
+describe('createYnabClient.getMonthCategories', (): void => {
+  it("returns each category's activity for the month", async (): Promise<void> => {
+    server.use(
+      http.get(`${YNAB_API_BASE_URL}/budgets/${VALID_UUID}/months/2026-08-01`, () =>
+        HttpResponse.json({
+          data: {
+            month: {
+              month: '2026-08-01',
+              categories: [
+                {
+                  id: 'c1',
+                  name: 'Groceries',
+                  hidden: false,
+                  deleted: false,
+                  category_group_id: 'g1',
+                  category_group_name: 'Food',
+                  activity: -123_450,
+                  budgeted: 200_000,
+                },
+              ],
+            },
+          },
+        }),
+      ),
+    )
+
+    const categories = await makeClient().getMonthCategories('2026-08-01')
+    expect(categories).toEqual([
+      {
+        id: 'c1',
+        name: 'Groceries',
+        hidden: false,
+        deleted: false,
+        category_group_id: 'g1',
+        category_group_name: 'Food',
+        activity: -123_450,
+      },
+    ])
+  })
+})
+
+describe('createYnabClient.listMonths', (): void => {
+  it('returns the budget months oldest first, without deleted ones', async (): Promise<void> => {
+    server.use(
+      http.get(`${YNAB_API_BASE_URL}/budgets/${VALID_UUID}/months`, () =>
+        HttpResponse.json({
+          data: {
+            months: [
+              { month: '2026-09-01', deleted: false },
+              { month: '2026-03-01', deleted: false },
+              { month: '2026-01-01', deleted: true },
+            ],
+          },
+        }),
+      ),
+    )
+
+    expect(await makeClient().listMonths()).toEqual(['2026-03-01', '2026-09-01'])
+  })
+})
+
 describe('createYnabClient.getCategoryGroups', (): void => {
   it('fetches and parses category groups', async (): Promise<void> => {
     server.use(

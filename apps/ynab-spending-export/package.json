@@ -1,0 +1,15 @@
+{
+  "name": "@personal-automation/ynab-spending-export",
+  "version": "0.1.0",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "build": "tsc -b",
+    "ynab-spending-export": "tsx src/index.ts"
+  },
+  "dependencies": {
+    "@personal-automation/common": "workspace:*",
+    "@personal-automation/ynab": "workspace:*",
+    "zod": "^4.4.3"
+  }
+}

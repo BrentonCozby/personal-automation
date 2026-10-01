@@ -7,6 +7,7 @@
     { "path": "./packages/ynab" },
     { "path": "./apps/ynab-categorize" },
     { "path": "./apps/ynab-enrich-memos" },
+    { "path": "./apps/ynab-spending-export" },
     { "path": "./apps/notify" },
     { "path": "./apps/tasks" },
     { "path": "./apps/session-board" }
