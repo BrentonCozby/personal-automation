@@ -1500,6 +1500,57 @@ it('keeps the question up when the press lands somewhere else', () => {
   expect(document.querySelector('.group-delete').textContent).toBe('×')
 })
 
+function refuseEveryRequest(error) {
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async () => ({ ok: false, status: 500, text: async () => JSON.stringify({ error }) })),
+  )
+}
+
+it('gives the × back and says why when a delete is refused', async () => {
+  refuseEveryRequest('could not write groups.json')
+  render(boardWithGroups([{ name: 'Busy', rows: [aRow({ sessionId: 'a' })] }]))
+
+  document.querySelector('.group-delete').click()
+  document.querySelector('.group-delete').click()
+  await settle()
+
+  expect(document.querySelector('.group-delete').textContent).toBe('×')
+  expect(document.querySelector('.group .edit-line .pending')?.textContent).toBe(
+    'could not write groups.json',
+  )
+})
+
+it('says why when deleting an empty group is refused', async () => {
+  refuseEveryRequest('could not write groups.json')
+  render(boardWithGroups([{ name: 'Empty', rows: [] }]))
+
+  document.querySelector('.group-delete').click()
+  await settle()
+
+  expect(document.querySelector('.group .edit-line .pending')?.textContent).toBe(
+    'could not write groups.json',
+  )
+})
+
+it('draws the snapshot the delete question held back once a delete is refused', async () => {
+  const onMessage = {}
+  vi.stubGlobal('EventSource', fakeStreamInto(onMessage))
+  refuseEveryRequest('could not write groups.json')
+  start()
+  const send = rows =>
+    onMessage.message({ data: JSON.stringify(boardWithGroups([{ name: 'Busy', rows }])) })
+  send([aRow({ sessionId: 'a', name: 'perf' })])
+
+  document.querySelector('.group-delete').click()
+  // Arrives while the question holds the repaint off.
+  send([aRow({ sessionId: 'a', name: 'held' })])
+  document.querySelector('.group-delete').click()
+  await settle()
+
+  expect(document.querySelector('.row .name').textContent).toBe('held')
+})
+
 it('gives an empty group something to drop a session onto', () => {
   render(boardWithGroups([{ name: 'Empty', rows: [] }]))
 

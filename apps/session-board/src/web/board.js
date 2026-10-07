@@ -269,6 +269,15 @@ function showMessage(node, text) {
   return line
 }
 
+/**
+ * Draw the snapshots a drag or a question held back, then say why a request
+ * was refused. No frame follows a refusal to do either.
+ */
+function sayRefused({ host, error }) {
+  if (!isBusy()) render(latest)
+  showMessage(host, error)
+}
+
 // Answers with the parsed body whatever the status, because the server says
 // what went wrong in the body and the picker shows that sentence. Undefined
 // means the request never got an answer at all.
@@ -802,11 +811,24 @@ function createGroup(name) {
  *
  * The collapsed mark is filed under the name, so it goes with the group rather
  * than following the rows to Ungrouped, which has a mark of its own.
+ *
+ * `host` is where a refusal is written.
  */
-function deleteGroup(name) {
-  if (collapsed.delete(name)) saveCollapsed()
+async function deleteGroup({ name, host }) {
+  const wasCollapsed = collapsed.delete(name)
+  if (wasCollapsed) saveCollapsed()
 
-  return api(`/api/groups/${encodeURIComponent(name)}`, { method: 'DELETE' })
+  const result = await api(`/api/groups/${encodeURIComponent(name)}`, { method: 'DELETE' })
+  if (result.ok) return result
+
+  // The group is still there, so it stays as folded as it was.
+  if (wasCollapsed) {
+    collapsed.add(name)
+    saveCollapsed()
+  }
+  sayRefused({ host, error: result.error || 'could not delete that group' })
+
+  return result
 }
 
 /**
@@ -821,7 +843,7 @@ function deleteGroup(name) {
  * header goes back to the old name with no word of why.
  */
 async function renameGroup({ from, to, host }) {
-  if (!to) return deleteGroup(from)
+  if (!to) return deleteGroup({ name: from, host })
 
   // Moved before the request, so the frame the rename pushes finds the mark
   // already filed under the new name.
@@ -882,7 +904,7 @@ function pruneCollapsed(board) {
  * is what already holds a repaint off: without it an unrelated session's event
  * would rebuild the header and take the question away mid-click.
  */
-function buildGroupDelete({ label, count }) {
+function buildGroupDelete({ label, count, host }) {
   const moved = count === 1 ? '1 session' : `${count} sessions`
   const button = el('button', 'group-delete', '×')
   button.title =
@@ -893,7 +915,7 @@ function buildGroupDelete({ label, count }) {
   button.addEventListener('click', event => {
     event.stopPropagation()
     if (count === 0) {
-      void deleteGroup(label)
+      void deleteGroup({ name: label, host })
 
       return
     }
@@ -913,7 +935,10 @@ function buildGroupDelete({ label, count }) {
       confirm.textContent = 'deleting…'
       confirm.disabled = true
       confirm.blur()
-      void deleteGroup(label)
+      void deleteGroup({ name: label, host }).then(result => {
+        // A refusal sends no frame to take the question away.
+        if (!result.ok) confirm.replaceWith(button)
+      })
     })
 
     confirm.addEventListener('blur', () => {
@@ -1248,16 +1273,7 @@ async function moveRow({ item, label, before, host }) {
   if (item.fromGroup !== label) changes.group = label === UNGROUPED_LABEL ? null : label
 
   const result = await patchSession(item.sessionId, changes)
-  if (!result.ok) refuseMove({ host, error: result.error || 'could not move that session' })
-}
-
-/**
- * Draw what the drag held back, then say why the move did not happen. No frame
- * follows a refusal, and the board was left as the drop found it.
- */
-function refuseMove({ host, error }) {
-  if (!isBusy()) render(latest)
-  showMessage(host, error)
+  if (!result.ok) sayRefused({ host, error: result.error || 'could not move that session' })
 }
 
 async function moveGroup({ name, before, host }) {
@@ -1265,7 +1281,7 @@ async function moveGroup({ name, before, host }) {
     method: 'PATCH',
     body: JSON.stringify({ before }),
   })
-  if (!result.ok) refuseMove({ host, error: result.error || 'could not move that group' })
+  if (!result.ok) sayRefused({ host, error: result.error || 'could not move that group' })
 }
 
 function buildGroup({
@@ -1356,7 +1372,7 @@ function buildGroup({
       }),
     )
 
-    header.append(buildGroupDelete({ label, count }))
+    header.append(buildGroupDelete({ label, count, host: wrapper }))
     makeDraggable({ node: header, item: { kind: 'group', name: label } })
   }
 
