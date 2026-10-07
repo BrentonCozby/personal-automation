@@ -512,7 +512,7 @@ export async function buildSnapshot({
   // Only the sessions the board can draw. Every other transcript would cost a
   // read on the first snapshot for a number nobody sees.
   const drawable = new Set([...events.map(event => event.session_id), ...Object.keys(metadata)])
-  const contextTokens = await contextReader.read({
+  const lastTurns = await contextReader.read({
     transcripts: new Map([...transcripts].filter(([sessionId]) => drawable.has(sessionId))),
   })
 
@@ -530,7 +530,7 @@ export async function buildSnapshot({
     transcriptTimes: new Map(
       [...transcripts].map(([sessionId, transcript]) => [sessionId, transcript.writtenAt]),
     ),
-    contextTokens,
+    lastTurns,
     now,
     freshMinutes: config.freshMinutes,
     unclaimedWindowDays: UNCLAIMED_WINDOW_DAYS,

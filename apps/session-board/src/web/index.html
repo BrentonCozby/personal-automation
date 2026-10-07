@@ -376,6 +376,19 @@
       .context.growing { color: var(--waiting); font-weight: 500; }
       .context.large { color: var(--danger); font-weight: 500; }
 
+      .cache {
+        font-size: 11px;
+        color: var(--running);
+        flex: none;
+        font-variant-numeric: tabular-nums;
+        /* Held open when empty so every count to its right stays in one column. */
+        min-width: 30px;
+        text-align: right;
+      }
+
+      .cache.cooling { color: var(--waiting); }
+      .cache.cold-soon { color: var(--danger); }
+
       .sub {
         display: flex;
         align-items: center;
@@ -473,11 +486,11 @@
 
       .actions {
         position: absolute;
-        /* 12px row padding, 14px of pin, 32px of context size, two 8px gaps. A
-           big context is a reason to reach for these buttons, so the size stays
-           readable while the pointer is on the row, and the pin stays
-           pointable on the hover that draws these. */
-        right: 72px;
+        /* 12px row padding, 14px of pin, 32px of context size, 30px of cache
+           countdown, three 8px gaps. Size and countdown are the reasons to reach
+           for these buttons, so both stay readable while the pointer is on the
+           row, and the pin stays pointable on the hover that draws these. */
+        right: 110px;
         top: 4px;
         display: none;
         gap: 3px;

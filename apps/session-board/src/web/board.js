@@ -60,6 +60,30 @@ function saveCollapsed() {
 const GROWING_CONTEXT_TOKENS = 450_000
 const LARGE_CONTEXT_TOKENS = 600_000
 
+// `promptCacheTtl` in ~/.claude/settings.json pins the main conversation to an
+// hour; without it, usage credits drop it to five minutes.
+const CACHE_TTL_SECONDS = 60 * 60
+
+/** Fills a row's cache countdown in place, so the clock can tick between frames. */
+function paintCache(node) {
+  const at = Number(node.dataset.at)
+  const remaining = Math.floor(at + CACHE_TTL_SECONDS - Date.now() / 1000)
+  // Gone cold: nothing left to save, and most rows on the board are.
+  if (!at || remaining <= 0) {
+    node.textContent = ''
+    node.className = 'cache'
+
+    return
+  }
+
+  const minutes = Math.floor(remaining / 60)
+  node.textContent =
+    minutes >= 10 ? `${minutes}m` : `${minutes}:${String(remaining % 60).padStart(2, '0')}`
+  node.className = 'cache'
+  if (remaining <= 5 * 60) node.classList.add('cold-soon')
+  else if (remaining <= 15 * 60) node.classList.add('cooling')
+}
+
 function formatTokens(tokens) {
   if (tokens < 1000) return String(tokens)
   // 999,600 rounds to 1000k, which is a megatoken.
@@ -402,6 +426,14 @@ function buildRow(row) {
   // An unnamed row keeps the directory as text. It is the only thing telling
   // one from another there: the drawer is 16 rows all called "unnamed".
   const pin = row.name ? buildPin(row) : undefined
+
+  const cache = el('span', 'cache')
+  cache.dataset.at = String(row.lastTurnAt || '')
+  if (row.lastTurnAt) {
+    cache.title = `Prompt cache warm until ${new Date((row.lastTurnAt + CACHE_TTL_SECONDS) * 1000).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}`
+  }
+  paintCache(cache)
+  top.append(cache)
 
   // A session with no assistant turn yet has sent the model nothing.
   if (row.contextTokens === undefined) {
@@ -1347,6 +1379,11 @@ export function start() {
     ?.insertBefore(buildNewGroup(), document.getElementById('count'))
 
   connect()
+
+  // Frames arrive only when something changes, which a countdown never waits for.
+  setInterval(() => {
+    for (const node of document.querySelectorAll('.cache')) paintCache(node)
+  }, 1000)
 
   // Coming back to the tab is when a board frozen while it was hidden gets
   // read, so it is the moment worth checking the stream on.

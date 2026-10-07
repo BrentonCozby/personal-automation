@@ -1,6 +1,7 @@
 import type { HookEvent } from '../events/types.js'
 import type { MetadataBySession, SessionMetadata } from '../metadata/types.js'
 import { deriveActivity } from './activity.js'
+import type { LastTurn } from './context-size.js'
 import { progressSlug } from './progress-files.js'
 import { findEventTitles } from './session-names.js'
 
@@ -50,6 +51,11 @@ export interface BoardRow {
    * tokens included. Absent until the session has had one.
    */
   contextTokens?: number | undefined
+  /**
+   * Unix seconds of that same turn, which the prompt cache's countdown starts
+   * from.
+   */
+  lastTurnAt?: number | undefined
   cwd?: string | undefined
 }
 
@@ -95,7 +101,7 @@ function toBoardRow({
   derivedName,
   missingProgressPaths,
   transcriptTimes,
-  contextTokens,
+  lastTurns,
   status,
   lastActive,
   cwd,
@@ -105,12 +111,13 @@ function toBoardRow({
   derivedName: string | undefined
   missingProgressPaths: Set<string>
   transcriptTimes: Map<string, number>
-  contextTokens: Map<string, number>
+  lastTurns: Map<string, LastTurn>
   status: RowStatus
   lastActive: number
   cwd: string | undefined
 }): BoardRow {
   const progressPath = entry?.progressPath
+  const lastTurn = lastTurns.get(sessionId)
 
   return {
     sessionId,
@@ -124,7 +131,8 @@ function toBoardRow({
     isTranscriptMissing: !transcriptTimes.has(sessionId),
     status,
     lastActive,
-    contextTokens: contextTokens.get(sessionId),
+    contextTokens: lastTurn?.tokens,
+    lastTurnAt: lastTurn?.at,
     cwd,
   }
 }
@@ -177,7 +185,7 @@ export function buildBoard({
   liveSessionIds,
   missingProgressPaths,
   transcriptTimes,
-  contextTokens = new Map(),
+  lastTurns = new Map(),
   supersededSessionIds = new Set(),
   derivedNames = new Map(),
   now,
@@ -195,7 +203,7 @@ export function buildBoard({
    * against the unix seconds each transcript was last written to.
    */
   transcriptTimes: Map<string, number>
-  contextTokens?: Map<string, number>
+  lastTurns?: Map<string, LastTurn>
   /**
    * Ids that handed their work to another session, through `/clear` or a
    * resume. They are previous identities of a live session rather than sessions
@@ -249,7 +257,7 @@ export function buildBoard({
       derivedName: derivedNames.get(sessionId),
       missingProgressPaths,
       transcriptTimes,
-      contextTokens,
+      lastTurns,
       status,
       lastActive,
       cwd: lastDefined({ events: sessionEvents, pick: event => event.cwd }),
@@ -296,7 +304,7 @@ export function buildBoard({
         derivedName: derivedNames.get(sessionId),
         missingProgressPaths,
         transcriptTimes,
-        contextTokens,
+        lastTurns,
         status: 'gone',
         lastActive,
         cwd: entry.cwd,

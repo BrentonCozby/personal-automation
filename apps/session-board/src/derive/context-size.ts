@@ -15,6 +15,7 @@ const SYNTHETIC_MODEL = '<synthetic>'
 const assistantRecordSchema = z.object({
   type: z.literal('assistant'),
   isSidechain: z.boolean().optional(),
+  timestamp: z.string().optional(),
   message: z.object({
     model: z.string().optional(),
     usage: z.object({
@@ -25,11 +26,18 @@ const assistantRecordSchema = z.object({
   }),
 })
 
-/**
- * The tokens the line's turn sent to the model, or undefined when the line is
- * not the main conversation's assistant turn.
- */
-function contextTokensIn(line: string): number | undefined {
+export interface LastTurn {
+  /** What the turn sent to the model, cached tokens included. */
+  tokens: number
+  /**
+   * Unix seconds the turn was written, which is when it last refreshed the
+   * prompt cache. Absent when the line carries no readable timestamp.
+   */
+  at: number | undefined
+}
+
+/** Undefined when the line is not the main conversation's assistant turn. */
+function lastTurnIn(line: string): LastTurn | undefined {
   // Most lines are tool results and prompts, and parsing each would cost more
   // than the read.
   if (!line.includes('"assistant"')) return undefined
@@ -47,17 +55,21 @@ function contextTokensIn(line: string): number | undefined {
   const parsed = assistantRecordSchema.safeParse(json)
   if (!parsed.success) return undefined
 
-  const { isSidechain, message } = parsed.data
-  // A subagent's turns measure the subagent's context, not this session's.
+  const { isSidechain, timestamp, message } = parsed.data
+  // A subagent's turns measure the subagent's context, and refresh its own
+  // cache rather than this session's.
   if (isSidechain || message.model === SYNTHETIC_MODEL) return undefined
 
   const { usage } = message
+  const writtenMs = timestamp ? Date.parse(timestamp) : Number.NaN
 
-  return (
-    usage.input_tokens +
-    (usage.cache_read_input_tokens || 0) +
-    (usage.cache_creation_input_tokens || 0)
-  )
+  return {
+    tokens:
+      usage.input_tokens +
+      (usage.cache_read_input_tokens || 0) +
+      (usage.cache_creation_input_tokens || 0),
+    at: Number.isNaN(writtenMs) ? undefined : Math.floor(writtenMs / 1000),
+  }
 }
 
 async function openTranscript(path: string): Promise<FileHandle | undefined> {
@@ -75,13 +87,13 @@ async function openTranscript(path: string): Promise<FileHandle | undefined> {
  * Reads back from the end one chunk at a time, so the cost is the distance
  * from the last assistant turn to the end of the file rather than the file.
  */
-async function readLastContextTokens({
+async function readLastTurn({
   path,
   size,
 }: {
   path: string
   size: number
-}): Promise<number | undefined> {
+}): Promise<LastTurn | undefined> {
   const handle = await openTranscript(path)
   if (!handle) return undefined
 
@@ -103,8 +115,8 @@ async function readLastContextTokens({
 
         const line = Buffer.concat([chunk.subarray(index + 1, lineEnd), ...tail])
         tail = []
-        const tokens = contextTokensIn(line.toString('utf8'))
-        if (tokens !== undefined) return tokens
+        const turn = lastTurnIn(line.toString('utf8'))
+        if (turn) return turn
 
         lineEnd = index
       }
@@ -113,7 +125,7 @@ async function readLastContextTokens({
       end = start
     }
 
-    return contextTokensIn(Buffer.concat(tail).toString('utf8'))
+    return lastTurnIn(Buffer.concat(tail).toString('utf8'))
   } finally {
     await handle.close()
   }
@@ -121,40 +133,40 @@ async function readLastContextTokens({
 
 export interface ContextReader {
   /**
-   * What each session's most recent assistant turn sent to the model, in
-   * tokens. A session with no assistant turn yet is left out.
+   * Each session's most recent assistant turn. A session with no assistant
+   * turn yet is left out.
    */
-  read(input: { transcripts: Map<string, Transcript> }): Promise<Map<string, number>>
+  read(input: { transcripts: Map<string, Transcript> }): Promise<Map<string, LastTurn>>
 }
 
 /**
- * Context sizes read out of the session transcripts.
+ * Last turns read out of the session transcripts.
  *
  * A factory for the cache: a transcript can be tens of megabytes and the board
  * rebuilds every ten seconds, so a file is read again only once its size or
  * write time has moved.
  */
 export function createContextReader(): ContextReader {
-  let cache = new Map<string, { size: number; modifiedMs: number; tokens: number | undefined }>()
+  let cache = new Map<string, { size: number; modifiedMs: number; turn: LastTurn | undefined }>()
 
   async function read({
     transcripts,
   }: {
     transcripts: Map<string, Transcript>
-  }): Promise<Map<string, number>> {
+  }): Promise<Map<string, LastTurn>> {
     const next: typeof cache = new Map()
-    const answers = new Map<string, number>()
+    const answers = new Map<string, LastTurn>()
 
     await Promise.all(
       [...transcripts].map(async ([sessionId, { path, size, modifiedMs }]) => {
         const cached = cache.get(path)
-        const tokens =
+        const turn =
           cached?.size === size && cached.modifiedMs === modifiedMs
-            ? cached.tokens
-            : await readLastContextTokens({ path, size })
+            ? cached.turn
+            : await readLastTurn({ path, size })
 
-        next.set(path, { size, modifiedMs, tokens })
-        if (tokens !== undefined) answers.set(sessionId, tokens)
+        next.set(path, { size, modifiedMs, turn })
+        if (turn) answers.set(sessionId, turn)
       }),
     )
 

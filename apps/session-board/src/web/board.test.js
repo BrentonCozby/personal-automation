@@ -154,6 +154,30 @@ it.each([
   expect(rowNode().querySelector('.context').className).toBe(className)
 })
 
+it.each([
+  [10 * 60, '50m', 'cache'],
+  [50 * 60, '10m', 'cache cooling'],
+  [56 * 60 + 15, '3:45', 'cache cold-soon'],
+  [60 * 60, '', 'cache'],
+])('counts the cache down %i seconds after the last turn as "%s"', (age, text, className) => {
+  vi.setSystemTime(new Date(1_800_000_000_000))
+  render(boardWith([aRow({ name: 'perf', lastTurnAt: 1_800_000_000 - age })]))
+
+  const cache = rowNode().querySelector('.cache')
+  expect([cache.textContent, cache.className]).toEqual([text, className])
+})
+
+it('keeps counting the cache down between frames', async () => {
+  vi.setSystemTime(new Date(1_800_000_000_000))
+  vi.stubGlobal('EventSource', fakeStreamInto(vi.fn()))
+  start()
+  render(boardWith([aRow({ name: 'perf', lastTurnAt: 1_800_000_000 - 50 * 60 })]))
+
+  await vi.advanceTimersByTimeAsync(2 * 60 * 1000)
+
+  expect(rowNode().querySelector('.cache').textContent).toBe('8:00')
+})
+
 it('offers to name a session that has none', () => {
   render(boardWith([aRow({})]))
 

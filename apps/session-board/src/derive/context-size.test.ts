@@ -2,7 +2,7 @@ import { mkdtemp, stat, utimes, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { expect, it } from 'vitest'
-import { createContextReader } from './context-size.js'
+import { createContextReader, type LastTurn } from './context-size.js'
 import type { Transcript } from './transcripts.js'
 
 function turn({
@@ -11,16 +11,19 @@ function turn({
   cacheWrite = 0,
   isSidechain,
   model,
+  timestamp,
 }: {
   input: number
   cacheRead?: number
   cacheWrite?: number
   isSidechain?: boolean
   model?: string
+  timestamp?: string | undefined
 }): string {
   return JSON.stringify({
     type: 'assistant',
     isSidechain,
+    timestamp,
     message: {
       model,
       usage: {
@@ -51,9 +54,13 @@ async function describe(path: string): Promise<Transcript> {
 }
 
 async function sizeOf(transcript: Transcript): Promise<number | undefined> {
-  const sizes = await createContextReader().read({ transcripts: new Map([['abc', transcript]]) })
+  return (await lastTurnOf(transcript))?.tokens
+}
 
-  return sizes.get('abc')
+async function lastTurnOf(transcript: Transcript): Promise<LastTurn | undefined> {
+  const turns = await createContextReader().read({ transcripts: new Map([['abc', transcript]]) })
+
+  return turns.get('abc')
 }
 
 it("counts the last turn's input, cache reads and cache writes", async () => {
@@ -65,6 +72,19 @@ it("counts the last turn's input, cache reads and cache writes", async () => {
   ])
 
   expect(await sizeOf(transcript)).toBe(182_003)
+})
+
+it.each([
+  ['2026-10-07T18:35:46.005Z', 1_791_398_146],
+  [undefined, undefined],
+  ['not a date', undefined],
+])('dates the last turn written at %s to unix second %s', async (timestamp, at) => {
+  const transcript = await transcriptOf([
+    turn({ input: 1, cacheRead: 5000, timestamp: '2026-10-07T17:00:00.000Z' }),
+    turn({ input: 1, cacheRead: 6000, timestamp }),
+  ])
+
+  expect(await lastTurnOf(transcript)).toEqual({ tokens: 6001, at })
 })
 
 it.each([
@@ -100,7 +120,7 @@ it('reads a transcript again only once it has changed', async () => {
   const transcript = await transcriptOf([turn({ input: 1, cacheRead: 10_000 })])
   const reader = createContextReader()
   const read = async (current: Transcript): Promise<number | undefined> =>
-    (await reader.read({ transcripts: new Map([['abc', current]]) })).get('abc')
+    (await reader.read({ transcripts: new Map([['abc', current]]) })).get('abc')?.tokens
 
   expect(await read(transcript)).toBe(10_001)
 
