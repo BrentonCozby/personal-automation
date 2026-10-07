@@ -408,6 +408,39 @@ it('clears the name when nothing usable was typed', () => {
   expect(JSON.parse(patch?.[1].body)).toEqual({ name: null })
 })
 
+it('says why on the redrawn row when a snapshot replaced it before the refusal came back', async () => {
+  const onMessage = {}
+  vi.stubGlobal('EventSource', fakeStreamInto(onMessage))
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async () => ({
+      ok: false,
+      status: 409,
+      text: async () => JSON.stringify({ error: 'other is already on the board' }),
+    })),
+  )
+  vi.spyOn(console, 'error').mockImplementation(() => {
+    // The client logs every refusal. This test is about the row.
+  })
+  start()
+  onMessage.message({
+    data: JSON.stringify(boardWith([aRow({ name: 'perf', status: 'running' })])),
+  })
+
+  const name = rowNode().querySelector('.name')
+  name.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }))
+  onMessage.message({ data: JSON.stringify(boardWith([aRow({ name: 'perf', status: 'idle' })])) })
+  const input = name.querySelector('input.edit')
+  input.value = 'other'
+  input.dispatchEvent(new Event('blur'))
+  vi.advanceTimersByTime(0)
+  await settle()
+
+  expect(rowNode().querySelector('.edit-line .pending')?.textContent).toBe(
+    'other is already on the board',
+  )
+})
+
 it('says why when the server refuses a name', async () => {
   vi.stubGlobal(
     'fetch',
@@ -991,6 +1024,50 @@ it('leaves the board alone on a release that had no snapshot to catch up on', ()
   // A button writes its own feedback into the row it sits in, so a release that
   // repaints with nothing new to show wipes the answer to the press.
   expect(rowNode()).toBe(row)
+})
+
+it.each([
+  ['Escape', input => input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }))],
+  [
+    'Enter on an unchanged value',
+    input => input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter' })),
+  ],
+])('draws the snapshot a field held back once %s closes it', (_case, close) => {
+  const onMessage = {}
+  vi.stubGlobal('EventSource', fakeStreamInto(onMessage))
+  start()
+  onMessage.message({
+    data: JSON.stringify(boardWith([aRow({ name: 'perf', status: 'running' })])),
+  })
+
+  rowNode()
+    .querySelector('.name')
+    .dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter' }))
+  onMessage.message({ data: JSON.stringify(boardWith([aRow({ name: 'perf', status: 'idle' })])) })
+  close(rowNode().querySelector('input.edit'))
+  vi.advanceTimersByTime(0)
+
+  // The server sends nothing more until the board changes again, so a frame
+  // set aside here would leave stale statuses on screen indefinitely.
+  expect(rowNode().classList.contains('status-idle')).toBe(true)
+})
+
+it('draws the snapshot the delete question held back once focus leaves it', () => {
+  const onMessage = {}
+  vi.stubGlobal('EventSource', fakeStreamInto(onMessage))
+  start()
+  onMessage.message({
+    data: JSON.stringify(boardWithGroups([{ name: 'Busy', rows: [aRow({ sessionId: 'a' })] }])),
+  })
+
+  document.querySelector('.group-delete').click()
+  onMessage.message({
+    data: JSON.stringify(boardWithGroups([{ name: 'Renamed', rows: [aRow({ sessionId: 'a' })] }])),
+  })
+  document.querySelector('.group-delete').blur()
+  vi.advanceTimersByTime(0)
+
+  expect(document.querySelector('.group-name').textContent).toBe('Renamed')
 })
 
 it('lets a field be selected by giving up the drag while it is open', () => {

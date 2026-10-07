@@ -154,6 +154,15 @@ function isBusy() {
   return isEditing() || dragged !== undefined || isPointerDown() || startingIn !== undefined
 }
 
+/** Draw the snapshot a busy board set aside, once the board is no longer busy. */
+function catchUp() {
+  // A tick later, so a click in progress reaches its target before the
+  // repaint replaces it.
+  setTimeout(() => {
+    if (hasUndrawnSnapshot && !isBusy()) render(latest)
+  })
+}
+
 // What each dot means, so the status is not carried by hue alone. Five states
 // across a 6px circle leaves no room to tell them apart by shape.
 const STATUS_LABELS = {
@@ -226,7 +235,14 @@ async function api(path, options) {
 function showMessage(node, text) {
   const line = el('div', 'edit-line')
   line.append(el('span', 'pending', text))
-  node.append(line)
+  // A repaint between the request and its answer replaces the row, and a line
+  // under the old one is never seen.
+  const { sessionId } = node.dataset
+  const redrawn =
+    !node.isConnected && sessionId
+      ? document.querySelector(`.row[data-session-id="${CSS.escape(sessionId)}"]`)
+      : undefined
+  ;(redrawn || node).append(line)
   setTimeout(() => line.remove(), MESSAGE_MS)
 
   return line
@@ -300,6 +316,7 @@ function editIn({ host, current, placeholder, onCommit, commitUnchanged = false 
     if (previous.length === 0) host.remove()
 
     if (isSaving) onCommit(value)
+    catchUp()
   }
 
   input.addEventListener('keydown', event => {
@@ -376,6 +393,7 @@ function buildPin(row) {
 
 function buildRow(row) {
   const node = el('div', `row status-${row.status}`)
+  node.dataset.sessionId = row.sessionId
   const isAlive = row.status !== 'gone'
 
   node.draggable = true
@@ -865,6 +883,7 @@ function buildGroupDelete({ label, count }) {
     confirm.addEventListener('blur', () => {
       if (isAnswered) return
       confirm.replaceWith(button)
+      catchUp()
     })
 
     button.replaceWith(confirm)
@@ -1419,9 +1438,7 @@ export function start() {
     // running a timer in between. Rebuilding here throws the pressed node away
     // before it has worked out where the click goes, so the hold would end one
     // event too early and swallow the click it exists to protect.
-    setTimeout(() => {
-      if (hasUndrawnSnapshot && !isBusy()) render(latest)
-    })
+    catchUp()
   }
   document.addEventListener('pointerup', releasePointer)
   document.addEventListener('pointercancel', releasePointer)
