@@ -124,10 +124,14 @@ async function linkProgressFiles({
     byRoot.set(root, sessions)
   }
 
+  // A dismissed row still holds its file: any edit puts it back on the board.
+  const heldPaths = new Set(Object.values(metadata).flatMap(entry => entry.progressPath ?? []))
   let didLink = false
 
   for (const [root, sessions] of byRoot) {
-    const candidates = await findProgressFiles(root)
+    const candidates = (await findProgressFiles(root)).filter(
+      candidate => !heldPaths.has(candidate),
+    )
     if (candidates.length === 0) continue
 
     const taken = new Set<string>()

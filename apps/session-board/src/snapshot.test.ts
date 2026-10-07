@@ -462,6 +462,39 @@ it('links a progress file to a live row and leaves the rows that draw nothing al
   })
 })
 
+it.each([
+  ['the only file in the repo', 'new-work', false],
+  ['a file named after the session', 'held-work', false],
+  ['a file a dismissed row', 'new-work', true],
+])('never links %s that another row already holds', async (_case, newName, isDismissed) => {
+  const root = await repoWithProgressFiles(['held-work'])
+  const heldPath = join(root, 'held-work.progress.local.md')
+  const holder = { name: 'other-name', progressPath: heldPath, ...(isDismissed && { isDismissed }) }
+  const { store, groups } = await storeWith({
+    holder,
+    newcomer: { name: newName },
+  })
+  const at = (sessionId: string): HookEvent => ({
+    session_id: sessionId,
+    hook_event_name: 'SessionStart',
+    t: NOW - 100,
+    cwd: root,
+  })
+
+  await buildSnapshot({
+    events: [at('holder'), at('newcomer')],
+    store,
+    groups,
+    config: config(),
+    now: NOW,
+  })
+
+  expect(await store.read()).toEqual({
+    holder,
+    newcomer: { name: newName },
+  })
+})
+
 it('registers a group it meets on a row, so emptying that group cannot delete it', async () => {
   const { store, groups } = await storeWith({ a: { name: 'impact', group: 'Bug week' } })
 
