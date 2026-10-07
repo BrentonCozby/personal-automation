@@ -232,6 +232,52 @@ it('writes nothing at all when a field of the body is the wrong type', async () 
   expect(await readMetadata(board.metadataPath)).toBeUndefined()
 })
 
+it('refuses a rename onto a name another row on the board holds', async () => {
+  const metadata = { abc: { name: 'old-work' }, live: { name: 'review-perf' } }
+  const board = await startBoard({ metadata })
+
+  const res = await fetch(`${board.origin}/api/sessions/abc`, {
+    method: 'PATCH',
+    headers: { origin: board.origin, 'content-type': 'application/json' },
+    body: JSON.stringify({ name: 'review-perf' }),
+  })
+
+  // Two rows under one name, one of them running, sends the other to the drawer:
+  // the row just edited would vanish with no word why.
+  expect(res.status).toBe(409)
+  expect(await res.json()).toEqual({ error: 'review-perf is already on the board' })
+  expect(await readMetadata(board.metadataPath)).toEqual(metadata)
+})
+
+it('refuses to bring a dismissed row back under a name another row now holds', async () => {
+  const metadata = {
+    abc: { name: 'review-perf', isDismissed: true },
+    live: { name: 'review-perf' },
+  }
+  const board = await startBoard({ metadata })
+
+  const res = await fetch(`${board.origin}/api/sessions/abc`, {
+    method: 'PATCH',
+    headers: { origin: board.origin, 'content-type': 'application/json' },
+    body: JSON.stringify({ parkedReason: 'a review' }),
+  })
+
+  expect(res.status).toBe(409)
+  expect(await readMetadata(board.metadataPath)).toEqual(metadata)
+})
+
+it('lets a row be saved again under the name it already has', async () => {
+  const board = await startBoard({ metadata: { abc: { name: 'review-perf' } } })
+
+  const res = await fetch(`${board.origin}/api/sessions/abc`, {
+    method: 'PATCH',
+    headers: { origin: board.origin, 'content-type': 'application/json' },
+    body: JSON.stringify({ name: 'review-perf', parkedReason: 'a review' }),
+  })
+
+  expect(res.status).toBe(200)
+})
+
 it('refuses a session name that is not kebab-case, and says which rule', async () => {
   const board = await startBoard()
 
@@ -746,6 +792,41 @@ it('deletes a group and drops its rows into Ungrouped', async () => {
   expect(res.status).toBe(200)
   expect(await readMetadata(board.groupsPath)).toEqual([])
   expect(await readMetadata(board.metadataPath)).toEqual({ abc: { name: 'impact' } })
+})
+
+it('keeps a deleted group gone when a snapshot was already being built', async () => {
+  const roots = await Promise.all([1, 2, 3, 4, 5, 6].map(() => gitRepo()))
+  const metadata = Object.fromEntries(
+    roots.map((_, index) => [`s${index}`, { name: `work-${index}`, group: 'Bug week' }]),
+  )
+  const board = await startBoard({
+    groups: ['Bug week'],
+    metadata,
+    events: roots.map((cwd, index) => ({
+      session_id: `s${index}`,
+      hook_event_name: 'SessionStart',
+      t: 1_800_000_000,
+      cwd,
+    })),
+  })
+  const socket = await openEventStream(board.port)
+
+  // The edit answers before its repaint is built, so the delete arrives while
+  // that snapshot is still reading the rows as they were.
+  await fetch(`${board.origin}/api/sessions/s0`, {
+    method: 'PATCH',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ parkedReason: 'a review' }),
+  })
+  await groupRequest({
+    origin: board.origin,
+    path: `/${encodeURIComponent('Bug week')}`,
+    method: 'DELETE',
+  })
+  await new Promise(resolve => setTimeout(resolve, 1000))
+  socket.destroy()
+
+  expect(await readMetadata(board.groupsPath)).toEqual([])
 })
 
 /** A real repository, since resolveRepoRoot runs git for real. */

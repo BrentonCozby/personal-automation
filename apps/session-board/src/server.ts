@@ -30,7 +30,7 @@ import {
 } from './launch.js'
 import { createGroupStore } from './metadata/group-store.js'
 import { createMetadataStore } from './metadata/store.js'
-import type { MetadataPatch } from './metadata/types.js'
+import type { MetadataBySession, MetadataPatch } from './metadata/types.js'
 import { findRequestRejection, isSessionId } from './request-guard.js'
 import { buildSnapshot, fileExists, resolveSessionCwd } from './snapshot.js'
 import { groupBodySchema, newSessionBodySchema, patchBodySchema } from './wire.js'
@@ -102,6 +102,24 @@ function toStoredGroup(group: string | undefined): string | undefined {
   if (!trimmed || trimmed.toLowerCase() === UNGROUPED_LABEL.toLowerCase()) return undefined
 
   return trimmed
+}
+
+function isNameOnBoard({
+  metadata,
+  name,
+  exceptSessionId,
+}: {
+  metadata: MetadataBySession
+  name: string
+  exceptSessionId?: string
+}): boolean {
+  return Object.entries(metadata).some(
+    ([sessionId, entry]) =>
+      sessionId !== exceptSessionId &&
+      entry.name === name &&
+      !entry.supersededBy &&
+      !entry.isDismissed,
+  )
 }
 
 /**
@@ -198,8 +216,18 @@ export function createBoardServer({ config }: { config: Config }): BoardServer {
   const namer = createSessionNamer()
   const contextReader = createContextReader()
 
+  // A snapshot registers every group it reads on a row, so one that read the
+  // rows before a group rename or delete would write the old name back.
+  let groupQueue: Promise<unknown> = Promise.resolve()
+  function oneAtATime<T>(task: () => Promise<T>): Promise<T> {
+    const run = groupQueue.then(task)
+    groupQueue = run.catch(() => undefined)
+
+    return run
+  }
+
   function snapshot(): Promise<Board> {
-    return buildSnapshot({ events, store, groups, config, namer, contextReader })
+    return oneAtATime(() => buildSnapshot({ events, store, groups, config, namer, contextReader }))
   }
 
   async function pushToStreams(): Promise<void> {
@@ -297,8 +325,11 @@ export function createBoardServer({ config }: { config: Config }): BoardServer {
       // The rows carry the name too, so both halves move or the group splits in
       // two: the old name would come back on the next snapshot, which registers
       // every group it meets on a row.
-      await groups.rename({ from: name, to: body.data.name })
-      await moveRowsOutOf({ group: name, to: body.data.name })
+      const to = body.data.name
+      await oneAtATime(async () => {
+        await groups.rename({ from: name, to })
+        await moveRowsOutOf({ group: name, to })
+      })
       sendJson({ res, status: 200, body: { name: body.data.name } })
       await pushToStreams()
 
@@ -306,8 +337,10 @@ export function createBoardServer({ config }: { config: Config }): BoardServer {
     }
 
     if (name && req.method === 'DELETE') {
-      await groups.remove(name)
-      await moveRowsOutOf({ group: name, to: undefined })
+      await oneAtATime(async () => {
+        await groups.remove(name)
+        await moveRowsOutOf({ group: name, to: undefined })
+      })
       sendJson({ res, status: 200, body: { ok: true } })
       await pushToStreams()
 
@@ -364,10 +397,7 @@ export function createBoardServer({ config }: { config: Config }): BoardServer {
     // name would race for the same SessionStart and one of them would keep a
     // row nothing ever fills.
     const metadata = await store.read()
-    const isNameTaken = Object.values(metadata).some(
-      entry => entry.name === name && !entry.supersededBy && !entry.isDismissed,
-    )
-    if (isNameTaken) {
+    if (isNameOnBoard({ metadata, name })) {
       sendJson({ res, status: 409, body: { error: `${name} is already on the board` } })
 
       return true
@@ -603,6 +633,18 @@ export function createBoardServer({ config }: { config: Config }): BoardServer {
         return true
       }
 
+      // Two rows under one name, one of them running, sends the other to the
+      // drawer, so the row just edited would vanish with no word why. Any edit
+      // brings a dismissed row back, under the name it already had.
+      const metadata = await store.read()
+      const current = metadata[sessionId]
+      const name = 'name' in body.data ? body.data.name : current?.isDismissed && current.name
+      if (name && isNameOnBoard({ metadata, name, exceptSessionId: sessionId })) {
+        sendJson({ res, status: 409, body: { error: `${name} is already on the board` } })
+
+        return true
+      }
+
       const merged = await store.patch({
         sessionId,
         // Editing a row is what puts a session that was taken off the board
@@ -673,13 +715,18 @@ export function createBoardServer({ config }: { config: Config }): BoardServer {
           })
           // Registered after its own frame is built, not before: a broadcast
           // landing during the snapshot would otherwise reach this tab first
-          // and leave it drawing the older board last.
-          const frame = `data: ${JSON.stringify(await snapshot())}\n\n`
-          streams.set(res, frame)
-          res.write(frame)
-          req.on('close', () => {
+          // and leave it drawing the older board last. A tab can close while
+          // that snapshot is built, so the listener goes on before it.
+          let isClosed = false
+          res.on('close', () => {
+            isClosed = true
             streams.delete(res)
           })
+          const frame = `data: ${JSON.stringify(await snapshot())}\n\n`
+          if (isClosed) return
+
+          streams.set(res, frame)
+          res.write(frame)
 
           return
         }
