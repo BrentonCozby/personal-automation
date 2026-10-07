@@ -146,6 +146,9 @@ function isPointerDown() {
  */
 let startingIn
 
+/** Takes the open start panel and its document listener down, without a repaint. */
+let dropStartPanel
+
 /** Whether a repaint has to wait: it would destroy what the pointer is holding. */
 function isBusy() {
   return isEditing() || dragged !== undefined || isPointerDown() || startingIn !== undefined
@@ -984,11 +987,18 @@ function openStartPanel({ label, button }) {
   }
 
   let settled = false
-  const close = () => {
+  const drop = () => {
     if (settled) return
     settled = true
+    dropStartPanel = undefined
     document.removeEventListener('pointerdown', closeOnOutsidePress, true)
     panel.remove()
+  }
+  dropStartPanel = drop
+
+  const close = () => {
+    if (settled) return
+    drop()
     // `render` clears the flag itself, since it is what destroys the panel.
     // Repaint now: the snapshots that arrived while this was open were set
     // aside rather than drawn.
@@ -1221,7 +1231,10 @@ export function render(board) {
   hasUndrawnSnapshot = false
   // A rebuild throws the open "start a session" panel away with everything
   // else, so the flag holding the repaint off has to go with it or the board
-  // freezes with nothing on screen to explain why.
+  // freezes with nothing on screen to explain why. Its document listener goes
+  // too, or the next press anywhere closes a panel that is already gone and
+  // the repaint that follows swallows the click.
+  dropStartPanel?.()
   startingIn = undefined
   pruneCollapsed(board)
 

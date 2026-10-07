@@ -1355,6 +1355,19 @@ it('offers no + on the drawer', () => {
   expect(document.querySelector('#drawer .group-start')).toBe(null)
 })
 
+it('keeps the press after a repaint that took the start panel away', async () => {
+  const board = boardWith([aRow({ name: 'perf' })])
+  render(board)
+  await openStartPanel('Bug week')
+
+  // What a drag ending does while the panel is open.
+  render(board)
+  const row = rowNode()
+  row.dispatchEvent(new Event('pointerdown', { bubbles: true }))
+
+  expect(row.isConnected).toBe(true)
+})
+
 it('opens a panel asking for a name, a repo and a progress file', async () => {
   render(boardWith([aRow({ name: 'perf' })]))
   await openStartPanel('Bug week')
