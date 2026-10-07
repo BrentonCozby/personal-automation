@@ -1,6 +1,7 @@
 import { access } from 'node:fs/promises'
 import type { Config } from './config.js'
 import { type Board, buildBoard, findSessionsToAutoClaim } from './derive/board.js'
+import { type ContextReader, createContextReader } from './derive/context-size.js'
 import {
   dropReturnedHandovers,
   PLACEHOLDER_ID_PREFIX,
@@ -409,6 +410,7 @@ export async function buildSnapshot({
   groups,
   config,
   namer = createSessionNamer(),
+  contextReader = createContextReader(),
   now = Math.floor(Date.now() / MILLISECONDS_PER_SECOND),
 }: {
   events: HookEvent[]
@@ -421,6 +423,8 @@ export async function buildSnapshot({
    * thirty seconds, for an answer that cannot change.
    */
   namer?: SessionNamer
+  /** Holds what it read from each transcript, so pass the same one every time. */
+  contextReader?: ContextReader
   now?: number
 }): Promise<Board> {
   let metadata = await store.read()
@@ -496,7 +500,7 @@ export async function buildSnapshot({
       title: titles.get(sessionId),
     }))
 
-  const [processes, missingProgressPaths, transcriptTimes, knownGroups, derivedNames] =
+  const [processes, missingProgressPaths, transcripts, knownGroups, derivedNames] =
     await Promise.all([
       listProcesses(),
       findMissingProgressPaths(metadata),
@@ -504,6 +508,13 @@ export async function buildSnapshot({
       groups.read(),
       namer.derive({ sessions: unnamed }),
     ])
+
+  // Only the sessions the board can draw. Every other transcript would cost a
+  // read on the first snapshot for a number nobody sees.
+  const drawable = new Set([...events.map(event => event.session_id), ...Object.keys(metadata)])
+  const contextTokens = await contextReader.read({
+    transcripts: new Map([...transcripts].filter(([sessionId]) => drawable.has(sessionId))),
+  })
 
   const liveSessionIds = resolveLiveSessions({ events, processes })
   if (await dismissDeadTwins({ metadata, store, liveSessionIds })) metadata = await store.read()
@@ -516,10 +527,12 @@ export async function buildSnapshot({
     supersededSessionIds: new Set([...successors.keys()].filter(id => !keptApart.has(id))),
     liveSessionIds,
     missingProgressPaths,
-    transcriptTimes,
+    transcriptTimes: new Map(
+      [...transcripts].map(([sessionId, transcript]) => [sessionId, transcript.writtenAt]),
+    ),
+    contextTokens,
     now,
     freshMinutes: config.freshMinutes,
-    staleDays: config.staleDays,
     unclaimedWindowDays: UNCLAIMED_WINDOW_DAYS,
   })
 }

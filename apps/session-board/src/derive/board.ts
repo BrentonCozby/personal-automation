@@ -43,12 +43,13 @@ export interface BoardRow {
   /**
    * Unix seconds of the session's most recent event, or of the last write to
    * its transcript, whichever is later.
-   *
-   * How old that makes the row is left to the client, which works it out per
-   * repaint against `staleSeconds`. Sending the age instead would freeze it at
-   * the moment the frame was built, and frames are minutes apart.
    */
   lastActive: number
+  /**
+   * What the session's most recent assistant turn sent to the model, cached
+   * tokens included. Absent until the session has had one.
+   */
+  contextTokens?: number | undefined
   cwd?: string | undefined
 }
 
@@ -62,9 +63,6 @@ export interface Board {
   /** The Off the board drawer: sessions with no metadata row. Newest first. */
   unclaimed: BoardRow[]
   claimedCount: number
-  // Sent so the client can re-judge staleness as it ticks ages between
-  // snapshots, instead of waiting for an event to mark the row.
-  staleSeconds: number
 }
 
 const SECONDS_PER_DAY = 86_400
@@ -97,6 +95,7 @@ function toBoardRow({
   derivedName,
   missingProgressPaths,
   transcriptTimes,
+  contextTokens,
   status,
   lastActive,
   cwd,
@@ -106,6 +105,7 @@ function toBoardRow({
   derivedName: string | undefined
   missingProgressPaths: Set<string>
   transcriptTimes: Map<string, number>
+  contextTokens: Map<string, number>
   status: RowStatus
   lastActive: number
   cwd: string | undefined
@@ -124,6 +124,7 @@ function toBoardRow({
     isTranscriptMissing: !transcriptTimes.has(sessionId),
     status,
     lastActive,
+    contextTokens: contextTokens.get(sessionId),
     cwd,
   }
 }
@@ -176,11 +177,11 @@ export function buildBoard({
   liveSessionIds,
   missingProgressPaths,
   transcriptTimes,
+  contextTokens = new Map(),
   supersededSessionIds = new Set(),
   derivedNames = new Map(),
   now,
   freshMinutes,
-  staleDays,
   unclaimedWindowDays,
 }: {
   events: HookEvent[]
@@ -194,6 +195,7 @@ export function buildBoard({
    * against the unix seconds each transcript was last written to.
    */
   transcriptTimes: Map<string, number>
+  contextTokens?: Map<string, number>
   /**
    * Ids that handed their work to another session, through `/clear` or a
    * resume. They are previous identities of a live session rather than sessions
@@ -205,7 +207,6 @@ export function buildBoard({
   /** Unix seconds. */
   now: number
   freshMinutes: number
-  staleDays: number
   unclaimedWindowDays: number
 }): Board {
   const claimedRows: { row: BoardRow; group: string }[] = []
@@ -248,6 +249,7 @@ export function buildBoard({
       derivedName: derivedNames.get(sessionId),
       missingProgressPaths,
       transcriptTimes,
+      contextTokens,
       status,
       lastActive,
       cwd: lastDefined({ events: sessionEvents, pick: event => event.cwd }),
@@ -294,6 +296,7 @@ export function buildBoard({
         derivedName: derivedNames.get(sessionId),
         missingProgressPaths,
         transcriptTimes,
+        contextTokens,
         status: 'gone',
         lastActive,
         cwd: entry.cwd,
@@ -337,7 +340,6 @@ export function buildBoard({
     groups,
     unclaimed: unclaimed.sort((a, b) => b.lastActive - a.lastActive),
     claimedCount: claimedRows.length,
-    staleSeconds: staleDays * SECONDS_PER_DAY,
   }
 }
 

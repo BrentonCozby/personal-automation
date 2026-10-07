@@ -72,7 +72,6 @@ function build({
     supersededSessionIds: new Set(superseded),
     now: NOW,
     freshMinutes: 15,
-    staleDays: 4,
     unclaimedWindowDays: 7,
   })
 }
@@ -395,25 +394,6 @@ it('marks a session that ended cleanly as gone even while its process lives on',
   })
 
   expect(board.groups[0]?.rows[0]?.status).toBe('gone')
-})
-
-it('sends the stale threshold and the timestamps, and judges neither', () => {
-  const board = build({
-    events: [
-      event({ sessionId: 'fresh', agoSeconds: 3 * DAY }),
-      event({ sessionId: 'stale', agoSeconds: 5 * DAY }),
-    ],
-    metadata: { fresh: { name: 'a' }, stale: { name: 'b' } },
-  })
-
-  const rows = board.groups[0]?.rows ?? []
-
-  // Which side of the threshold a row falls on is the client's to work out on
-  // every repaint. Deciding it here would freeze the answer at the moment the
-  // frame was built, and frames can be minutes apart.
-  expect(board.staleSeconds).toBe(4 * DAY)
-  expect(rows.find(row => row.sessionId === 'fresh')?.lastActive).toBe(NOW - 3 * DAY)
-  expect(rows.find(row => row.sessionId === 'stale')?.lastActive).toBe(NOW - 5 * DAY)
 })
 
 it('shows a progress file by slug alone', () => {

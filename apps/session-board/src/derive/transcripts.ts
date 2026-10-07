@@ -15,11 +15,24 @@ async function listDir(path: string): Promise<string[]> {
   }
 }
 
-async function writtenAt(path: string): Promise<number | undefined> {
+export interface Transcript {
+  path: string
+  /** Unix seconds of the last write. */
+  writtenAt: number
+  size: number
+  modifiedMs: number
+}
+
+async function describe(path: string): Promise<Transcript | undefined> {
   try {
     const info = await stat(path)
 
-    return Math.floor(info.mtimeMs / 1000)
+    return {
+      path,
+      writtenAt: Math.floor(info.mtimeMs / 1000),
+      size: info.size,
+      modifiedMs: info.mtimeMs,
+    }
   } catch (error) {
     const { code } = error as NodeJS.ErrnoException
     // Deleted between the listing and the stat.
@@ -30,8 +43,8 @@ async function writtenAt(path: string): Promise<number | undefined> {
 }
 
 /**
- * Every session Claude Code still holds a transcript for, and when each was
- * last written to.
+ * Every session Claude Code still holds a transcript for, where it is, and when
+ * it was last written to.
  *
  * Found by listing the project directories rather than by working out where a
  * given session's transcript ought to be. Claude Code names a project directory
@@ -50,8 +63,8 @@ export async function findTranscripts({
   roots,
 }: {
   roots: string[]
-}): Promise<Map<string, number>> {
-  const times = new Map<string, number>()
+}): Promise<Map<string, Transcript>> {
+  const transcripts = new Map<string, Transcript>()
 
   await Promise.all(
     roots.map(async root => {
@@ -66,15 +79,18 @@ export async function findTranscripts({
             files
               .filter(file => file.endsWith(TRANSCRIPT_SUFFIX))
               .map(async file => {
-                const at = await writtenAt(join(directory, file))
-                if (at === undefined) return
+                const transcript = await describe(join(directory, file))
+                if (!transcript) return
 
                 // The same session can have a transcript under more than one
                 // root, and the roots are read at the same time, so without this
                 // whichever answered last would win and the session's age would
                 // change from one snapshot to the next.
                 const sessionId = file.slice(0, -TRANSCRIPT_SUFFIX.length)
-                times.set(sessionId, Math.max(times.get(sessionId) ?? 0, at))
+                const known = transcripts.get(sessionId)
+                if (!known || transcript.writtenAt > known.writtenAt) {
+                  transcripts.set(sessionId, transcript)
+                }
               }),
           )
         }),
@@ -82,5 +98,5 @@ export async function findTranscripts({
     }),
   )
 
-  return times
+  return transcripts
 }

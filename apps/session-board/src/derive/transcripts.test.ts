@@ -59,7 +59,7 @@ it('carries the unix seconds each transcript was last written to', async () => {
   const { root, path } = await projectRoot({ '-Users-me-Code-repo': ['aaa.jsonl'] })
   await utimes(path('-Users-me-Code-repo', 'aaa.jsonl'), 1_700_000_000, 1_700_000_000)
 
-  expect((await findTranscripts({ roots: [root] })).get('aaa')).toBe(1_700_000_000)
+  expect((await findTranscripts({ roots: [root] })).get('aaa')?.writtenAt).toBe(1_700_000_000)
 })
 
 it('keeps the newest write when one session is written under two roots', async () => {
@@ -72,10 +72,11 @@ it('keeps the newest write when one session is written under two roots', async (
   // roots are read at the same time, so whichever answered last used to win: the
   // row's age, and whether the drawer listed it at all, changed at random from
   // one snapshot to the next.
-  expect((await findTranscripts({ roots: [work.root, personal.root] })).get('aaa')).toBe(
-    1_700_900_000,
+  const newest = personal.path('-Users-me', 'aaa.jsonl')
+  expect((await findTranscripts({ roots: [work.root, personal.root] })).get('aaa')?.path).toBe(
+    newest,
   )
-  expect((await findTranscripts({ roots: [personal.root, work.root] })).get('aaa')).toBe(
-    1_700_900_000,
+  expect((await findTranscripts({ roots: [personal.root, work.root] })).get('aaa')?.path).toBe(
+    newest,
   )
 })

@@ -4,14 +4,9 @@
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { render, start } from './board.js'
 
-// Far enough in the future that a row written with a fixed `lastActive` has a
-// predictable age. Real time would make the age move between runs.
-const NOW_SECONDS = 1_800_000_000
-
 function boardWith(rows) {
   return {
     claimedCount: rows.length,
-    staleSeconds: 4 * 86_400,
     groups: [{ name: 'Bug week', rows }],
     unclaimed: [],
   }
@@ -20,7 +15,6 @@ function boardWith(rows) {
 function boardWithGroups(groups, unclaimed = []) {
   return {
     claimedCount: groups.reduce((total, group) => total + group.rows.length, 0),
-    staleSeconds: 4 * 86_400,
     groups,
     unclaimed,
   }
@@ -69,7 +63,7 @@ function aRow(overrides) {
   return {
     sessionId: 'abc',
     status: 'gone',
-    lastActive: NOW_SECONDS - 600,
+    lastActive: 1_800_000_000,
     ...overrides,
   }
 }
@@ -125,7 +119,6 @@ beforeEach(() => {
   document.body.innerHTML =
     '<div id="toolbar"><span id="offline"></span><span id="count"></span></div><div id="board"></div><div id="drawer"></div><datalist id="board-repos"></datalist>'
   vi.useFakeTimers({ shouldAdvanceTime: true })
-  vi.setSystemTime(NOW_SECONDS * 1000)
 })
 
 afterEach(() => {
@@ -133,16 +126,32 @@ afterEach(() => {
   vi.unstubAllGlobals()
 })
 
-it('shows the age worked out from the timestamp, not counted up', () => {
-  render(boardWith([aRow({ name: 'perf', lastActive: NOW_SECONDS - 3 * 3600 })]))
+it.each([
+  [182_400, '182k'],
+  [999_499, '999k'],
+  [999_500, '1.0M'],
+  [640, '640'],
+])('shows a context of %i tokens as %s', (contextTokens, text) => {
+  render(boardWith([aRow({ name: 'perf', contextTokens })]))
 
-  expect(rowNode().querySelector('.age').textContent).toBe('3h')
+  expect(rowNode().querySelector('.context').textContent).toBe(text)
 })
 
-it('marks a session that has been quiet longer than the stale window', () => {
-  render(boardWith([aRow({ name: 'perf', lastActive: NOW_SECONDS - 5 * 86_400 })]))
+it('shows a dash for a session with no assistant turn yet', () => {
+  render(boardWith([aRow({ name: 'perf' })]))
 
-  expect(rowNode().querySelector('.age').classList.contains('stale')).toBe(true)
+  expect(rowNode().querySelector('.context').textContent).toBe('–')
+})
+
+it.each([
+  [450_000, 'context'],
+  [450_001, 'context growing'],
+  [600_000, 'context growing'],
+  [600_001, 'context large'],
+])('marks a context of %i tokens as "%s"', (contextTokens, className) => {
+  render(boardWith([aRow({ name: 'perf', contextTokens })]))
+
+  expect(rowNode().querySelector('.context').className).toBe(className)
 })
 
 it('offers to name a session that has none', () => {
@@ -979,7 +988,6 @@ it('lets a field be selected by giving up the drag while it is open', () => {
 it('gives an unclaimed row no board controls of its own', () => {
   render({
     claimedCount: 0,
-    staleSeconds: 4 * 86_400,
     groups: [],
     unclaimed: [aRow({ sessionId: 'zzz' })],
   })
@@ -1262,7 +1270,7 @@ it('keeps collapsed groups when a frame arrives carrying none', () => {
   collapseOnlyGroup()
   expect(isOnlyGroupCollapsed()).toBe(true)
 
-  render({ claimedCount: 0, staleSeconds: 4 * 86_400, groups: [], unclaimed: [] })
+  render({ claimedCount: 0, groups: [], unclaimed: [] })
   render(boardWithGroups([{ name: 'Persist', rows: [aRow({ name: 'a' })] }]))
 
   expect(isOnlyGroupCollapsed()).toBe(true)

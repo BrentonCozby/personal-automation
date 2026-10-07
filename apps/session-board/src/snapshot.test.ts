@@ -1,5 +1,5 @@
 import { execFile } from 'node:child_process'
-import { mkdtemp, realpath, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, realpath, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { promisify } from 'node:util'
@@ -37,7 +37,6 @@ function config(): Config {
     metadataPath: '/unused/sessions.json',
     groupsPath: '/unused/groups.json',
     port: 4747,
-    staleDays: 4,
     freshMinutes: 15,
     launchCommand: 'claude --resume {{id}} --append-system-prompt-file {{system}}',
     openFileCommand: 'code -- {{path}}',
@@ -490,4 +489,29 @@ it('draws a group that was created before any session was put in it', async () =
   })
 
   expect(board.groups.map(group => group.name)).toEqual(['Bug week', 'Stash'])
+})
+
+it("puts each session's context size on its row", async () => {
+  const root = await mkdtemp(join(tmpdir(), 'session-board-roots-'))
+  await mkdir(join(root, '-Users-me-Code-repo'))
+  await writeFile(
+    join(root, '-Users-me-Code-repo', 'sized.jsonl'),
+    `${JSON.stringify({ type: 'assistant', message: { usage: { input_tokens: 5, cache_read_input_tokens: 120_000 } } })}\n`,
+  )
+  const { store, groups } = await storeWith({ sized: { name: 'a' }, empty: { name: 'b' } })
+
+  const board = await buildSnapshot({
+    events: [
+      { session_id: 'sized', hook_event_name: 'Stop', t: NOW },
+      { session_id: 'empty', hook_event_name: 'Stop', t: NOW },
+    ],
+    store,
+    groups,
+    config: { ...config(), transcriptRoots: [root] },
+    now: NOW,
+  })
+
+  const rows = board.groups.flatMap(group => group.rows)
+  expect(rows.find(row => row.sessionId === 'sized')?.contextTokens).toBe(120_005)
+  expect(rows.find(row => row.sessionId === 'empty')?.contextTokens).toBeUndefined()
 })

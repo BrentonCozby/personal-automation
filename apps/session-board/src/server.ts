@@ -7,6 +7,7 @@ import { fileURLToPath } from 'node:url'
 import type { z } from 'zod'
 import type { Config } from './config.js'
 import { type Board, UNGROUPED_LABEL } from './derive/board.js'
+import { createContextReader } from './derive/context-size.js'
 import {
   createProgressFile,
   listProgressCandidates,
@@ -192,12 +193,13 @@ export function createBoardServer({ config }: { config: Config }): BoardServer {
     return loaded
   }
 
-  // One namer for the life of the server, so a transcript is read once rather
-  // than once per snapshot.
+  // One namer and one context reader for the life of the server, so a
+  // transcript is read once rather than once per snapshot.
   const namer = createSessionNamer()
+  const contextReader = createContextReader()
 
   function snapshot(): Promise<Board> {
-    return buildSnapshot({ events, store, groups, config, namer })
+    return buildSnapshot({ events, store, groups, config, namer, contextReader })
   }
 
   async function pushToStreams(): Promise<void> {

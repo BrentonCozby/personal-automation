@@ -79,7 +79,6 @@ async function startBoard({
     metadataPath: join(dir, 'sessions.json'),
     groupsPath: join(dir, 'groups.json'),
     port,
-    staleDays: 4,
     freshMinutes: 15,
     launchCommand: 'claude --resume {{id}} --append-system-prompt-file {{system}}',
     openFileCommand: 'code -- {{path}}',

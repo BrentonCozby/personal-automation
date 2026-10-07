@@ -47,10 +47,6 @@ function readCollapsed() {
   }
 }
 
-function nowSeconds() {
-  return Math.floor(Date.now() / 1000)
-}
-
 function saveCollapsed() {
   try {
     localStorage.setItem('collapsed', JSON.stringify([...collapsed]))
@@ -59,15 +55,17 @@ function saveCollapsed() {
   }
 }
 
-// Minutes matter most: the range a session spends between "I just left it"
-// and "I have forgotten it" is measured in minutes and hours, and folding
-// all of that into "now" hid every age on the first run of this board.
-function formatAge(seconds) {
-  if (seconds < 60) return 'now'
-  if (seconds < 3600) return `${Math.floor(seconds / 60)}m`
-  if (seconds < 86_400) return `${Math.floor(seconds / 3600)}h`
+// Past the first a session should clear at its next milestone; past the second
+// it is closing on auto-compact at about 967k.
+const GROWING_CONTEXT_TOKENS = 450_000
+const LARGE_CONTEXT_TOKENS = 600_000
 
-  return `${Math.floor(seconds / 86_400)}d`
+function formatTokens(tokens) {
+  if (tokens < 1000) return String(tokens)
+  // 999,600 rounds to 1000k, which is a megatoken.
+  if (tokens < 999_500) return `${Math.round(tokens / 1000)}k`
+
+  return `${(tokens / 1_000_000).toFixed(1)}M`
 }
 
 // Two segments, because one is ambiguous across worktrees that share a
@@ -301,9 +299,9 @@ const MESSAGE_MS = 4000
  * knows its directory. Both carry the detail in a popover the CSS opens on
  * hover and on focus, so the row itself stays one line.
  *
- * It sits between the name and the age. The action bar is parked to the left of
- * both, since it is drawn on the same hover that has to reach the pin and would
- * otherwise cover it exactly when it is wanted.
+ * It sits at the right end, after the context size. The action bar is parked to
+ * the left of both, since it is drawn on the same hover that has to reach the
+ * pin and would otherwise cover it exactly when it is wanted.
  *
  * `undefined` when there is nothing to point at, so a row can carry no pin
  * rather than an empty one.
@@ -404,15 +402,19 @@ function buildRow(row) {
   // An unnamed row keeps the directory as text. It is the only thing telling
   // one from another there: the drawer is 16 rows all called "unnamed".
   const pin = row.name ? buildPin(row) : undefined
-  if (pin) top.append(pin)
 
-  // Worked out from the timestamp on every repaint rather than counted up
-  // by the ticker. A ticker is throttled in a background tab and stops
-  // dead while the machine sleeps, so a counted age silently falls behind
-  // real time and only a fresh snapshot puts it right.
-  const ageSeconds = Math.max(0, nowSeconds() - row.lastActive)
-  const isStale = ageSeconds > (latest?.staleSeconds ?? Number.POSITIVE_INFINITY)
-  top.append(el('span', isStale ? 'age stale' : 'age', formatAge(ageSeconds)))
+  // A session with no assistant turn yet has sent the model nothing.
+  if (row.contextTokens === undefined) {
+    top.append(el('span', 'context', '–'))
+  } else {
+    const size = el('span', 'context', formatTokens(row.contextTokens))
+    if (row.contextTokens > LARGE_CONTEXT_TOKENS) size.classList.add('large')
+    else if (row.contextTokens > GROWING_CONTEXT_TOKENS) size.classList.add('growing')
+    size.title = `${row.contextTokens.toLocaleString()} tokens of context`
+    top.append(size)
+  }
+  // An empty slot where a row has no pin keeps every size in one column.
+  top.append(pin || el('span', 'pin-slot'))
   node.append(top)
 
   const cwdLabel = row.cwd ? formatCwd(row.cwd) : ''
@@ -1374,11 +1376,4 @@ export function start() {
   }
   document.addEventListener('pointerup', releasePointer)
   document.addEventListener('pointercancel', releasePointer)
-
-  // Repaint so the ages move between snapshots. Each row works its own age
-  // out from its timestamp, so a tick that runs late or not at all costs
-  // nothing but a delayed repaint.
-  setInterval(() => {
-    if (latest && !isBusy()) render(latest)
-  }, 30_000)
 }

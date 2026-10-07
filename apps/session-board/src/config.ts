@@ -23,7 +23,6 @@ const schema = z.object({
   BOARD_METADATA_FILE: z.string().min(1),
   BOARD_GROUPS_FILE: z.string().min(1),
   BOARD_PORT: z.coerce.number().pipe(z.int().positive()),
-  BOARD_STALE_DAYS: z.coerce.number().pipe(z.int().positive()),
   BOARD_FRESH_MINUTES: z.coerce.number().pipe(z.int().positive()),
   BOARD_LAUNCH_COMMAND: z.string().min(1),
   BOARD_OPEN_FILE_COMMAND: z.string().min(1),
@@ -42,8 +41,6 @@ export interface Config {
   /** The groups that exist, so one holding no sessions is still drawn. */
   groupsPath: string
   port: number
-  /** Days of silence after which a row's age is called out. */
-  staleDays: number
   /** Minutes within which a finished session still reads as "your move" rather than muted. */
   freshMinutes: number
   /**
@@ -98,7 +95,6 @@ export function loadConfig(): Config {
     metadataPath: parsed.BOARD_METADATA_FILE,
     groupsPath: parsed.BOARD_GROUPS_FILE,
     port: parsed.BOARD_PORT,
-    staleDays: parsed.BOARD_STALE_DAYS,
     freshMinutes: parsed.BOARD_FRESH_MINUTES,
     launchCommand: parsed.BOARD_LAUNCH_COMMAND,
     openFileCommand: parsed.BOARD_OPEN_FILE_COMMAND,

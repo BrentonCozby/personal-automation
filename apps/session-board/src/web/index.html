@@ -40,11 +40,11 @@
 
       body {
         margin: 0 auto;
-        /* A row pairs a name on the left with its age on the right, and the pair
+        /* A row pairs a name on the left with a number on the right, and the pair
            stops reading as one thing once they are far apart: in a full-width
            window they ended up 1714px away from each other. This is a side
-           panel, so it keeps panel width whatever window it lands in. */
-        max-width: 560px;
+           panel: it fills a side-panel window (about 650px) and stops there. */
+        max-width: 800px;
         background: var(--bg);
         color: var(--fg);
         font-family: var(--sans);
@@ -362,22 +362,19 @@
          Last, so it outranks the weight the four live statuses set. */
       .name.derived { font-style: italic; font-weight: 400; }
 
-      .age {
+      .context {
         font-size: 11px;
         color: var(--muted);
         flex: none;
         font-variant-numeric: tabular-nums;
-        /* Wide enough for the longest age, so the hover buttons can be parked
+        /* Wide enough for the longest size, so the hover buttons can be parked
            clear of it at a fixed offset. */
         min-width: 32px;
         text-align: right;
       }
 
-      /* Weight, not alarm red. A third of a real board is past the stale
-         threshold, and a session going quiet is the thing this board exists to
-         show rather than something that has gone wrong. Red that common stops
-         being read. */
-      .age.stale { color: var(--fg); font-weight: 500; }
+      .context.growing { color: var(--waiting); font-weight: 500; }
+      .context.large { color: var(--danger); font-weight: 500; }
 
       .sub {
         display: flex;
@@ -403,8 +400,8 @@
 
       .icon { flex: none; opacity: 0.75; }
 
-      /* Between the name and the age. `relative` so the popover hangs off it,
-         and `flex: none` so a long name shortens instead of squeezing it. */
+      /* `relative` so the popover hangs off it, and `flex: none` so a long name
+         shortens instead of squeezing it. */
       .pin {
         position: relative;
         flex: none;
@@ -416,6 +413,8 @@
         text-align: center;
         border-radius: 3px;
       }
+
+      .pin-slot { flex: none; width: 14px; }
 
       .row:hover .pin { color: var(--fg); }
       .pin.missing .icon { text-decoration: line-through; }
@@ -474,9 +473,9 @@
 
       .actions {
         position: absolute;
-        /* 12px row padding, 32px of age, 14px of pin, two 8px gaps. How long a
-           session has sat is the reason to reach for these buttons, so the age
-           stays readable while the pointer is on the row, and the pin stays
+        /* 12px row padding, 14px of pin, 32px of context size, two 8px gaps. A
+           big context is a reason to reach for these buttons, so the size stays
+           readable while the pointer is on the row, and the pin stays
            pointable on the hover that draws these. */
         right: 72px;
         top: 4px;
