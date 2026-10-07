@@ -1,6 +1,6 @@
 import { access } from 'node:fs/promises'
 import type { Config } from './config.js'
-import { type Board, buildBoard, findSessionsToAutoClaim } from './derive/board.js'
+import { type Board, type BoardRow, buildBoard, findSessionsToAutoClaim } from './derive/board.js'
 import { type ContextReader, createContextReader } from './derive/context-size.js'
 import {
   dropReturnedHandovers,
@@ -523,7 +523,7 @@ export async function buildSnapshot({
   const liveSessionIds = resolveLiveSessions({ events, processes })
   if (await dismissDeadTwins({ metadata, store, liveSessionIds })) metadata = await store.read()
 
-  return buildBoard({
+  const board = buildBoard({
     events,
     metadata,
     knownGroups,
@@ -539,4 +539,53 @@ export async function buildSnapshot({
     freshMinutes: config.freshMinutes,
     unclaimedWindowDays: UNCLAIMED_WINDOW_DAYS,
   })
+  await placeNewRows({ board, metadata, store })
+
+  return board
+}
+
+/**
+ * Whether every row has an `order` and no two share one.
+ *
+ * A shared one comes from a row that kept its number while off the board, a
+ * dismissed twin brought back say, and leaves the two rows' spots to chance.
+ */
+function isNumbered({
+  rows,
+  metadata,
+}: {
+  rows: BoardRow[]
+  metadata: MetadataBySession
+}): boolean {
+  const orders = rows.map(row => metadata[row.sessionId]?.order)
+
+  return orders.every(
+    (order, index) => order !== undefined && (index === 0 || order > (orders[index - 1] ?? -1)),
+  )
+}
+
+/**
+ * Number the rows of every group that has one with no `order`, or two sharing
+ * one, in the order they are drawn.
+ *
+ * A row without one sorts by age, so its spot would keep moving as sessions
+ * run. Groups already numbered are left alone.
+ */
+async function placeNewRows({
+  board,
+  metadata,
+  store,
+}: {
+  board: Board
+  metadata: MetadataBySession
+  store: MetadataStore
+}): Promise<void> {
+  const patches = board.groups
+    .filter(group => !isNumbered({ rows: group.rows, metadata }))
+    .flatMap(group =>
+      group.rows
+        .map((row, order) => ({ sessionId: row.sessionId, changes: { order } }))
+        .filter(({ sessionId, changes }) => metadata[sessionId]?.order !== changes.order),
+    )
+  if (patches.length > 0) await store.patchMany(patches)
 }

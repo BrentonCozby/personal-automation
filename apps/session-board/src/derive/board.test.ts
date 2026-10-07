@@ -223,7 +223,7 @@ it('drops an unclaimed session once it falls outside the drawer window', () => {
   expect(board.unclaimed).toEqual([])
 })
 
-it('sorts sessions inside a group oldest first', () => {
+it('draws sessions inside a group in the order they were placed, whatever their age', () => {
   const board = build({
     events: [
       event({ sessionId: 'recent', agoSeconds: 1 * DAY }),
@@ -231,25 +231,43 @@ it('sorts sessions inside a group oldest first', () => {
       event({ sessionId: 'middle', agoSeconds: 5 * DAY }),
     ],
     metadata: {
-      recent: { group: 'Bug week' },
-      ancient: { group: 'Bug week' },
-      middle: { group: 'Bug week' },
+      recent: { group: 'Bug week', order: 0 },
+      ancient: { group: 'Bug week', order: 2 },
+      middle: { group: 'Bug week', order: 1 },
     },
   })
 
-  expect(board.groups[0]?.rows.map(row => row.sessionId)).toEqual(['ancient', 'middle', 'recent'])
+  expect(board.groups[0]?.rows.map(row => row.sessionId)).toEqual(['recent', 'middle', 'ancient'])
 })
 
-it('floats the group holding the most neglected session to the top', () => {
+it('puts sessions never placed below the placed ones, oldest first among themselves', () => {
+  const board = build({
+    events: [
+      event({ sessionId: 'placed', agoSeconds: 1 * DAY }),
+      event({ sessionId: 'new', agoSeconds: 2 * DAY }),
+      event({ sessionId: 'newer', agoSeconds: 3 * DAY }),
+    ],
+    metadata: {
+      placed: { group: 'Bug week', order: 0 },
+      new: { group: 'Bug week' },
+      newer: { group: 'Bug week' },
+    },
+  })
+
+  expect(board.groups[0]?.rows.map(row => row.sessionId)).toEqual(['placed', 'newer', 'new'])
+})
+
+it('draws groups in the order the groups file lists them, however old their sessions are', () => {
   const board = build({
     events: [
       event({ sessionId: 'a', agoSeconds: 2 * DAY }),
       event({ sessionId: 'b', agoSeconds: 10 * DAY }),
     ],
     metadata: { a: { group: 'Stash' }, b: { group: 'Bug week' } },
+    knownGroups: ['Stash', 'Bug week'],
   })
 
-  expect(board.groups.map(group => group.name)).toEqual(['Bug week', 'Stash'])
+  expect(board.groups.map(group => group.name)).toEqual(['Stash', 'Bug week'])
 })
 
 it('pins Ungrouped last however old its sessions are', () => {
@@ -275,17 +293,17 @@ it('draws a group that holds no sessions, so taking the last one out cannot dele
   expect(board.groups[1]?.rows).toEqual([])
 })
 
-it('sorts an empty group below every group that has a session in it', () => {
+it('keeps an empty group where the file puts it, still above Ungrouped', () => {
   const board = build({
     events: [
       event({ sessionId: 'nogroup', agoSeconds: 30 * DAY }),
       event({ sessionId: 'grouped', agoSeconds: 1 * DAY }),
     ],
     metadata: { nogroup: { name: 'loose' }, grouped: { group: 'Bug week' } },
-    knownGroups: ['Bug week', 'Stash'],
+    knownGroups: ['Stash', 'Bug week'],
   })
 
-  expect(board.groups.map(group => group.name)).toEqual(['Bug week', 'Stash', UNGROUPED_LABEL])
+  expect(board.groups.map(group => group.name)).toEqual(['Stash', 'Bug week', UNGROUPED_LABEL])
 })
 
 it('never draws Ungrouped as a group of its own, whatever the file says', () => {

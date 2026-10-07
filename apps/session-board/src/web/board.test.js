@@ -881,7 +881,7 @@ it('moves a row into the group it is dropped on', () => {
   const patch = fetchMock.mock.calls.find(([, options]) => options?.method === 'PATCH')
 
   expect(patch?.[0]).toBe('/api/sessions/a')
-  expect(JSON.parse(patch?.[1].body)).toEqual({ group: 'Stash' })
+  expect(JSON.parse(patch?.[1].body)).toEqual({ group: 'Stash', before: null })
 })
 
 it('clears the group rather than writing the word when dropped on Ungrouped', () => {
@@ -898,7 +898,7 @@ it('clears the group rather than writing the word when dropped on Ungrouped', ()
 
   const patch = fetchMock.mock.calls.find(([, options]) => options?.method === 'PATCH')
 
-  expect(JSON.parse(patch?.[1].body)).toEqual({ group: null })
+  expect(JSON.parse(patch?.[1].body)).toEqual({ group: null, before: null })
 })
 
 it('writes nothing when a row is dropped back on the group it came from', () => {
@@ -926,7 +926,205 @@ it('claims a drawer row into the group it is dropped on', () => {
   const patch = fetchMock.mock.calls.find(([, options]) => options?.method === 'PATCH')
 
   expect(patch?.[0]).toBe('/api/sessions/z')
-  expect(JSON.parse(patch?.[1].body)).toEqual({ group: 'Bug week' })
+  expect(JSON.parse(patch?.[1].body)).toEqual({ group: 'Bug week', before: null })
+})
+
+/**
+ * Drag `source` and drop it on `target`, over its top or bottom half.
+ *
+ * happy-dom lays nothing out, so the target is given a 20px box at y 100.
+ */
+function dragOnto({ source, target, half }) {
+  target.getBoundingClientRect = () => ({ top: 100, height: 20 })
+  const transfer = newTransfer()
+  const at = type => {
+    const event = dragEvent(type, transfer)
+    event.clientY = half === 'top' ? 105 : 115
+
+    return event
+  }
+
+  source.dispatchEvent(dragEvent('dragstart', transfer))
+  target.dispatchEvent(at('dragover'))
+  const marked = [...document.querySelectorAll('.drop-above, .drop-below')]
+  target.dispatchEvent(at('drop'))
+  source.dispatchEvent(dragEvent('dragend', transfer))
+
+  return { marked }
+}
+
+function rowNamed(name) {
+  return [...document.querySelectorAll('.row')].find(
+    node => node.querySelector('.name').textContent === name,
+  )
+}
+
+function headerOf(name) {
+  return document.querySelector(`.group[data-group="${name}"] .group-header`)
+}
+
+function patchBodies(fetchMock) {
+  return fetchMock.mock.calls
+    .filter(([, options]) => options?.method === 'PATCH')
+    .map(([path, options]) => [path, JSON.parse(options.body)])
+}
+
+const threeRows = () =>
+  boardWithGroups([
+    {
+      name: 'Bug week',
+      rows: [
+        aRow({ sessionId: 'a', name: 'one' }),
+        aRow({ sessionId: 'b', name: 'two' }),
+        aRow({ sessionId: 'c', name: 'three' }),
+      ],
+    },
+  ])
+
+it.each([
+  { name: 'three', onto: 'one', half: 'top', before: 'a' },
+  { name: 'one', onto: 'two', half: 'bottom', before: 'c' },
+  { name: 'one', onto: 'three', half: 'bottom', before: null },
+])('moves $name to the $half of $onto inside its group', ({ name, onto, half, before }) => {
+  const fetchMock = vi.fn(async () => ({ ok: true, json: async () => ({}) }))
+  vi.stubGlobal('fetch', fetchMock)
+  render(threeRows())
+
+  const { marked } = dragOnto({ source: rowNamed(name), target: rowNamed(onto), half })
+
+  expect(marked).toEqual([rowNamed(onto)])
+  expect(patchBodies(fetchMock)).toEqual([[expect.any(String), { before }]])
+})
+
+it.each([
+  { onto: 'two', half: 'top' },
+  { onto: 'one', half: 'bottom' },
+  { onto: 'two', half: 'bottom' },
+])('writes nothing when a row is dropped on its own spot ($half of $onto)', ({ onto, half }) => {
+  const fetchMock = vi.fn(async () => ({ ok: true, json: async () => ({}) }))
+  vi.stubGlobal('fetch', fetchMock)
+  render(threeRows())
+
+  const { marked } = dragOnto({ source: rowNamed('two'), target: rowNamed(onto), half })
+
+  expect(marked).toEqual([])
+  expect(patchBodies(fetchMock)).toEqual([])
+})
+
+it('leaves the board as dropped until the move comes back, rather than redrawing the old spot', () => {
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async () => ({ ok: true, json: async () => ({}) })),
+  )
+  render(threeRows())
+  const source = rowNamed('three')
+
+  dragOnto({ source, target: rowNamed('one'), half: 'top' })
+
+  expect(source.isConnected).toBe(true)
+})
+
+it('moves a row to the top of a group when it is dropped on the header', () => {
+  const fetchMock = vi.fn(async () => ({ ok: true, json: async () => ({}) }))
+  vi.stubGlobal('fetch', fetchMock)
+  render(threeRows())
+
+  dragOnto({ source: rowNamed('three'), target: headerOf('Bug week'), half: 'bottom' })
+
+  expect(patchBodies(fetchMock)).toEqual([['/api/sessions/c', { before: 'a' }]])
+})
+
+it('moves a row into another group above the row it is dropped on', () => {
+  const fetchMock = vi.fn(async () => ({ ok: true, json: async () => ({}) }))
+  vi.stubGlobal('fetch', fetchMock)
+  render(
+    boardWithGroups([
+      { name: 'Bug week', rows: [aRow({ sessionId: 'a', name: 'perf' })] },
+      { name: 'Stash', rows: [aRow({ sessionId: 'b', name: 'other' })] },
+    ]),
+  )
+
+  dragOnto({ source: rowNamed('perf'), target: rowNamed('other'), half: 'top' })
+
+  expect(patchBodies(fetchMock)).toEqual([['/api/sessions/a', { before: 'b', group: 'Stash' }]])
+})
+
+it('says why on the group when a move is refused', async () => {
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async () => ({
+      ok: false,
+      status: 409,
+      text: async () => JSON.stringify({ error: 'perf is already on the board' }),
+    })),
+  )
+  render(threeRows())
+
+  dragOnto({ source: rowNamed('three'), target: rowNamed('one'), half: 'top' })
+  await settle()
+
+  expect(document.querySelector('.group .edit-line .pending')?.textContent).toBe(
+    'perf is already on the board',
+  )
+})
+
+const threeGroups = () =>
+  boardWithGroups([
+    { name: 'A', rows: [] },
+    { name: 'B', rows: [] },
+    { name: 'C', rows: [] },
+    { name: 'Ungrouped', rows: [aRow({ sessionId: 'u', name: 'loose' })] },
+  ])
+
+function groupNode(name) {
+  return document.querySelector(`.group[data-group="${name}"]`)
+}
+
+it.each([
+  { name: 'C', onto: 'A', half: 'top', before: 'A' },
+  { name: 'A', onto: 'B', half: 'bottom', before: 'C' },
+  { name: 'A', onto: 'C', half: 'bottom', before: null },
+  { name: 'A', onto: 'Ungrouped', half: 'top', before: null },
+])('moves group $name to the $half of $onto', ({ name, onto, half, before }) => {
+  const fetchMock = vi.fn(async () => ({ ok: true, json: async () => ({}) }))
+  vi.stubGlobal('fetch', fetchMock)
+  render(threeGroups())
+
+  dragOnto({ source: headerOf(name), target: groupNode(onto), half })
+
+  expect(patchBodies(fetchMock)).toEqual([[`/api/groups/${name}`, { before }]])
+})
+
+it.each([
+  { onto: 'B', half: 'top' },
+  { onto: 'A', half: 'bottom' },
+  { onto: 'C', half: 'top' },
+])('writes nothing when group B is dropped on its own spot ($half of $onto)', ({ onto, half }) => {
+  const fetchMock = vi.fn(async () => ({ ok: true, json: async () => ({}) }))
+  vi.stubGlobal('fetch', fetchMock)
+  render(threeGroups())
+
+  dragOnto({ source: headerOf('B'), target: groupNode(onto), half })
+
+  expect(patchBodies(fetchMock)).toEqual([])
+})
+
+it('lets only a named group be dragged, since Ungrouped and the drawer have fixed spots', () => {
+  render(
+    boardWithGroups(
+      [
+        { name: 'A', rows: [] },
+        { name: 'Ungrouped', rows: [aRow({ sessionId: 'u' })] },
+      ],
+      [aRow({ sessionId: 'z' })],
+    ),
+  )
+
+  const draggable = [...document.querySelectorAll('.group-header')].map(
+    header => header.draggable === true,
+  )
+
+  expect(draggable).toEqual([true, false, false])
 })
 
 it('takes no drops on the drawer, so a row cannot be removed by dropping it', () => {

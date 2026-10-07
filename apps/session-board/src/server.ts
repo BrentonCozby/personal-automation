@@ -33,7 +33,12 @@ import { createMetadataStore } from './metadata/store.js'
 import type { MetadataBySession, MetadataPatch } from './metadata/types.js'
 import { findRequestRejection, isSessionId } from './request-guard.js'
 import { buildSnapshot, fileExists, resolveSessionCwd } from './snapshot.js'
-import { groupBodySchema, newSessionBodySchema, patchBodySchema } from './wire.js'
+import {
+  groupBodySchema,
+  groupMoveBodySchema,
+  newSessionBodySchema,
+  patchBodySchema,
+} from './wire.js'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 
@@ -261,22 +266,30 @@ export function createBoardServer({ config }: { config: Config }): BoardServer {
     }, REBUILD_DEBOUNCE_MS)
   }
 
-  /** Move every session in a group to another one, or out of any group at all. */
+  /**
+   * Move every session in a group to another one, or out of any group at all.
+   *
+   * `keepOrder` is for a plain rename. Rows joining a group that already has
+   * rows lose their `order`, so the next snapshot puts them below its own.
+   */
   async function moveRowsOutOf({
     group,
     to,
+    keepOrder,
   }: {
     group: string
     to: string | undefined
+    keepOrder: boolean
   }): Promise<void> {
     const metadata = await store.read()
-    const members = Object.entries(metadata)
+    const patches = Object.entries(metadata)
       .filter(([, entry]) => entry.group === group)
-      .map(([sessionId]) => sessionId)
+      .map(([sessionId, entry]) => ({
+        sessionId,
+        changes: { group: to, order: keepOrder ? entry.order : undefined },
+      }))
 
-    for (const sessionId of members) {
-      await store.patch({ sessionId, changes: { group: to } })
-    }
+    if (patches.length > 0) await store.patchMany(patches)
   }
 
   async function handleGroupApi({
@@ -315,7 +328,29 @@ export function createBoardServer({ config }: { config: Config }): BoardServer {
     }
 
     if (name && req.method === 'PATCH') {
-      const body = groupBodySchema.safeParse(await readBody(req))
+      const raw = await readBody(req)
+      if (typeof raw === 'object' && raw !== null && 'before' in raw) {
+        const move = groupMoveBodySchema.safeParse(raw)
+        if (!move.success) {
+          sendJson({ res, status: 400, body: { error: move.error.issues[0]?.message } })
+
+          return true
+        }
+
+        const didMove = await groups.move({ name, before: move.data.before ?? undefined })
+        if (!didMove) {
+          sendJson({ res, status: 404, body: { error: 'that group no longer exists' } })
+
+          return true
+        }
+
+        sendJson({ res, status: 200, body: { ok: true } })
+        await pushToStreams()
+
+        return true
+      }
+
+      const body = groupBodySchema.safeParse(raw)
       if (!body.success) {
         sendJson({ res, status: 400, body: { error: body.error.issues[0]?.message } })
 
@@ -327,8 +362,9 @@ export function createBoardServer({ config }: { config: Config }): BoardServer {
       // every group it meets on a row.
       const to = body.data.name
       await oneAtATime(async () => {
+        const isMerge = (await groups.read()).includes(to)
         await groups.rename({ from: name, to })
-        await moveRowsOutOf({ group: name, to })
+        await moveRowsOutOf({ group: name, to, keepOrder: !isMerge })
       })
       sendJson({ res, status: 200, body: { name: body.data.name } })
       await pushToStreams()
@@ -339,7 +375,7 @@ export function createBoardServer({ config }: { config: Config }): BoardServer {
     if (name && req.method === 'DELETE') {
       await oneAtATime(async () => {
         await groups.remove(name)
-        await moveRowsOutOf({ group: name, to: undefined })
+        await moveRowsOutOf({ group: name, to: undefined, keepOrder: false })
       })
       sendJson({ res, status: 200, body: { ok: true } })
       await pushToStreams()
@@ -645,12 +681,18 @@ export function createBoardServer({ config }: { config: Config }): BoardServer {
         return true
       }
 
-      const merged = await store.patch({
-        sessionId,
-        // Editing a row is what puts a session that was taken off the board
-        // back on it.
-        changes: { ...toPatch(body.data), isDismissed: undefined },
-      })
+      // Editing a row is what puts a session that was taken off the board back
+      // on it.
+      const changes = { ...toPatch(body.data), isDismissed: undefined }
+      const isMove =
+        'before' in body.data || ('group' in changes && changes.group !== current?.group)
+      // One at a time with snapshots, which number the rows they find unplaced
+      // and would write a stale order over this one.
+      const merged = isMove
+        ? await oneAtATime(() =>
+            store.place({ sessionId, changes, before: body.data.before ?? undefined }),
+          )
+        : await store.patch({ sessionId, changes })
       sendJson({ res, status: 200, body: merged })
       await pushToStreams()
 

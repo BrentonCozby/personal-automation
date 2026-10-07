@@ -8,7 +8,7 @@ import type { Config } from './config.js'
 import { listProcesses } from './derive/processes.js'
 import type { HookEvent } from './events/types.js'
 import { createGroupStore } from './metadata/group-store.js'
-import { createMetadataStore } from './metadata/store.js'
+import { createMetadataStore, type MetadataStore } from './metadata/store.js'
 import type { MetadataBySession } from './metadata/types.js'
 import { buildSnapshot } from './snapshot.js'
 
@@ -63,6 +63,15 @@ async function storeWith(metadata: MetadataBySession): Promise<{
   }
 }
 
+/** The file minus `order`, which a snapshot writes onto every row it draws. */
+async function readWithoutOrder(store: MetadataStore): Promise<MetadataBySession> {
+  const metadata = await store.read()
+
+  return Object.fromEntries(
+    Object.entries(metadata).map(([sessionId, { order: _order, ...rest }]) => [sessionId, rest]),
+  )
+}
+
 /** The two halves of a `/clear`: one session ends, the next starts on the same process. */
 function handover({
   from,
@@ -110,7 +119,7 @@ it('carries a row forward when a cleared session had no name waiting on the othe
   })
 
   expect(namesOnBoard(board)).toEqual(['impact'])
-  expect(await store.read()).toEqual({ after: { name: 'impact' } })
+  expect(await readWithoutOrder(store)).toEqual({ after: { name: 'impact' } })
 })
 
 it('leaves a session that was taken off the board out of the handover', async () => {
@@ -129,7 +138,7 @@ it('leaves a session that was taken off the board out of the handover', async ()
 
   // Carrying the marker across would take the successor off the board too.
   expect(namesOnBoard(board)).toEqual(['code-gardener'])
-  expect(await store.read()).toEqual({
+  expect(await readWithoutOrder(store)).toEqual({
     before: { isDismissed: true },
     after: { name: 'code-gardener', group: 'Bug week' },
   })
@@ -174,7 +183,7 @@ it('keeps both rows when a cleared terminal took up work that was already named'
 
   expect(namesOnBoard(board)).toEqual(['bme-orders', 'impact'])
   // The older row keeps everything it had rather than being folded away.
-  expect(await store.read()).toEqual({
+  expect(await readWithoutOrder(store)).toEqual({
     before: { name: 'impact', group: 'Bug week' },
     after: { name: 'bme-orders', group: 'BME' },
   })
@@ -230,7 +239,7 @@ it('moves a relaunched row onto the session the board started for it', async () 
   // Ungrouped carrying the same name.
   expect(namesOnBoard(board)).toEqual(['technical-interview-round'])
   expect(board.groups.map(group => group.name)).toEqual(['Interviewing'])
-  expect(await store.read()).toEqual({
+  expect(await readWithoutOrder(store)).toEqual({
     fresh: {
       name: 'technical-interview-round',
       group: 'Interviewing',
@@ -298,7 +307,9 @@ it('keeps the row when a resume walks back to the session a relaunch moved it of
 
   expect(namesOnBoard(board)).toEqual(['ssr-iframe-main'])
   expect(board.groups.flatMap(group => group.rows).map(row => row.sessionId)).toEqual(['old'])
-  expect(await store.read()).toEqual({ old: { name: 'ssr-iframe-main', group: 'ssr iframe' } })
+  expect(await readWithoutOrder(store)).toEqual({
+    old: { name: 'ssr-iframe-main', group: 'ssr iframe' },
+  })
 })
 
 it('erases the pointer of a row the resume walked back to', async () => {
@@ -326,7 +337,7 @@ it('erases the pointer of a row the resume walked back to', async () => {
   expect(namesOnBoard(board)).toEqual(['ssr-iframe-main'])
   // A name a live row holds has to read as taken, or the board starts a second
   // session under it.
-  expect(await store.read()).toEqual({ resumed: { name: 'ssr-iframe-main' } })
+  expect(await readWithoutOrder(store)).toEqual({ resumed: { name: 'ssr-iframe-main' } })
 })
 
 it('takes the finished row off the board when a live session holds the same name', async () => {
@@ -411,7 +422,7 @@ it('drops a placeholder row once no session can pair with it any more', async ()
   // row draws nothing without a `lastActive`, so left in the file it would hold
   // `review-perf` against the next attempt with no row on screen to delete.
   expect(namesOnBoard(board)).toEqual([])
-  expect(await store.read()).toEqual({})
+  expect(await readWithoutOrder(store)).toEqual({})
 })
 
 it('keeps a placeholder row while the session it started still has time to appear', async () => {
@@ -424,7 +435,7 @@ it('keeps a placeholder row while the session it started still has time to appea
   // A session takes a second or two to fire its first hook, and a snapshot runs
   // in between. Reaping on that one would take the row away from the session on
   // its way to claim it.
-  expect(await store.read()).toEqual({
+  expect(await readWithoutOrder(store)).toEqual({
     'pending-1111': { name: 'review-perf', relaunchedAt: NOW - 30 },
   })
 })
@@ -455,7 +466,7 @@ it('links a progress file to a live row and leaves the rows that draw nothing al
   // other is an empty pointer. Every row without a path costs a `git rev-parse`
   // on every snapshot, and snapshots run on every hook event, so on the real
   // board this was 19 of them and 0.5 seconds spent to link nothing.
-  expect(await store.read()).toEqual({
+  expect(await readWithoutOrder(store)).toEqual({
     live: { name: 'live-work', progressPath: join(root, 'live-work.progress.local.md') },
     dropped: { name: 'dismissed-work', isDismissed: true },
     handed: { name: 'superseded-work', supersededBy: 'somewhere-else' },
@@ -489,7 +500,7 @@ it.each([
     now: NOW,
   })
 
-  expect(await store.read()).toEqual({
+  expect(await readWithoutOrder(store)).toEqual({
     holder,
     newcomer: { name: newName },
   })
@@ -521,7 +532,7 @@ it('draws a group that was created before any session was put in it', async () =
     now: NOW,
   })
 
-  expect(board.groups.map(group => group.name)).toEqual(['Bug week', 'Stash'])
+  expect(board.groups.map(group => group.name)).toEqual(['Stash', 'Bug week'])
 })
 
 it("puts each session's context size on its row", async () => {
@@ -547,4 +558,67 @@ it("puts each session's context size on its row", async () => {
   const rows = board.groups.flatMap(group => group.rows)
   expect(rows.find(row => row.sessionId === 'sized')?.contextTokens).toBe(120_005)
   expect(rows.find(row => row.sessionId === 'empty')?.contextTokens).toBeUndefined()
+})
+
+it('pins a newly claimed row below the placed ones, so its age stops moving it', async () => {
+  const { store, groups } = await storeWith({
+    placed: { name: 'a', group: 'home', order: 5 },
+    fresh: { name: 'b', group: 'home' },
+    older: { name: 'c', group: 'home' },
+  })
+
+  await buildSnapshot({
+    events: [
+      { session_id: 'placed', hook_event_name: 'Stop', t: NOW },
+      { session_id: 'fresh', hook_event_name: 'Stop', t: NOW - 10 },
+      { session_id: 'older', hook_event_name: 'Stop', t: NOW - 20 },
+    ],
+    store,
+    groups,
+    config: config(),
+    now: NOW,
+  })
+
+  expect(await store.read()).toMatchObject({
+    placed: { order: 0 },
+    older: { order: 1 },
+    fresh: { order: 2 },
+  })
+})
+
+it('renumbers a group where two rows share a spot', async () => {
+  const { store, groups } = await storeWith({
+    a: { name: 'a', group: 'home', order: 1 },
+    b: { name: 'b', group: 'home', order: 1 },
+  })
+
+  await buildSnapshot({
+    events: [
+      { session_id: 'a', hook_event_name: 'Stop', t: NOW },
+      { session_id: 'b', hook_event_name: 'Stop', t: NOW },
+    ],
+    store,
+    groups,
+    config: config(),
+    now: NOW,
+  })
+
+  const metadata = await store.read()
+  expect([metadata['a']?.order, metadata['b']?.order].sort()).toEqual([0, 1])
+})
+
+it('writes nothing when every row is already placed', async () => {
+  const { store, groups } = await storeWith({ placed: { name: 'a', group: 'home', order: 3 } })
+  const patchMany = vi.spyOn(store, 'patchMany')
+
+  await buildSnapshot({
+    events: [{ session_id: 'placed', hook_event_name: 'Stop', t: NOW }],
+    store,
+    groups,
+    config: config(),
+    now: NOW,
+  })
+
+  // Every write wakes the watcher that asks for the next snapshot.
+  expect(patchMany).not.toHaveBeenCalled()
 })

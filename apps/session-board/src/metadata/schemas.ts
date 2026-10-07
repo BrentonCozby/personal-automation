@@ -12,6 +12,9 @@ export const sessionMetadataSchema = z.object({
   // Set by hand, so it wins over the directory the session's events report:
   // it is how a session is pointed at a directory it never ran in.
   cwd: z.string().min(1).optional(),
+  // Where the row sits inside its group, smallest first. Set by dragging, and
+  // by the snapshot for a row that has none, which places it last.
+  order: z.number().int().nonnegative().optional(),
   // Taken off the board by hand. The row has to stay behind to say so: a
   // session that carries a title claims itself the moment it has no row at all,
   // so plain removal is undone before the next snapshot reaches the screen.
@@ -43,6 +46,6 @@ export const sessionMetadataSchema = z.object({
 // `parkedReason` being set, and finishing with a session deletes its row.
 export const metadataFileSchema = z.record(z.string().min(1), sessionMetadataSchema)
 
-// Every group the board draws, in the order they were created. A group is also
+// Every group the board draws, in the order it draws them. A group is also
 // the name written on its rows, and this is what keeps one that has no rows.
 export const groupsFileSchema = z.array(z.string().min(1))

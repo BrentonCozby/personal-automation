@@ -9,6 +9,11 @@ export interface GroupStore {
   remove(name: string): Promise<void>
   /** Take in names seen on rows, and answer with the ones that were new. */
   register(names: string[]): Promise<string[]>
+  /**
+   * Move a group just above `before`, or last when `before` is undefined or not
+   * a group. False when `name` is not a group.
+   */
+  move(input: { name: string; before: string | undefined }): Promise<boolean>
 }
 
 /**
@@ -71,5 +76,19 @@ export function createGroupStore({ path }: { path: string }): GroupStore {
     })
   }
 
-  return { read, add, rename, remove, register }
+  function move({ name, before }: { name: string; before: string | undefined }): Promise<boolean> {
+    return serialize(async () => {
+      const groups = await read()
+      if (!groups.includes(name)) return false
+
+      const others = groups.filter(group => group !== name)
+      const at = before === undefined ? -1 : others.indexOf(before)
+      others.splice(at === -1 ? others.length : at, 0, name)
+      await write(others)
+
+      return true
+    })
+  }
+
+  return { read, add, rename, remove, register, move }
 }

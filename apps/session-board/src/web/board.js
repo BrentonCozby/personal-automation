@@ -6,12 +6,31 @@ let latest = null
 // just wrote on its own row.
 let hasUndrawnSnapshot = false
 
-// The row being dragged between groups, and the group it started in. Held at
-// module level because the drop lands on a different element than the drag
-// started on, and because a repaint has to be held off for as long as a drag is
-// in flight: rebuilding the board mid-drag destroys the element under the
-// pointer and the drag dies with it.
+// What is being dragged: `{ kind: 'row', sessionId, fromGroup }` or
+// `{ kind: 'group', name }`. Held at module level because the drop lands on a
+// different element than the drag started on, and because a repaint has to be
+// held off for as long as a drag is in flight: rebuilding the board mid-drag
+// destroys the element under the pointer and the drag dies with it.
 let dragged
+
+/** Whether the drop that just ended a drag sent a move to the server. */
+let isMoveSent = false
+
+/** Every class that marks where a drop would land. */
+const DROP_MARKS = ['drop-target', 'drop-above', 'drop-below']
+
+function clearDropMarks() {
+  for (const node of document.querySelectorAll(DROP_MARKS.map(mark => `.${mark}`).join(','))) {
+    node.classList.remove(...DROP_MARKS)
+  }
+}
+
+/** Whether the pointer is over the top half of `node`. */
+function isAboveMiddle(node, event) {
+  const rect = node.getBoundingClientRect()
+
+  return event.clientY < rect.top + rect.height / 2
+}
 
 /** The group that means "no group", which clears the field rather than setting it. */
 const UNGROUPED_LABEL = 'Ungrouped'
@@ -237,11 +256,13 @@ function showMessage(node, text) {
   line.append(el('span', 'pending', text))
   // A repaint between the request and its answer replaces the row, and a line
   // under the old one is never seen.
-  const { sessionId } = node.dataset
-  const redrawn =
-    !node.isConnected && sessionId
-      ? document.querySelector(`.row[data-session-id="${CSS.escape(sessionId)}"]`)
-      : undefined
+  const { sessionId, group } = node.dataset
+  let redrawn
+  if (!node.isConnected && sessionId) {
+    redrawn = document.querySelector(`.row[data-session-id="${CSS.escape(sessionId)}"]`)
+  } else if (!node.isConnected && group) {
+    redrawn = document.querySelector(`.group[data-group="${CSS.escape(group)}"]`)
+  }
   ;(redrawn || node).append(line)
   setTimeout(() => line.remove(), MESSAGE_MS)
 
@@ -280,10 +301,12 @@ function editIn({ host, current, placeholder, onCommit, commitUnchanged = false 
   host.removeAttribute('role')
 
   // Text inside a draggable element cannot be selected with the mouse: the
-  // drag wins the gesture. The row gives dragging up for as long as one of its
-  // fields is open, or you could not click into the middle of a name to fix it.
-  const draggableRow = host.closest('.row')
-  if (draggableRow) draggableRow.draggable = false
+  // drag wins the gesture. The row or group header gives dragging up for as
+  // long as one of its fields is open, or you could not click into the middle
+  // of a name to fix it.
+  const closest = host.closest('.row, .group-header')
+  const draggableHost = closest?.draggable ? closest : undefined
+  if (draggableHost) draggableHost.draggable = false
 
   const input = el('input', 'edit')
   input.value = current || ''
@@ -297,7 +320,7 @@ function editIn({ host, current, placeholder, onCommit, commitUnchanged = false 
     if (settled) return
     settled = true
     if (role) host.setAttribute('role', role)
-    if (draggableRow) draggableRow.draggable = true
+    if (draggableHost) draggableHost.draggable = true
 
     const value = input.value.trim()
     // `commitUnchanged` is for a field that opened on a suggestion rather than
@@ -391,27 +414,40 @@ function buildPin(row) {
   return pin
 }
 
+function makeDraggable({ node, item }) {
+  node.draggable = true
+  node.addEventListener('dragstart', event => {
+    dragged = item
+    node.classList.add('dragging')
+    event.dataTransfer.effectAllowed = 'move'
+    // Firefox will not start a drag whose transfer carries nothing.
+    event.dataTransfer.setData('text/plain', item.sessionId || item.name)
+  })
+  node.addEventListener('dragend', () => {
+    dragged = undefined
+    node.classList.remove('dragging')
+    clearDropMarks()
+    // A sent move leaves the board as it is until the frame it causes arrives:
+    // repainting now would draw the row back in its old spot for a moment.
+    if (isMoveSent) {
+      isMoveSent = false
+
+      return
+    }
+
+    // Snapshots that arrived during the drag were set aside rather than drawn.
+    render(latest)
+  })
+}
+
 function buildRow(row) {
   const node = el('div', `row status-${row.status}`)
   node.dataset.sessionId = row.sessionId
   const isAlive = row.status !== 'gone'
 
-  node.draggable = true
-  node.addEventListener('dragstart', event => {
-    dragged = { sessionId: row.sessionId, fromGroup: row.groupName }
-    node.classList.add('dragging')
-    event.dataTransfer.effectAllowed = 'move'
-    // Firefox will not start a drag whose transfer carries nothing.
-    event.dataTransfer.setData('text/plain', row.sessionId)
-  })
-  node.addEventListener('dragend', () => {
-    dragged = undefined
-    node.classList.remove('dragging')
-    for (const group of document.querySelectorAll('.group.drop-target')) {
-      group.classList.remove('drop-target')
-    }
-    // Snapshots that arrived during the drag were set aside rather than drawn.
-    render(latest)
+  makeDraggable({
+    node,
+    item: { kind: 'row', sessionId: row.sessionId, fromGroup: row.groupName },
   })
 
   const top = el('div', 'row-top')
@@ -1152,6 +1188,86 @@ function buildGroupStart(label) {
   return button
 }
 
+/**
+ * Where a dragged row would land in this group: the session it goes above, or
+ * `null` for last, and the line that shows it. Undefined when the drop would
+ * leave the row where it already is.
+ */
+function findRowDrop({ label, event, wrapper, header, rows }) {
+  const ids = rows.map(row => row.sessionId)
+  const over = event.target.closest?.('.row')
+  let before = null
+  let mark
+
+  if (over && wrapper.contains(over)) {
+    const isAbove = isAboveMiddle(over, event)
+    const at = ids.indexOf(over.dataset.sessionId)
+    before = isAbove ? ids[at] : ids[at + 1] || null
+    mark = { node: over, className: isAbove ? 'drop-above' : 'drop-below' }
+  } else if (header.contains(event.target)) {
+    // The header is the way to the top of the group, collapsed or not.
+    before = ids[0] || null
+    mark = { node: header, className: 'drop-below' }
+  } else {
+    const last = [...wrapper.querySelectorAll('.row')].at(-1)
+    if (last) mark = { node: last, className: 'drop-below' }
+  }
+
+  if (dragged.fromGroup === label) {
+    const at = ids.indexOf(dragged.sessionId)
+    if (before === dragged.sessionId || before === (ids[at + 1] || null)) return undefined
+  }
+
+  return { before, mark }
+}
+
+/**
+ * Where a dragged group would land: the group it goes above, or `null` for
+ * last. Ungrouped is pinned last, so dropping on it means last.
+ */
+function findGroupDrop({ label, event, wrapper }) {
+  if (label === dragged.name) return undefined
+
+  const names = [...document.querySelectorAll('#board > .group')]
+    .map(node => node.dataset.group)
+    .filter(name => name && name !== UNGROUPED_LABEL)
+  const isAbove = label === UNGROUPED_LABEL || isAboveMiddle(wrapper, event)
+  let before = names[names.indexOf(label) + 1] || null
+  if (label === UNGROUPED_LABEL) before = null
+  else if (isAbove) before = label
+
+  const after = names[names.indexOf(dragged.name) + 1] || null
+  if (before === dragged.name || before === after) return undefined
+
+  return { before, mark: { node: wrapper, className: isAbove ? 'drop-above' : 'drop-below' } }
+}
+
+/** Ungrouped is the absence of a group, so landing there clears the field. */
+async function moveRow({ item, label, before, host }) {
+  const changes = { before }
+  if (item.fromGroup !== label) changes.group = label === UNGROUPED_LABEL ? null : label
+
+  const result = await patchSession(item.sessionId, changes)
+  if (!result.ok) refuseMove({ host, error: result.error || 'could not move that session' })
+}
+
+/**
+ * Draw what the drag held back, then say why the move did not happen. No frame
+ * follows a refusal, and the board was left as the drop found it.
+ */
+function refuseMove({ host, error }) {
+  if (!isBusy()) render(latest)
+  showMessage(host, error)
+}
+
+async function moveGroup({ name, before, host }) {
+  const result = await api(`/api/groups/${encodeURIComponent(name)}`, {
+    method: 'PATCH',
+    body: JSON.stringify({ before }),
+  })
+  if (!result.ok) refuseMove({ host, error: result.error || 'could not move that group' })
+}
+
 function buildGroup({
   key,
   label,
@@ -1163,35 +1279,53 @@ function buildGroup({
 }) {
   const wrapper = el('div', collapsed.has(key) ? 'group collapsed' : 'group')
 
+  const header = el('div', 'group-header')
+
   if (isDropTarget) {
+    wrapper.dataset.group = label
+    const findDrop = event =>
+      dragged.kind === 'group'
+        ? findGroupDrop({ label, event, wrapper })
+        : findRowDrop({ label, event, wrapper, header, rows })
+
     wrapper.addEventListener('dragover', event => {
+      if (!dragged) return
       // Without preventDefault the browser refuses the drop, and the pointer
-      // shows the "no" cursor the whole way.
-      if (!dragged || dragged.fromGroup === label) return
+      // shows the "no" cursor the whole way, over the row's own spot included.
       event.preventDefault()
       event.dataTransfer.dropEffect = 'move'
-      wrapper.classList.add('drop-target')
+      clearDropMarks()
+
+      const drop = findDrop(event)
+      if (!drop) return
+      drop.mark?.node.classList.add(drop.mark.className)
+      if (dragged.kind === 'row' && dragged.fromGroup !== label) {
+        wrapper.classList.add('drop-target')
+      }
     })
     wrapper.addEventListener('dragleave', event => {
-      // `dragleave` also fires crossing between children, so the highlight only
-      // clears once the pointer has really left the group.
-      if (!wrapper.contains(event.relatedTarget)) wrapper.classList.remove('drop-target')
+      // `dragleave` also fires crossing between children, so the marks only
+      // clear once the pointer has really left the group.
+      if (!wrapper.contains(event.relatedTarget)) clearDropMarks()
     })
     wrapper.addEventListener('drop', event => {
       event.preventDefault()
-      wrapper.classList.remove('drop-target')
-      if (!dragged || dragged.fromGroup === label) return
+      clearDropMarks()
+      if (!dragged) return
 
-      // Ungrouped is the absence of a group rather than one of them, so landing
-      // there clears the field instead of writing that word into it.
-      void patchSession(dragged.sessionId, {
-        group: label === UNGROUPED_LABEL ? null : label,
-      })
+      const drop = findDrop(event)
+      const item = dragged
       dragged = undefined
+      if (!drop) return
+
+      isMoveSent = true
+      if (item.kind === 'group') {
+        void moveGroup({ name: item.name, before: drop.before, host: wrapper })
+      } else {
+        void moveRow({ item, label, before: drop.before, host: wrapper })
+      }
     })
   }
-
-  const header = el('div', 'group-header')
   const title = el('span', isRenameable ? 'group-label group-name' : 'group-label', label)
 
   // The triangle is a few pixels across, so the thing you click is a padded box
@@ -1223,6 +1357,7 @@ function buildGroup({
     )
 
     header.append(buildGroupDelete({ label, count }))
+    makeDraggable({ node: header, item: { kind: 'group', name: label } })
   }
 
   wrapper.append(header)

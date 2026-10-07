@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { expect, it } from 'vitest'
 import { createMetadataStore } from './store.js'
+import type { MetadataBySession } from './types.js'
 
 async function storeInTempDir(): Promise<{
   path: string
@@ -121,4 +122,75 @@ it('takes an unnamed row off the board with the marker alone', async () => {
   await store.dismiss('abc')
 
   expect(await store.read()).toEqual({ abc: { isDismissed: true } })
+})
+
+it('writes several rows in one go, leaving the rest of each row alone', async () => {
+  const { store } = await storeInTempDir()
+  await store.patch({ sessionId: 'abc', changes: { name: 'impact' } })
+
+  await store.patchMany([
+    { sessionId: 'abc', changes: { order: 1 } },
+    { sessionId: 'xyz', changes: { order: 0 } },
+  ])
+
+  expect(await store.read()).toEqual({ abc: { name: 'impact', order: 1 }, xyz: { order: 0 } })
+})
+
+async function groupOf(ids: string[]): Promise<ReturnType<typeof createMetadataStore>> {
+  const { store } = await storeInTempDir()
+  await store.patchMany(
+    ids.map((sessionId, order) => ({ sessionId, changes: { group: 'home', order } })),
+  )
+
+  return store
+}
+
+function orderIn(metadata: MetadataBySession): string[] {
+  return Object.entries(metadata)
+    .filter(([, entry]) => entry.group === 'home')
+    .sort(([, a], [, b]) => (a.order ?? 0) - (b.order ?? 0))
+    .map(([id]) => id)
+}
+
+it.each([
+  { move: 'c', before: 'a', expected: ['c', 'a', 'b'] },
+  { move: 'a', before: 'c', expected: ['b', 'a', 'c'] },
+  { move: 'a', before: undefined, expected: ['b', 'c', 'a'] },
+  { move: 'b', before: 'gone', expected: ['a', 'c', 'b'] },
+])('moves $move above $before inside its group', async ({ move, before, expected }) => {
+  const store = await groupOf(['a', 'b', 'c'])
+
+  await store.place({ sessionId: move, changes: {}, before })
+
+  expect(orderIn(await store.read())).toEqual(expected)
+})
+
+it('moves a row into another group at the spot it was dropped, claiming it if need be', async () => {
+  const store = await groupOf(['a', 'b'])
+
+  const placed = await store.place({ sessionId: 'new', changes: { group: 'home' }, before: 'b' })
+
+  expect(placed).toEqual({ group: 'home', order: 1 })
+  expect(orderIn(await store.read())).toEqual(['a', 'new', 'b'])
+})
+
+it('renumbers the group a row left behind only when it is placed again', async () => {
+  const store = await groupOf(['a', 'b', 'c'])
+
+  await store.place({ sessionId: 'b', changes: { group: 'away' }, before: undefined })
+
+  expect(await store.read()).toMatchObject({
+    a: { order: 0 },
+    b: { group: 'away', order: 0 },
+    c: { order: 2 },
+  })
+})
+
+it('leaves dismissed rows out of the numbering', async () => {
+  const store = await groupOf(['a', 'b'])
+  await store.patch({ sessionId: 'a', changes: { isDismissed: true } })
+
+  await store.place({ sessionId: 'c', changes: { group: 'home' }, before: undefined })
+
+  expect(await store.read()).toMatchObject({ b: { order: 0 }, c: { order: 1 } })
 })

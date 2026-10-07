@@ -217,7 +217,7 @@ export function buildBoard({
   freshMinutes: number
   unclaimedWindowDays: number
 }): Board {
-  const claimedRows: { row: BoardRow; group: string }[] = []
+  const claimedRows: { row: BoardRow; group: string; order: number | undefined }[] = []
   const unclaimed: BoardRow[] = []
   const sessionIdsWithEvents = new Set<string>()
 
@@ -266,7 +266,7 @@ export function buildBoard({
     // A dismissed row exists only to stop the session claiming itself again, so
     // it belongs in the drawer with the sessions that were never claimed.
     if (entry && !entry.isDismissed) {
-      claimedRows.push({ row, group: entry.group ?? UNGROUPED_LABEL })
+      claimedRows.push({ row, group: entry.group ?? UNGROUPED_LABEL, order: entry.order })
       continue
     }
 
@@ -310,39 +310,34 @@ export function buildBoard({
         cwd: entry.cwd,
       }),
       group: entry.group ?? UNGROUPED_LABEL,
+      order: entry.order,
     })
   }
 
   // Seeded with the groups that exist, so one whose last session was moved out
   // stays on the board until it is deleted on purpose. Ungrouped is the absence
   // of a group rather than one of them, so it is never drawn empty.
-  const rowsByGroup = new Map<string, BoardRow[]>(
+  // Seeded in the file's order, which is the order groups are dragged into.
+  const placedByGroup = new Map<string, PlacedRow[]>(
     knownGroups.filter(name => name !== UNGROUPED_LABEL).map(name => [name, []]),
   )
-  for (const { row, group } of claimedRows) {
-    const existing = rowsByGroup.get(group)
+  for (const { row, group, order } of claimedRows) {
+    const existing = placedByGroup.get(group)
     if (existing) {
-      existing.push(row)
+      existing.push({ row, order })
       continue
     }
 
-    rowsByGroup.set(group, [row])
+    placedByGroup.set(group, [{ row, order }])
   }
 
-  // Oldest first inside a group, so the most neglected session sits at the top.
-  const groups: BoardGroup[] = [...rowsByGroup].map(([name, rows]) => ({
+  const groups: BoardGroup[] = [...placedByGroup].map(([name, placed]) => ({
     name,
-    rows: [...rows].sort((a, b) => a.lastActive - b.lastActive),
+    rows: placed.sort(byPlacement).map(({ row }) => row),
   }))
 
-  // A group is as old as its oldest member, so the group holding the most
-  // neglected session floats up. Ungrouped is pinned last whatever its age.
-  groups.sort((a, b) => {
-    if (a.name === UNGROUPED_LABEL) return 1
-    if (b.name === UNGROUPED_LABEL) return -1
-
-    return oldestIn(a) - oldestIn(b)
-  })
+  // Ungrouped is pinned last wherever the file would put it.
+  groups.sort((a, b) => Number(a.name === UNGROUPED_LABEL) - Number(b.name === UNGROUPED_LABEL))
 
   return {
     groups,
@@ -351,6 +346,21 @@ export function buildBoard({
   }
 }
 
-function oldestIn(group: BoardGroup): number {
-  return group.rows[0]?.lastActive ?? Number.POSITIVE_INFINITY
+interface PlacedRow {
+  row: BoardRow
+  order: number | undefined
+}
+
+/**
+ * Placed rows by their `order`, then the rows not placed yet, oldest first.
+ *
+ * A row goes unplaced only from its claim until the next snapshot gives it an
+ * `order`, so the age fallback decides nothing for long.
+ */
+function byPlacement(a: PlacedRow, b: PlacedRow): number {
+  if (a.order !== undefined && b.order !== undefined) return a.order - b.order
+  if (a.order !== undefined) return -1
+  if (b.order !== undefined) return 1
+
+  return a.row.lastActive - b.row.lastActive
 }

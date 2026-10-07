@@ -90,3 +90,24 @@ it('writes nothing when every name is already registered', async () => {
   expect(await store.register([])).toEqual([])
   expect(await exists(path)).toBe(false)
 })
+
+it.each([
+  { move: 'C', before: 'A', expected: ['C', 'A', 'B'] },
+  { move: 'A', before: 'C', expected: ['B', 'A', 'C'] },
+  { move: 'A', before: undefined, expected: ['B', 'C', 'A'] },
+  { move: 'B', before: 'gone', expected: ['A', 'C', 'B'] },
+])('moves group $move above $before', async ({ move, before, expected }) => {
+  const { store } = await storeInTempDir()
+  await store.register(['A', 'B', 'C'])
+
+  expect(await store.move({ name: move, before })).toBe(true)
+  expect(await store.read()).toEqual(expected)
+})
+
+it('answers false for a group that does not exist, and writes nothing', async () => {
+  const { store } = await storeInTempDir()
+  await store.register(['A', 'B'])
+
+  expect(await store.move({ name: 'gone', before: 'A' })).toBe(false)
+  expect(await store.read()).toEqual(['A', 'B'])
+})

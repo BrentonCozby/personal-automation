@@ -570,7 +570,7 @@ it('clears the group when one is renamed to Ungrouped rather than storing that w
   // Storing it would stand a second heading of that name beside the one
   // buildBoard invents for the rows that have no group.
   expect(res.status).toBe(200)
-  expect(await readMetadata(board.metadataPath)).toEqual({ abc: { name: 'soc2' } })
+  expect(await readMetadata(board.metadataPath)).toEqual({ abc: { name: 'soc2', order: 0 } })
 })
 
 it('marks a row relaunched so the fresh session takes the row over', async () => {
@@ -792,6 +792,72 @@ it('deletes a group and drops its rows into Ungrouped', async () => {
   expect(res.status).toBe(200)
   expect(await readMetadata(board.groupsPath)).toEqual([])
   expect(await readMetadata(board.metadataPath)).toEqual({ abc: { name: 'impact' } })
+})
+
+it('moves a group above another one', async () => {
+  const board = await startBoard({ groups: ['A', 'B', 'C'] })
+
+  const res = await groupRequest({
+    origin: board.origin,
+    path: '/C',
+    method: 'PATCH',
+    body: { before: 'A' },
+  })
+
+  expect(res.status).toBe(200)
+  expect(await readMetadata(board.groupsPath)).toEqual(['C', 'A', 'B'])
+})
+
+it('answers 404 for moving a group that no longer exists', async () => {
+  const board = await startBoard({ groups: ['A'] })
+
+  const res = await groupRequest({
+    origin: board.origin,
+    path: '/gone',
+    method: 'PATCH',
+    body: { before: null },
+  })
+
+  expect(res.status).toBe(404)
+  expect(await readMetadata(board.groupsPath)).toEqual(['A'])
+})
+
+it("puts the rows of a group renamed onto another one below that group's own", async () => {
+  const board = await startBoard({
+    groups: ['A', 'B'],
+    metadata: { a: { group: 'A', order: 0 }, b: { group: 'B', order: 0 } },
+  })
+
+  await groupRequest({ origin: board.origin, path: '/A', method: 'PATCH', body: { name: 'B' } })
+
+  // The next snapshot numbers the unplaced row after B's own.
+  expect(await readMetadata(board.metadataPath)).toEqual({
+    a: { group: 'B' },
+    b: { group: 'B', order: 0 },
+  })
+})
+
+it('places a dragged row above the one it was dropped on, moving its group too', async () => {
+  const board = await startBoard({
+    metadata: {
+      a: { name: 'a', group: 'A', order: 0 },
+      b: { name: 'b', group: 'B', order: 0 },
+      c: { name: 'c', group: 'B', order: 1 },
+    },
+  })
+
+  const res = await fetch(`${board.origin}/api/sessions/a`, {
+    method: 'PATCH',
+    headers: { origin: board.origin, 'content-type': 'application/json' },
+    body: JSON.stringify({ group: 'B', before: 'c' }),
+  })
+
+  expect(res.status).toBe(200)
+  expect(await readMetadata(board.metadataPath)).toEqual({
+    a: { name: 'a', group: 'B', order: 1 },
+    b: { name: 'b', group: 'B', order: 0 },
+    c: { name: 'c', group: 'B', order: 2 },
+  })
 })
 
 it('keeps a deleted group gone when a snapshot was already being built', async () => {

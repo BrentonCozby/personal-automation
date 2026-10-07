@@ -252,14 +252,22 @@
       .row:active { cursor: grabbing; }
       .row.dragging { opacity: 0.4; }
 
-      /* The drop lands on the group, so the whole group lights up rather than a
-         thin line between two rows: there is no ordering within a group to
-         aim at, only which group you end up in. */
+      /* A row dragged in from another group lights up the group it would join;
+         the line below says where in it. */
       .group.drop-target {
         background: var(--hover);
         box-shadow: inset 0 0 0 1px var(--ready);
         border-radius: 4px;
       }
+
+      .row.drop-above { box-shadow: inset 0 2px 0 var(--ready); }
+      .row.drop-below,
+      .group-header.drop-below { box-shadow: inset 0 -2px 0 var(--ready); }
+      .group.drop-above { box-shadow: 0 -2px 0 var(--ready); }
+      .group.drop-below { box-shadow: 0 2px 0 var(--ready); }
+
+      .group-header[draggable="true"] { cursor: grab; }
+      .group-header.dragging { opacity: 0.4; }
 
       /* Drawn only in a group with no sessions, where the header would
          otherwise be the whole drop target. Dashed, so it reads as somewhere to
@@ -670,7 +678,7 @@
   </head>
   <body>
     <div id="toolbar">
-      <span>Oldest first</span>
+      <span>Drag rows and groups to reorder</span>
       <!-- Empty while the stream is up, so a board that is live says nothing. -->
       <span id="offline"></span>
       <span id="count"></span>

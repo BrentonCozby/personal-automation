@@ -15,6 +15,22 @@ export interface MetadataStore {
    */
   dismiss(sessionId: string): Promise<void>
   remove(sessionId: string): Promise<void>
+  /** Several rows' changes in one write. */
+  patchMany(patches: { sessionId: string; changes: MetadataPatch }[]): Promise<void>
+  /**
+   * Apply `changes` and move the row into its group just above `before`, or
+   * last when `before` is undefined or not in that group. Every row on the
+   * board in that group is renumbered from 0, in the same write.
+   */
+  place(input: {
+    sessionId: string
+    changes: MetadataPatch
+    before: string | undefined
+  }): Promise<SessionMetadata>
+}
+
+function byOrder(a: SessionMetadata, b: SessionMetadata): number {
+  return (a.order ?? Number.MAX_SAFE_INTEGER) - (b.order ?? Number.MAX_SAFE_INTEGER)
 }
 
 function withoutEmptyFields(metadata: SessionMetadata): SessionMetadata {
@@ -69,5 +85,54 @@ export function createMetadataStore({ path }: { path: string }): MetadataStore {
     })
   }
 
-  return { read, patch, dismiss, remove }
+  function patchMany(patches: { sessionId: string; changes: MetadataPatch }[]): Promise<void> {
+    return serialize(async () => {
+      const all = await read()
+      for (const { sessionId, changes } of patches) {
+        all[sessionId] = withoutEmptyFields({ ...all[sessionId], ...changes })
+      }
+
+      await write(all)
+    })
+  }
+
+  function place({
+    sessionId,
+    changes,
+    before,
+  }: {
+    sessionId: string
+    changes: MetadataPatch
+    before: string | undefined
+  }): Promise<SessionMetadata> {
+    return serialize(async () => {
+      const all = await read()
+      const moved = withoutEmptyFields({ ...all[sessionId], ...changes })
+
+      const others = Object.entries(all)
+        .filter(
+          ([id, entry]) =>
+            id !== sessionId &&
+            entry.group === moved.group &&
+            !entry.isDismissed &&
+            !entry.supersededBy,
+        )
+        .sort(([, a], [, b]) => byOrder(a, b))
+        .map(([id]) => id)
+
+      const at = before === undefined ? -1 : others.indexOf(before)
+      const placed = [...others]
+      placed.splice(at === -1 ? others.length : at, 0, sessionId)
+
+      all[sessionId] = moved
+      placed.forEach((id, order) => {
+        all[id] = { ...all[id], order }
+      })
+      await write(all)
+
+      return all[sessionId] ?? moved
+    })
+  }
+
+  return { read, patch, dismiss, remove, patchMany, place }
 }
