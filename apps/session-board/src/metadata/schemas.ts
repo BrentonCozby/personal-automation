@@ -5,11 +5,12 @@ export const sessionMetadataSchema = z.object({
   group: z.string().min(1).optional(),
   parkedReason: z.string().min(1).optional(),
   progressPath: z.string().min(1).optional(),
-  // The last two carry a session the hook log has never seen, imported from
-  // somewhere that watched it earlier. Nothing the board itself writes sets
-  // them: for a session with events, both come from the events instead.
+  // Carries a session the hook log has never seen, imported from somewhere
+  // that watched it earlier. For a session with events, the events win.
   /** Unix seconds of the session's last known activity. */
   lastActive: z.number().positive().optional(),
+  // Set by hand, so it wins over the directory the session's events report:
+  // it is how a session is pointed at a directory it never ran in.
   cwd: z.string().min(1).optional(),
   // Taken off the board by hand. The row has to stay behind to say so: a
   // session that carries a title claims itself the moment it has no row at all,

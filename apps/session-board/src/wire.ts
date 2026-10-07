@@ -29,8 +29,6 @@ export const patchBodySchema = z.object({
   progressPath: clearableText.optional(),
 })
 
-export const openBodySchema = z.object({ cwd: z.string().min(1) })
-
 /**
  * A session the board is inventing, for the `+` on a group header.
  *

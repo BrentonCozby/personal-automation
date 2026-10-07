@@ -33,7 +33,7 @@ import { createMetadataStore } from './metadata/store.js'
 import type { MetadataPatch } from './metadata/types.js'
 import { findRequestRejection, isSessionId } from './request-guard.js'
 import { buildSnapshot, fileExists, resolveSessionCwd } from './snapshot.js'
-import { groupBodySchema, newSessionBodySchema, openBodySchema, patchBodySchema } from './wire.js'
+import { groupBodySchema, newSessionBodySchema, patchBodySchema } from './wire.js'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 
@@ -493,9 +493,12 @@ export function createBoardServer({ config }: { config: Config }): BoardServer {
     }
 
     if (action === '/open' && req.method === 'POST') {
-      const body = openBodySchema.safeParse(await readBody(req))
-      if (!body.success) {
-        sendJson({ res, status: 400, body: { error: 'cwd is required to resume a session' } })
+      // From the session, never the request: this runs a whole command in that
+      // directory, and `/progress-candidates` refuses a request-supplied one too.
+      const metadata = await store.read()
+      const cwd = resolveSessionCwd({ events, metadata, sessionId })
+      if (!cwd) {
+        sendJson({ res, status: 404, body: { error: 'no working directory recorded' } })
 
         return true
       }
@@ -504,7 +507,7 @@ export function createBoardServer({ config }: { config: Config }): BoardServer {
       // clean session pointed at it rather than its old conversation reopened.
       // A file that has gone missing falls through to the old session, which is
       // then the only record of the work left.
-      const entry = (await store.read())[sessionId]
+      const entry = metadata[sessionId]
       const progressPath = entry?.progressPath
       const name = entry?.name
 
@@ -533,7 +536,7 @@ export function createBoardServer({ config }: { config: Config }): BoardServer {
           name,
           progressPath,
           systemPrompt,
-          cwd: body.data.cwd,
+          cwd,
           commandTemplate: config.progressCommand,
           promptTemplate: config.progressPrompt,
         })
@@ -541,7 +544,7 @@ export function createBoardServer({ config }: { config: Config }): BoardServer {
         await openSessionTab({
           sessionId,
           systemPrompt,
-          cwd: body.data.cwd,
+          cwd,
           commandTemplate: config.launchCommand,
         })
       }

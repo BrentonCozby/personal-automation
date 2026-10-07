@@ -515,7 +515,6 @@ function buildRow(row) {
 
     void api(`/api/sessions/${encodeURIComponent(row.sessionId)}/open`, {
       method: 'POST',
-      body: JSON.stringify({ cwd: row.cwd }),
     }).then(result => {
       if (result.ok) return
 

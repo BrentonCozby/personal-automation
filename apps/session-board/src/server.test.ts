@@ -532,12 +532,12 @@ it('marks a row relaunched so the fresh session takes the row over', async () =>
   const progressPath = join(dir, 'soc2.progress.local.md')
   await writeFile(progressPath, '# soc2\n')
 
-  const board = await startBoard({ metadata: { abc: { name: 'soc2', progressPath } } })
+  const board = await startBoard({ metadata: { abc: { name: 'soc2', progressPath, cwd: dir } } })
 
   const res = await fetch(`${board.origin}/api/sessions/abc/open`, {
     method: 'POST',
     headers: { origin: board.origin, 'content-type': 'application/json' },
-    body: JSON.stringify({ cwd: dir }),
+    body: '{}',
   })
 
   expect(res.status).toBe(200)
@@ -559,12 +559,12 @@ it('marks a row relaunched so the fresh session takes the row over', async () =>
 
 it('grants subagents to a row with no progress file, which reopens its conversation', async () => {
   const dir = await mkdtemp(join(tmpdir(), 'session-board-plain-'))
-  const board = await startBoard({ metadata: { abc: { name: 'soc2' } } })
+  const board = await startBoard({ metadata: { abc: { name: 'soc2', cwd: dir } } })
 
   const res = await fetch(`${board.origin}/api/sessions/abc/open`, {
     method: 'POST',
     headers: { origin: board.origin, 'content-type': 'application/json' },
-    body: JSON.stringify({ cwd: dir }),
+    body: '{}',
   })
 
   expect(res.status).toBe(200)
@@ -573,12 +573,58 @@ it('grants subagents to a row with no progress file, which reopens its conversat
   })
 })
 
+it("resumes in the session's own directory, whatever the request names", async () => {
+  const board = await startBoard({
+    events: [{ hook_event_name: 'SessionStart', session_id: 'abc', t: 1, cwd: '/repo/own' }],
+  })
+
+  const res = await fetch(`${board.origin}/api/sessions/abc/open`, {
+    method: 'POST',
+    headers: { origin: board.origin, 'content-type': 'application/json' },
+    body: JSON.stringify({ cwd: '/tmp/elsewhere' }),
+  })
+
+  expect(res.status).toBe(200)
+  expect(vi.mocked(openSessionTab).mock.calls.at(-1)?.[0]).toMatchObject({ cwd: '/repo/own' })
+})
+
+it('resumes in a directory set by hand over the one its events report', async () => {
+  const board = await startBoard({
+    metadata: { abc: { name: 'audit', cwd: '/repo/set-by-hand' } },
+    events: [{ hook_event_name: 'SessionStart', session_id: 'abc', t: 1, cwd: '/repo/own' }],
+  })
+
+  await fetch(`${board.origin}/api/sessions/abc/open`, {
+    method: 'POST',
+    headers: { origin: board.origin, 'content-type': 'application/json' },
+    body: '{}',
+  })
+
+  expect(vi.mocked(openSessionTab).mock.calls.at(-1)?.[0]).toMatchObject({
+    cwd: '/repo/set-by-hand',
+  })
+})
+
+it('refuses to resume a session with no directory recorded', async () => {
+  const board = await startBoard({ metadata: { abc: { name: 'soc2' } } })
+  vi.mocked(openSessionTab).mockClear()
+
+  const res = await fetch(`${board.origin}/api/sessions/abc/open`, {
+    method: 'POST',
+    headers: { origin: board.origin, 'content-type': 'application/json' },
+    body: '{}',
+  })
+
+  expect(res.status).toBe(404)
+  expect(openSessionTab).not.toHaveBeenCalled()
+})
+
 it('marks the row before the launch, so a fast session cannot start ahead of the mark', async () => {
   const dir = await mkdtemp(join(tmpdir(), 'session-board-progress-'))
   const progressPath = join(dir, 'soc2.progress.local.md')
   await writeFile(progressPath, '# soc2\n')
 
-  const board = await startBoard({ metadata: { abc: { name: 'soc2', progressPath } } })
+  const board = await startBoard({ metadata: { abc: { name: 'soc2', progressPath, cwd: dir } } })
 
   // Opening the tab takes about a second and the session it starts fires its
   // first event moments later. A mark made after that returns is timed after
@@ -592,7 +638,7 @@ it('marks the row before the launch, so a fast session cannot start ahead of the
   const res = await fetch(`${board.origin}/api/sessions/abc/open`, {
     method: 'POST',
     headers: { origin: board.origin, 'content-type': 'application/json' },
-    body: JSON.stringify({ cwd: dir }),
+    body: '{}',
   })
 
   expect(res.status).toBe(200)

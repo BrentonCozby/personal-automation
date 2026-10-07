@@ -49,7 +49,7 @@ export function resolveSessionCwd({
   metadata: MetadataBySession
   sessionId: string
 }): string | undefined {
-  return cwdBySession(events).get(sessionId) || metadata[sessionId]?.cwd
+  return metadata[sessionId]?.cwd || cwdBySession(events).get(sessionId)
 }
 
 export async function fileExists(path: string): Promise<boolean> {

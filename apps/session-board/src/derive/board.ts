@@ -260,7 +260,7 @@ export function buildBoard({
       lastTurns,
       status,
       lastActive,
-      cwd: lastDefined({ events: sessionEvents, pick: event => event.cwd }),
+      cwd: entry?.cwd || lastDefined({ events: sessionEvents, pick: event => event.cwd }),
     })
 
     // A dismissed row exists only to stop the session claiming itself again, so
