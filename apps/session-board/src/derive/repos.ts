@@ -57,7 +57,8 @@ export function collectGroupDirectories({
   for (const [sessionId, entry] of Object.entries(metadata)) {
     if (entry.group !== group) continue
 
-    const cwd = cwds.get(sessionId) || entry.cwd
+    // A `cwd` set by hand is how a row is pointed somewhere it never ran.
+    const cwd = entry.cwd || cwds.get(sessionId)
     if (cwd) directories.add(cwd)
   }
 

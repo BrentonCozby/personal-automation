@@ -208,9 +208,12 @@ it("collects only the directories of one group's sessions", () => {
   expect(directories).toEqual(['/marketplace-worktrees/soc2'])
 })
 
-it("falls back to a row's own directory for a session with no events", () => {
+it.each([
+  ['a session with no events', []],
+  ['a session its events place elsewhere', [event({ sessionId: 'a', cwd: '/ran-here' })]],
+])("takes a row's own directory for %s", (_case, events) => {
   const directories = collectGroupDirectories({
-    events: [],
+    events,
     metadata: { a: { group: 'Stash', cwd: '/imported' } },
     group: 'Stash',
   })
