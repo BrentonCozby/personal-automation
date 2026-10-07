@@ -828,6 +828,56 @@ it('writes nothing when the picker is dismissed', async () => {
   expect(rowNode().querySelector('select.edit')).toBe(null)
 })
 
+it('draws the snapshot the picker held back once it is dismissed', async () => {
+  const onMessage = {}
+  vi.stubGlobal('EventSource', fakeStreamInto(onMessage))
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async () => ({
+      ok: true,
+      json: async () => ({ files: [{ path: '/repo/a-task.progress.local.md', slug: 'a-task' }] }),
+    })),
+  )
+  start()
+  onMessage.message({ data: JSON.stringify(boardWith([aRow({ name: 'perf' })])) })
+
+  buttonNamed('link').click()
+  await settle()
+  const select = rowNode().querySelector('select.edit')
+  select.focus()
+  onMessage.message({ data: JSON.stringify(boardWith([aRow({ name: 'held' })])) })
+  select.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }))
+  await settle()
+
+  expect(rowNode().querySelector('.name').textContent).toBe('held')
+})
+
+it('keeps the field focus moved to when the picker closes by losing focus', async () => {
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async () => ({
+      ok: true,
+      json: async () => ({ files: [{ path: '/repo/a-task.progress.local.md', slug: 'a-task' }] }),
+    })),
+  )
+  render(
+    boardWith([
+      aRow({ sessionId: 'abc', name: 'perf' }),
+      aRow({ sessionId: 'xyz', name: 'other' }),
+    ]),
+  )
+
+  buttonNamed('link').click()
+  await settle()
+  rowNode().querySelector('select.edit').focus()
+  const other = document.querySelector('.row[data-session-id="xyz"] .name')
+  other.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter' }))
+  await settle()
+
+  // A repaint here would rebuild the row and throw the new field away mid-edit.
+  expect(document.activeElement?.matches('.row[data-session-id="xyz"] input.edit')).toBe(true)
+})
+
 it('says so rather than opening an empty picker when the repo has no progress files', async () => {
   vi.stubGlobal(
     'fetch',

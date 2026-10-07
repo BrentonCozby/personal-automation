@@ -789,8 +789,8 @@ async function openProgressPicker(node, row) {
     }
 
     // Snapshots that arrived while the select held focus were set aside rather
-    // than drawn. Repaint now so the board is not left showing an older one.
-    render(latest)
+    // than drawn. Not straight away: focus may have moved to another field.
+    catchUp()
   }
 
   select.addEventListener('change', () => finish(select.value))
