@@ -7,6 +7,10 @@ import { withoutWindowNumber } from '../session-name.js'
 // you resume from inside another session.
 const HANDOVER = new Set(['clear', 'resume'])
 
+function isHandoverEnd(event: HookEvent): boolean {
+  return event.hook_event_name === 'SessionEnd' && !!event.reason && HANDOVER.has(event.reason)
+}
+
 /**
  * Map each session id to the session that took over from it.
  *
@@ -43,7 +47,7 @@ export function resolveSuccessors(events: HookEvent[]): Map<string, string> {
     if (pid === undefined) continue
 
     if (event.hook_event_name === 'SessionEnd') {
-      if (!event.reason || !HANDOVER.has(event.reason)) continue
+      if (!isHandoverEnd(event)) continue
 
       const waiting = startedOnPid.get(pid)
       if (pairs({ event, waiting }) && waiting) {
@@ -197,6 +201,10 @@ export function dropReturnedHandovers({
 }): Map<string, string> {
   const lastEventAt = new Map<string, number>()
   for (const event of events) {
+    // The old half of a handover can be written after the new half, and is
+    // the session leaving rather than coming back. A return fires SessionStart.
+    if (isHandoverEnd(event)) continue
+
     lastEventAt.set(event.session_id, Math.max(event.t, lastEventAt.get(event.session_id) ?? 0))
   }
 

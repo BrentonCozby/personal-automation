@@ -186,6 +186,19 @@ it('keeps a handover the session it handed to is still working under', () => {
   expect(successors.get('before')).toBe('after')
 })
 
+it('keeps a handover whose old half was written after the new one started', () => {
+  const successors = dropReturnedHandovers({
+    successors: new Map([['before', 'after']]),
+    events: [
+      event({ hook_event_name: 'SessionStart', session_id: 'after', source: 'clear', t: 100 }),
+      event({ hook_event_name: 'SessionEnd', session_id: 'before', reason: 'clear', t: 101 }),
+    ],
+  })
+
+  // The end of the handover itself is not the old session coming back.
+  expect(successors.get('before')).toBe('after')
+})
+
 it('keeps the pairing of a row whose session never fired an event of its own', () => {
   const successors = dropReturnedHandovers({
     successors: new Map([['pending-1111', 'fresh']]),
