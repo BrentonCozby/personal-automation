@@ -1129,7 +1129,7 @@ it('launches at the repo root when a worktree was typed, and says which root', a
   expect(vi.mocked(openNewSession).mock.calls.at(-1)?.[0]).toMatchObject({ cwd: root })
 })
 
-it('refuses a directory that is in no repository', async () => {
+it('starts a session in a directory that is in no repository', async () => {
   const plain = await realpath(await mkdtemp(join(tmpdir(), 'session-board-plain-')))
   const board = await startBoard()
 
@@ -1139,8 +1139,26 @@ it('refuses a directory that is in no repository', async () => {
     createProgressFile: true,
   })
 
+  expect(res.status).toBe(200)
+  expect(await res.json()).toMatchObject({
+    cwd: plain,
+    progressPath: join(plain, 'review-perf.progress.local.md'),
+  })
+  expect(vi.mocked(openNewSession).mock.calls.at(-1)?.[0]).toMatchObject({ cwd: plain })
+})
+
+it('refuses a directory that does not exist', async () => {
+  const missing = join(await realpath(tmpdir()), 'session-board-missing', 'nowhere')
+  const board = await startBoard()
+
+  const res = await postSession(board, {
+    name: 'review-perf',
+    cwd: missing,
+    createProgressFile: true,
+  })
+
   expect(res.status).toBe(400)
-  expect(await res.json()).toEqual({ error: `${plain} is not in a git repository` })
+  expect(await res.json()).toEqual({ error: `${missing} is not a directory` })
   expect(await readMetadata(board.metadataPath)).toBeUndefined()
 })
 

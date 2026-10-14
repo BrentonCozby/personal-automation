@@ -1032,7 +1032,7 @@ function openStartPanel({ label, button }) {
 
   const where = el('input', 'edit')
   where.setAttribute('list', REPO_LIST_ID)
-  where.setAttribute('aria-label', 'Repository the new session starts in')
+  where.setAttribute('aria-label', 'Directory the new session starts in')
   // Filled once the roots arrive. Disabled until then so a path typed into it
   // cannot be overwritten by the answer landing a moment later.
   where.placeholder = 'looking for repositories…'
@@ -1111,7 +1111,7 @@ function openStartPanel({ label, button }) {
 
     const cwd = where.value.trim()
     if (!cwd) {
-      say('a session needs a repository to start in')
+      say('a session needs a directory to start in')
       where.focus()
 
       return

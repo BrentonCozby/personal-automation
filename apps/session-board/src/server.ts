@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto'
 import { type FSWatcher, watch } from 'node:fs'
-import { readFile, rm } from 'node:fs/promises'
+import { readFile, rm, stat } from 'node:fs/promises'
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -75,6 +75,22 @@ function sendJson({
     'content-length': Buffer.byteLength(payload),
   })
   res.end(payload)
+}
+
+async function isDirectory(path: string): Promise<boolean> {
+  try {
+    return (await stat(path)).isDirectory()
+  } catch (error) {
+    if (
+      error instanceof Error &&
+      'code' in error &&
+      ['ENOENT', 'ENOTDIR'].includes(String(error.code))
+    ) {
+      return false
+    }
+
+    throw error
+  }
 }
 
 async function readBody(req: IncomingMessage): Promise<unknown> {
@@ -464,15 +480,16 @@ export function createBoardServer({ config }: { config: Config }): BoardServer {
       return true
     }
 
-    // Worktrees collapse onto the repository they belong to rather than being
-    // refused, the way the name field corrects rather than refuses. The answer
-    // names the root so the correction is visible instead of silent.
-    const root = await resolveRepoRoot(cwd)
-    if (!root) {
-      sendJson({ res, status: 400, body: { error: `${cwd} is not in a git repository` } })
+    if (!(await isDirectory(cwd))) {
+      sendJson({ res, status: 400, body: { error: `${cwd} is not a directory` } })
 
       return true
     }
+
+    // Worktrees collapse onto the repository they belong to rather than being
+    // refused, the way the name field corrects rather than refuses. The answer
+    // names the root so the correction is visible instead of silent.
+    const root = (await resolveRepoRoot(cwd)) || cwd
 
     const created = wantsProgressFile
       ? await createProgressFile({ repoRoot: root, name })
