@@ -38,6 +38,21 @@ it('returns only what was appended since the last read', async () => {
   expect((await reader.readAppended()).events.map(event => event.session_id)).toEqual(['b'])
 })
 
+it('hands each appended line to only one of two reads that overlap', async () => {
+  const path = await logPath()
+  await writeFile(path, line('a', 1), 'utf8')
+  const reader = createEventLogReader({ path })
+  await reader.readAll()
+
+  await appendFile(path, line('b', 2), 'utf8')
+  const overlapping = await Promise.all([reader.readAppended(), reader.readAppended()])
+  await appendFile(path, line('c', 3), 'utf8')
+  const next = await reader.readAppended()
+
+  const ids = [...overlapping, next].flatMap(read => read.events.map(event => event.session_id))
+  expect(ids).toEqual(['b', 'c'])
+})
+
 it('returns nothing when nothing was appended', async () => {
   const path = await logPath()
   await writeFile(path, line('a', 1), 'utf8')

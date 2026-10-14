@@ -29,13 +29,29 @@ async function readFrom({ path, offset }: { path: string; offset: number }): Pro
 export function createEventLogReader({ path }: { path: string }): EventLogReader {
   let offset = 0
 
-  function readAll(): Promise<ParsedEventLog> {
-    offset = 0
+  // Every read starts at `offset` and moves it, so two that overlap would both
+  // return the same lines and then move it twice.
+  let queue: Promise<unknown> = Promise.resolve()
+  function inTurn(task: () => Promise<ParsedEventLog>): Promise<ParsedEventLog> {
+    const run = queue.then(task)
+    queue = run.catch(() => undefined)
 
-    return readAppended()
+    return run
   }
 
-  async function readAppended(): Promise<ParsedEventLog> {
+  function readAll(): Promise<ParsedEventLog> {
+    return inTurn(() => {
+      offset = 0
+
+      return readTail()
+    })
+  }
+
+  function readAppended(): Promise<ParsedEventLog> {
+    return inTurn(readTail)
+  }
+
+  async function readTail(): Promise<ParsedEventLog> {
     let size: number
     try {
       ;({ size } = await stat(path))
