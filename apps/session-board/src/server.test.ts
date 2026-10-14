@@ -517,6 +517,22 @@ it('refuses a POST carrying another site as its origin', async () => {
   expect(res.status).toBe(403)
 })
 
+it('refuses a read addressed to another site name, as DNS rebinding sends', async () => {
+  const board = await startBoard()
+
+  // A raw socket, since fetch will not set Host. A page on evil.example whose
+  // name was pointed at 127.0.0.1 sends exactly this, and reads the answer.
+  const socket = createConnection({ port: board.port, host: '127.0.0.1' })
+  await new Promise<void>(resolve => socket.once('connect', resolve))
+  socket.write(`GET /stream HTTP/1.1\r\nHost: evil.example:${board.port}\r\n\r\n`)
+  const head = await new Promise<string>(resolve => {
+    socket.once('data', chunk => resolve(chunk.toString()))
+  })
+  socket.destroy()
+
+  expect(head).toMatch(/^HTTP\/1\.1 403/)
+})
+
 it('refuses the form-shaped POST that reaches a localhost port with no preflight', async () => {
   const board = await startBoard()
 

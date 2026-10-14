@@ -767,6 +767,7 @@ export function createBoardServer({ config }: { config: Config }): BoardServer {
       try {
         const rejection = findRequestRejection({
           method: req.method,
+          host: req.headers.host,
           origin: req.headers.origin,
           contentType: req.headers['content-type'],
           port: config.port,

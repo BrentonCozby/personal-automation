@@ -40,6 +40,12 @@ function allowedOrigins(port: number): string[] {
   return [`http://localhost:${port}`, `http://127.0.0.1:${port}`, `http://[::1]:${port}`]
 }
 
+function isLocalHost({ host, port }: { host: string; port: number }): boolean {
+  return ['localhost', '127.0.0.1', '[::1]'].some(
+    name => host === name || host === `${name}:${port}`,
+  )
+}
+
 function isJsonContentType(contentType: string | undefined): boolean {
   const [type] = (contentType || '').split(';')
 
@@ -53,15 +59,23 @@ function isJsonContentType(contentType: string | undefined): boolean {
  */
 export function findRequestRejection({
   method,
+  host,
   origin,
   contentType,
   port,
 }: {
   method: string | undefined
+  host: string | undefined
   origin: string | undefined
   contentType: string | undefined
   port: number
 }): RequestRejection | undefined {
+  // Reads included: a page on another site whose name was pointed at
+  // 127.0.0.1 (DNS rebinding) counts as same-origin and could read /stream.
+  if (!host || !isLocalHost({ host, port })) {
+    return { status: 403, error: 'request addressed to another host refused' }
+  }
+
   if (!method || !MUTATING_METHODS.has(method)) return undefined
 
   // A request with no origin at all came from curl or a script, not a page: a
