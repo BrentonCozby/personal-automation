@@ -1,6 +1,6 @@
 import { mkdir, readFile, rename, writeFile } from 'node:fs/promises'
 import { dirname } from 'node:path'
-import type { ZodType } from 'zod'
+import { ZodError, type ZodType } from 'zod'
 
 export interface JsonFile<T> {
   read(): Promise<T>
@@ -53,7 +53,13 @@ export function createJsonFile<T>({
     // A damaged file is thrown rather than treated as empty. Starting from
     // empty would look like a working board with no sessions on it, and the
     // next edit would write that emptiness back over the real annotations.
-    return schema.parse(JSON.parse(text))
+    try {
+      return schema.parse(JSON.parse(text))
+    } catch (error) {
+      if (!(error instanceof SyntaxError || error instanceof ZodError)) throw error
+
+      throw new Error(`${path} cannot be read: ${error.message}`, { cause: error })
+    }
   }
 
   async function write(value: T): Promise<void> {

@@ -92,7 +92,8 @@ it('refuses to read a damaged file rather than reporting an empty board', async 
   await store.patch({ sessionId: 'abc', changes: { name: 'impact' } })
   await writeFile(path, '{ not json', 'utf8')
 
-  await expect(store.read()).rejects.toThrow()
+  // Names the file, since the board shows this to say why it stopped updating.
+  await expect(store.read()).rejects.toThrow(`${path} cannot be read`)
 })
 
 it('refuses a file whose shape does not match', async () => {
@@ -100,7 +101,7 @@ it('refuses a file whose shape does not match', async () => {
   await store.patch({ sessionId: 'abc', changes: { name: 'impact' } })
   await writeFile(path, JSON.stringify({ abc: { name: 42 } }), 'utf8')
 
-  await expect(store.read()).rejects.toThrow()
+  await expect(store.read()).rejects.toThrow(`${path} cannot be read`)
 })
 
 it('keeps the name when a row is taken off the board, and drops the rest', async () => {

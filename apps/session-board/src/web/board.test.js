@@ -2028,6 +2028,26 @@ it('reopens a stream the browser gave up on, and says the board is not live mean
   expect(document.getElementById('offline').textContent).toBe('')
 })
 
+it('says why the board stopped updating when the server cannot rebuild it', () => {
+  const handlers = {}
+  vi.stubGlobal('EventSource', fakeStreamInto(handlers))
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async () => ({ ok: true, json: async () => ({}) })),
+  )
+  start()
+
+  handlers.stale({ data: JSON.stringify({ error: '/x/sessions.json cannot be read' }) })
+
+  expect(document.getElementById('offline').textContent).toBe(
+    'not live: /x/sessions.json cannot be read',
+  )
+
+  handlers.message({ data: JSON.stringify(boardWith([aRow({ name: 'perf' })])) })
+
+  expect(document.getElementById('offline').textContent).toBe('')
+})
+
 it('leaves a stream the browser is still retrying alone', async () => {
   const handlers = {}
   const FakeStream = fakeStreamInto(handlers)

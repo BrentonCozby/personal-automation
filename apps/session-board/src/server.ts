@@ -235,11 +235,29 @@ export function createBoardServer({ config }: { config: Config }): BoardServer {
     return oneAtATime(() => buildSnapshot({ events, store, groups, config, namer, contextReader }))
   }
 
+  /**
+   * The next frame for a stream. Never throws: a failed rebuild (a half-typed
+   * hand edit of sessions.json) becomes a `stale` event the page shows, and the
+   * next save of the file rebuilds.
+   */
+  async function buildFrame(): Promise<string> {
+    let board: Board
+    try {
+      board = await snapshot()
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      process.stderr.write(`board rebuild failed: ${message}\n`)
+
+      return `event: stale\ndata: ${JSON.stringify({ error: message })}\n\n`
+    }
+
+    return `data: ${JSON.stringify(board)}\n\n`
+  }
+
   async function pushToStreams(): Promise<void> {
     if (streams.size === 0) return
 
-    const board = await snapshot()
-    const frame = `data: ${JSON.stringify(board)}\n\n`
+    const frame = await buildFrame()
 
     // Skipping a frame a stream already has keeps the timer below silent while
     // the board sits still, and a tab redraws its whole panel on every frame it
@@ -262,7 +280,14 @@ export function createBoardServer({ config }: { config: Config }): BoardServer {
     if (rebuildTimer) clearTimeout(rebuildTimer)
 
     rebuildTimer = setTimeout(() => {
-      void ingestNewEvents().then(pushToStreams)
+      // Nothing awaits this, so a failed read would end the process. The board
+      // rebuilds from the events it already holds instead.
+      void ingestNewEvents()
+        .catch(error => {
+          const message = error instanceof Error ? error.message : String(error)
+          process.stderr.write(`event log read failed: ${message}\n`)
+        })
+        .then(pushToStreams)
     }, REBUILD_DEBOUNCE_MS)
   }
 
@@ -764,7 +789,7 @@ export function createBoardServer({ config }: { config: Config }): BoardServer {
             isClosed = true
             streams.delete(res)
           })
-          const frame = `data: ${JSON.stringify(await snapshot())}\n\n`
+          const frame = await buildFrame()
           if (isClosed) return
 
           streams.set(res, frame)

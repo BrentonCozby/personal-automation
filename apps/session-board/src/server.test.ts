@@ -1,8 +1,8 @@
 import { execFile } from 'node:child_process'
-import { mkdtemp, readFile, realpath, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, realpath, rm, writeFile } from 'node:fs/promises'
 import { createConnection, createServer as createNetServer, type Socket } from 'node:net'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 import { promisify } from 'node:util'
 import { afterEach, expect, it, vi } from 'vitest'
 import type { Config } from './config.js'
@@ -126,9 +126,11 @@ const FRAME_WAIT_MS = 2000
 async function openFrames(port: number): Promise<{
   socket: Socket
   frames: Board[]
+  staleErrors: string[]
   waitFor(count: number): Promise<void>
 }> {
   const frames: Board[] = []
+  const staleErrors: string[] = []
   let buffer = ''
   let onFrame: (() => void) | undefined
 
@@ -140,8 +142,13 @@ async function openFrames(port: number): Promise<{
     for (const part of parts) {
       // The response headers arrive glued to the first frame, so the payload is
       // the one line inside a part that starts with `data: `.
-      const line = part.split('\n').find(one => one.startsWith('data: '))
-      if (line) frames.push(JSON.parse(line.slice('data: '.length)))
+      const lines = part.split('\n')
+      const line = lines.find(one => one.startsWith('data: '))
+      if (!line) continue
+
+      const payload = JSON.parse(line.slice('data: '.length))
+      if (lines.includes('event: stale')) staleErrors.push(payload.error)
+      else frames.push(payload)
     }
     onFrame?.()
   })
@@ -172,7 +179,7 @@ async function openFrames(port: number): Promise<{
     })
   }
 
-  return { socket, frames, waitFor }
+  return { socket, frames, staleErrors, waitFor }
 }
 
 function parkedReasonIn(frame: Board | undefined): string | undefined {
@@ -366,6 +373,54 @@ it('sends nothing on a tick that leaves the board exactly as it was', async () =
 
   expect(parkedReasonIn(stream.frames[1])).toBe('a review')
   expect(stream.frames).toHaveLength(2)
+  stream.socket.destroy()
+})
+
+it('stays up through a hand edit that leaves sessions.json unreadable, and says why', async () => {
+  const board = await startBoard({
+    events: [{ session_id: 'abc', hook_event_name: 'SessionStart', t: 1_700_000_000 }],
+    metadata: { abc: { name: 'impact-scoring' } },
+  })
+  const stream = await openFrames(board.port)
+
+  // Long enough for the watcher's debounce to fire and the rebuild to fail
+  // before the repair, or the two writes fold into one rebuild.
+  await writeFile(board.metadataPath, '{ broken')
+  await new Promise(resolve => setTimeout(resolve, 500))
+  expect(stream.staleErrors).toHaveLength(1)
+  expect(stream.staleErrors[0]).toMatch(/JSON/)
+
+  // A tab opened now is told the same, rather than refused.
+  const late = await openFrames(board.port)
+  expect(late.staleErrors).toHaveLength(1)
+  late.socket.destroy()
+
+  await writeFile(
+    board.metadataPath,
+    JSON.stringify({ abc: { name: 'impact-scoring', parkedReason: 'a review' } }),
+  )
+  await stream.waitFor(2)
+
+  expect(parkedReasonIn(stream.frames[1])).toBe('a review')
+  stream.socket.destroy()
+})
+
+it('stays up when the event log cannot be read', async () => {
+  const board = await startBoard({
+    events: [{ session_id: 'abc', hook_event_name: 'SessionStart', t: 1_700_000_000 }],
+    metadata: { abc: { name: 'impact-scoring' } },
+  })
+  const stream = await openFrames(board.port)
+
+  // A directory where the log should be: every read of it fails.
+  const eventLogPath = join(dirname(board.metadataPath), 'events.jsonl')
+  await rm(eventLogPath)
+  await mkdir(eventLogPath)
+  await new Promise(resolve => setTimeout(resolve, 500))
+  await patchParkedReason(board.origin)
+  await stream.waitFor(2)
+
+  expect(parkedReasonIn(stream.frames.at(-1))).toBe('a review')
   stream.socket.destroy()
 })
 

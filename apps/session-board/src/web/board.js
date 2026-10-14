@@ -1528,6 +1528,13 @@ export function connect() {
 
   stream.addEventListener('open', () => sayOffline(false))
 
+  // The server is up but cannot build a board, so the rows on screen stop
+  // changing. The next good frame clears this.
+  stream.addEventListener('stale', event => {
+    const label = document.getElementById('offline')
+    if (label) label.textContent = `not live: ${JSON.parse(event.data).error}`
+  })
+
   stream.addEventListener('message', event => {
     sayOffline(false)
     const board = JSON.parse(event.data)
