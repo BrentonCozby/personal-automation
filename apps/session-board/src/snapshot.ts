@@ -211,25 +211,21 @@ async function migrateSupersededSessions({
     const current = resolveCurrentSessionId({ sessionId, successors })
     if (current === sessionId) continue
 
-    // The mark that paired these two belongs to the row that was clicked, not
-    // to the session it started. Carrying it forward would let the new row
-    // adopt a third session started under the same name minutes later.
-    const { relaunchedAt: _relaunched, ...carried } = entry
-
     // The successor may have already claimed itself from the name it inherited,
-    // so anything it holds wins and the older row only fills the gaps.
-    await store.patch({ sessionId: current, changes: { ...carried, ...metadata[current] } })
-    await store.remove(sessionId)
-
+    // so anything it holds wins and the older row only fills the gaps. The
+    // `relaunchedAt` mark stays behind: carried, it would let the new row adopt
+    // a third session started under the same name minutes later.
+    //
     // A `/clear` handover is written in the event log, so removing the row
     // loses nothing. A relaunch is recorded nowhere else, and the id it leaves
     // behind was launched with a name, so an empty row has to stay to say where
     // its work went. It draws nothing: `buildBoard` skips a superseded id.
-    if (relaunched.has(sessionId)) {
-      await store.patch({ sessionId, changes: { supersededBy: current } })
-    }
-
-    didMigrate = true
+    const didHandOver = await store.handOver({
+      from: sessionId,
+      to: current,
+      keepPointer: relaunched.has(sessionId),
+    })
+    didMigrate ||= didHandOver
   }
 
   return didMigrate

@@ -122,6 +122,36 @@ it('carries a row forward when a cleared session had no name waiting on the othe
   expect(await readWithoutOrder(store)).toEqual({ after: { name: 'impact' } })
 })
 
+it('keeps an edit that lands while a handover is being worked out', async () => {
+  const { store: real, groups } = await storeWith({ before: { name: 'impact' } })
+  let isEditDone = false
+  // An edit from the page landing just after the snapshot read the file.
+  const store: MetadataStore = {
+    ...real,
+    async read(): Promise<MetadataBySession> {
+      const read = await real.read()
+      if (!isEditDone) {
+        isEditDone = true
+        await real.patch({ sessionId: 'before', changes: { parkedReason: 'a review' } })
+      }
+
+      return read
+    },
+  }
+
+  await buildSnapshot({
+    events: handover({ from: 'before', to: 'after' }),
+    store,
+    groups,
+    config: config(),
+    now: NOW,
+  })
+
+  expect(await readWithoutOrder(real)).toEqual({
+    after: { name: 'impact', parkedReason: 'a review' },
+  })
+})
+
 it('leaves a session that was taken off the board out of the handover', async () => {
   const { store, groups } = await storeWith({
     before: { isDismissed: true },

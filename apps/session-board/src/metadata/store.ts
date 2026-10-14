@@ -15,6 +15,14 @@ export interface MetadataStore {
    */
   dismiss(sessionId: string): Promise<void>
   remove(sessionId: string): Promise<void>
+  /**
+   * Move the row `from` onto `to` in one write, from the file as it is now, so
+   * an edit made since the caller read it is carried rather than lost. `to`
+   * keeps what it already holds. `from` is removed, or with `keepPointer` left
+   * holding only `supersededBy`. False, writing nothing, when `from` is gone,
+   * dismissed or already superseded.
+   */
+  handOver(input: { from: string; to: string; keepPointer: boolean }): Promise<boolean>
   /** Several rows' changes in one write. */
   patchMany(patches: { sessionId: string; changes: MetadataPatch }[]): Promise<void>
   /**
@@ -85,6 +93,33 @@ export function createMetadataStore({ path }: { path: string }): MetadataStore {
     })
   }
 
+  function handOver({
+    from,
+    to,
+    keepPointer,
+  }: {
+    from: string
+    to: string
+    keepPointer: boolean
+  }): Promise<boolean> {
+    return serialize(async () => {
+      const all = await read()
+      const entry = all[from]
+      if (!entry || entry.isDismissed || entry.supersededBy) return false
+
+      // The mark that paired the two belongs to the row that was clicked, not
+      // to the session it started.
+      const { relaunchedAt: _relaunched, ...carried } = entry
+      all[to] = withoutEmptyFields({ ...carried, ...all[to] })
+      if (keepPointer) all[from] = { supersededBy: to }
+      else delete all[from]
+
+      await write(all)
+
+      return true
+    })
+  }
+
   function patchMany(patches: { sessionId: string; changes: MetadataPatch }[]): Promise<void> {
     return serialize(async () => {
       const all = await read()
@@ -134,5 +169,5 @@ export function createMetadataStore({ path }: { path: string }): MetadataStore {
     })
   }
 
-  return { read, patch, dismiss, remove, patchMany, place }
+  return { read, patch, dismiss, remove, handOver, patchMany, place }
 }
