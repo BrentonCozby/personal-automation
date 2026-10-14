@@ -499,6 +499,10 @@ export function createBoardServer({ config }: { config: Config }): BoardServer {
     // names the root so the correction is visible instead of silent.
     const root = (await resolveRepoRoot(cwd)) || cwd
 
+    // Read per launch rather than at boot, so editing the grant takes effect on
+    // the next click. Before the progress file, so a failed read leaves none.
+    const grant = await readFile(config.subagentGrantPath, 'utf8')
+
     const created = wantsProgressFile
       ? await createProgressFile({ repoRoot: root, name })
       : undefined
@@ -516,9 +520,7 @@ export function createBoardServer({ config }: { config: Config }): BoardServer {
     // keeping a progress file would have it write the file the checkbox just
     // said not to.
     const systemPrompt = buildSystemPrompt([
-      // Read per launch rather than at boot, so editing the grant takes effect
-      // on the next click instead of waiting for a board restart.
-      await readFile(config.subagentGrantPath, 'utf8'),
+      grant,
       wantsProgressFile ? undefined : config.noProgressNote,
       created?.isNew ? config.newProgressNote.replaceAll('{{progress}}', created.path) : undefined,
     ])
@@ -533,20 +535,19 @@ export function createBoardServer({ config }: { config: Config }): BoardServer {
     // Deliberately no `lastActive`: a row that has one draws immediately, and a
     // placeholder id has no transcript, so it would appear struck through with
     // a dead resume button. The panel says "starting…" instead.
-    await store.patch({
-      sessionId,
-      changes: {
-        name,
-        group: toStoredGroup(body.data.group),
-        progressPath: created?.path,
-        // Written before the launch. The session about to start fires its first
-        // event moments later, and this mark is the only record that the two are
-        // the same work.
-        relaunchedAt: Math.floor(Date.now() / MILLISECONDS_PER_SECOND),
-      },
-    })
-
     try {
+      await store.patch({
+        sessionId,
+        changes: {
+          name,
+          group: toStoredGroup(body.data.group),
+          progressPath: created?.path,
+          // Written before the launch. The session about to start fires its first
+          // event moments later, and this mark is the only record that the two are
+          // the same work.
+          relaunchedAt: Math.floor(Date.now() / MILLISECONDS_PER_SECOND),
+        },
+      })
       await openNewSession({
         sessionId,
         name,
@@ -556,16 +557,17 @@ export function createBoardServer({ config }: { config: Config }): BoardServer {
         commandTemplate: config.progressCommand,
       })
     } catch (error) {
+      // Only a file this request wrote, and only ever the empty template: one
+      // that already held work is linked as it stands and is somebody's state.
+      // Left behind, the next attempt would find it and tell its session to
+      // carry on from three empty headings. Before the row, whose removal can
+      // fail on the same unwritable file that failed the patch.
+      if (created?.isNew) await rm(created.path, { force: true })
+
       // No session started, so nothing will ever pair with this row, and it
       // carries no `lastActive` and so draws nothing. Left behind it would hold
       // its name against every later attempt, with no row on screen to delete.
       await store.remove(sessionId)
-
-      // Only a file this request wrote, and only ever the empty template: one
-      // that already held work is linked as it stands and is somebody's state.
-      // Left behind, the next attempt would find it and tell its session to
-      // carry on from three empty headings.
-      if (created?.isNew) await rm(created.path, { force: true })
 
       throw error
     }

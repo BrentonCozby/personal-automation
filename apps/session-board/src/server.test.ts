@@ -1,5 +1,5 @@
 import { execFile } from 'node:child_process'
-import { mkdir, mkdtemp, readFile, realpath, rm, writeFile } from 'node:fs/promises'
+import { chmod, mkdir, mkdtemp, readFile, realpath, rm, writeFile } from 'node:fs/promises'
 import { createConnection, createServer as createNetServer, type Socket } from 'node:net'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -1143,6 +1143,33 @@ it('starts a session in a directory that is in no repository', async () => {
     progressPath: join(plain, 'review-perf.progress.local.md'),
   })
   expect(vi.mocked(openNewSession).mock.calls.at(-1)?.[0]).toMatchObject({ cwd: plain })
+})
+
+it.each([
+  {
+    failure: 'the grant cannot be read',
+    breakBoard: (dataDir: string) => rm(join(dataDir, 'subagent-grant.md')),
+  },
+  {
+    failure: 'the row cannot be written',
+    breakBoard: async (dataDir: string) => {
+      await chmod(dataDir, 0o555)
+      closers.push(() => chmod(dataDir, 0o755))
+    },
+  },
+])('leaves no progress file behind when $failure', async ({ breakBoard }) => {
+  const plain = await realpath(await mkdtemp(join(tmpdir(), 'session-board-plain-')))
+  const board = await startBoard()
+  await breakBoard(dirname(board.metadataPath))
+
+  const res = await postSession(board, {
+    name: 'review-perf',
+    cwd: plain,
+    createProgressFile: true,
+  })
+
+  expect(res.status).toBe(500)
+  await expect(readFile(join(plain, 'review-perf.progress.local.md'))).rejects.toThrow('ENOENT')
 })
 
 it('refuses a directory that does not exist', async () => {
