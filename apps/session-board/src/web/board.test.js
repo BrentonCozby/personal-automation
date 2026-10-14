@@ -810,6 +810,32 @@ it('says it is looking while the candidates are being fetched', async () => {
   expect(rowNode().querySelector('.edit-line')).toBe(null)
 })
 
+it('opens the picker on the redrawn row when a frame lands while it loads', async () => {
+  let answer
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(
+      () =>
+        new Promise(resolve => {
+          answer = resolve
+        }),
+    ),
+  )
+  const board = boardWith([aRow({ name: 'perf' })])
+  render(board)
+
+  buttonNamed('link').click()
+  await settle()
+  render(board)
+  answer({
+    ok: true,
+    json: async () => ({ files: [{ path: '/repo/a-task.progress.local.md', slug: 'a-task' }] }),
+  })
+  await settle()
+
+  expect(rowNode().querySelector('select.edit')).not.toBe(null)
+})
+
 it('offers every candidate plus a placeholder when no file is linked', async () => {
   vi.stubGlobal(
     'fetch',

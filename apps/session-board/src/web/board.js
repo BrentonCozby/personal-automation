@@ -777,8 +777,12 @@ async function openProgressPicker(node, row) {
   )
 
   // A snapshot can land while the answer is in flight and rebuild the board,
-  // which leaves this row detached with nothing to attach the picker to.
-  if (!line.isConnected) return
+  // so the answer goes on the row as it is drawn now.
+  const host = line.isConnected
+    ? node
+    : document.querySelector(`.row[data-session-id="${CSS.escape(row.sessionId)}"]`)
+  if (!host) return
+  host.append(line)
 
   // Answers land where the picker would have opened, which is where you are
   // already looking after pressing the button. The corner of the row was the
@@ -835,7 +839,6 @@ async function openProgressPicker(node, row) {
   select.value = current
   select.setAttribute('aria-label', 'Progress file for this session')
   line.replaceChildren(select)
-  node.append(line)
   select.focus()
 
   let settled = false
@@ -846,7 +849,7 @@ async function openProgressPicker(node, row) {
 
     if (value !== undefined && value !== current) {
       void patchSession(row.sessionId, { progressPath: value || null }).then(result =>
-        sayIfRefused({ host: node, result, fallback: 'could not link that file' }),
+        sayIfRefused({ host, result, fallback: 'could not link that file' }),
       )
 
       return
