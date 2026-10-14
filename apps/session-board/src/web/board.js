@@ -218,9 +218,8 @@ function makeActivatable(node, onActivate) {
   })
 }
 
-// Never rejects. Every caller fires and forgets, and the board has nothing
-// useful to do about a request that failed: the next snapshot repaints whatever
-// really happened on the server.
+// Never rejects: a failure comes back as `{ ok: false }` with the server's
+// sentence when it sent one, for the caller to show on the row.
 async function api(path, options) {
   try {
     const res = await fetch(path, { headers: { 'content-type': 'application/json' }, ...options })
@@ -276,6 +275,11 @@ function showMessage(node, text) {
 function sayRefused({ host, error }) {
   if (!isBusy()) render(latest)
   showMessage(host, error)
+}
+
+/** For a request whose success the next frame shows on its own. */
+function sayIfRefused({ host, result, fallback }) {
+  if (!result.ok) sayRefused({ host, error: result.error || fallback })
 }
 
 // Answers with the parsed body whatever the status, because the server says
@@ -438,7 +442,13 @@ function buildPin(row) {
   makeActivatable(pin, () => {
     void api(`/api/sessions/${encodeURIComponent(row.sessionId)}/open-progress`, {
       method: 'POST',
-    })
+    }).then(result =>
+      sayIfRefused({
+        host: pin.closest('.row') || pin,
+        result,
+        fallback: 'could not open the progress file',
+      }),
+    )
   })
 
   return pin
@@ -633,7 +643,9 @@ function buildRow(row) {
     parkButton.addEventListener('click', event => {
       event.stopPropagation()
       if (row.parkedReason) {
-        void patchSession(row.sessionId, { parkedReason: null })
+        void patchSession(row.sessionId, { parkedReason: null }).then(result =>
+          sayIfRefused({ host: node, result, fallback: 'could not unpark it' }),
+        )
 
         return
       }
@@ -643,7 +655,13 @@ function buildRow(row) {
         host: line,
         current: '',
         placeholder: 'waiting on what?',
-        onCommit: value => value && patchSession(row.sessionId, { parkedReason: value }),
+        onCommit: value => {
+          if (!value) return
+
+          void patchSession(row.sessionId, { parkedReason: value }).then(result =>
+            sayIfRefused({ host: node, result, fallback: 'could not park it' }),
+          )
+        },
       })
     })
 
@@ -663,7 +681,9 @@ function buildRow(row) {
     deleteButton.title = 'Take off the board. History is kept; it reappears under Off the board.'
     deleteButton.addEventListener('click', event => {
       event.stopPropagation()
-      void api(`/api/sessions/${encodeURIComponent(row.sessionId)}`, { method: 'DELETE' })
+      void api(`/api/sessions/${encodeURIComponent(row.sessionId)}`, { method: 'DELETE' }).then(
+        result => sayIfRefused({ host: node, result, fallback: 'could not take it off the board' }),
+      )
     })
 
     actions.append(linkButton, parkButton, deleteButton)
@@ -825,7 +845,9 @@ async function openProgressPicker(node, row) {
     line.remove()
 
     if (value !== undefined && value !== current) {
-      void patchSession(row.sessionId, { progressPath: value || null })
+      void patchSession(row.sessionId, { progressPath: value || null }).then(result =>
+        sayIfRefused({ host: node, result, fallback: 'could not link that file' }),
+      )
 
       return
     }

@@ -338,6 +338,60 @@ it('carries no pin at all when a named row has nothing to point at', () => {
   expect(rowNode().querySelector('.pin')).toBe(null)
 })
 
+it.each([
+  ['the row ×', {}, () => buttonNamed('×').click()],
+  ['unpark', { parkedReason: 'a review' }, () => buttonNamed('unpark').click()],
+  [
+    'the pin',
+    { progressPath: '/repo/perf-work.progress.local.md', progressLabel: 'perf-work' },
+    () => rowNode().querySelector('.pin').click(),
+  ],
+  [
+    'park',
+    {},
+    () => {
+      buttonNamed('park').click()
+      const input = rowNode().querySelector('.edit-line input.edit')
+      input.value = 'a review'
+      input.dispatchEvent(new Event('blur'))
+    },
+  ],
+  [
+    'a progress file chosen in the picker',
+    {},
+    async () => {
+      buttonNamed('link').click()
+      await settle()
+      const select = rowNode().querySelector('select.edit')
+      select.value = '/repo/a-task.progress.local.md'
+      select.dispatchEvent(new Event('change'))
+    },
+  ],
+])('says on the row why %s was refused', async (_control, overrides, press) => {
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async (_path, options) =>
+      options?.method
+        ? { ok: false, status: 500, text: async () => JSON.stringify({ error: 'probe refusal' }) }
+        : {
+            ok: true,
+            json: async () => ({
+              files: [{ path: '/repo/a-task.progress.local.md', slug: 'a-task' }],
+            }),
+          },
+    ),
+  )
+  vi.spyOn(console, 'error').mockImplementation(() => {
+    // The client logs every refusal. This test is about the row.
+  })
+  render(boardWith([aRow({ name: 'perf', ...overrides })]))
+
+  await press()
+  await settle()
+
+  expect(rowNode().querySelector('.edit-line .pending')?.textContent).toBe('probe refusal')
+})
+
 it('opens the progress file from the pin, as the second line used to', async () => {
   const fetchMock = vi.fn(async () => ({ ok: true }))
   vi.stubGlobal('fetch', fetchMock)
