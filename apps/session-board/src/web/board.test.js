@@ -507,7 +507,8 @@ it('takes the parked field away on commit rather than leaving an empty line', ()
 it('locks resume while the tab opens, so a second press cannot start a second session', async () => {
   const fetchSpy = vi.fn(async () => ({ ok: true }))
   vi.stubGlobal('fetch', fetchSpy)
-  render(boardWith([aRow({ name: 'perf', cwd: '/repo' })]))
+  // Its own id: a tab that opened keeps resume locked past the end of the test.
+  render(boardWith([aRow({ sessionId: 'opened', name: 'perf', cwd: '/repo' })]))
 
   const resume = buttonNamed('resume ↗')
   resume.click()
@@ -538,6 +539,62 @@ it('says so on the row when a tab could not be opened', async () => {
   // Replaced rather than stacked under the line that said it was opening.
   expect(rowNode().querySelectorAll('.edit-line')).toHaveLength(1)
   expect(rowNode().querySelector('.edit-line .pending').textContent).toBe('osascript failed')
+})
+
+it('keeps resume locked through a repaint while the tab opens', async () => {
+  const fetchSpy = vi.fn(
+    () =>
+      new Promise(() => {
+        // Never answers, so the press is still in flight at the repaint.
+      }),
+  )
+  vi.stubGlobal('fetch', fetchSpy)
+  // Its own id: the lock outlives this test.
+  const board = boardWith([aRow({ sessionId: 'never-answered', name: 'perf', cwd: '/repo' })])
+  render(board)
+
+  buttonNamed('resume ↗').click()
+  render(board)
+  buttonNamed('resume ↗').click()
+  await settle()
+
+  expect(fetchSpy).toHaveBeenCalledTimes(1)
+  expect(buttonNamed('resume ↗').disabled).toBe(true)
+  expect(rowNode().querySelector('.edit-line .pending').textContent).toBe('opening a tab…')
+})
+
+it('gives resume back once a tab that opened has had time to report in', async () => {
+  vi.useFakeTimers({ shouldAdvanceTime: true })
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async () => ({ ok: true })),
+  )
+  render(boardWith([aRow({ sessionId: 'opened-then-quiet', name: 'perf', cwd: '/repo' })]))
+
+  buttonNamed('resume ↗').click()
+  await settle()
+  expect(buttonNamed('resume ↗').disabled).toBe(true)
+
+  await vi.advanceTimersByTimeAsync(15_000)
+
+  expect(buttonNamed('resume ↗').disabled).toBe(false)
+  vi.useRealTimers()
+})
+
+it('gives resume back when the tab could not be opened, with no new frame', async () => {
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async () => ({ ok: false, status: 500, text: async () => '{}' })),
+  )
+  vi.spyOn(console, 'error').mockImplementation(() => {
+    // The client logs every refusal. This test is about the button.
+  })
+  render(boardWith([aRow({ name: 'perf', cwd: '/repo' })]))
+
+  buttonNamed('resume ↗').click()
+  await settle()
+
+  expect(buttonNamed('resume ↗').disabled).toBe(false)
 })
 
 it('names the status of the dot, which otherwise carries it in hue alone', () => {

@@ -368,6 +368,27 @@ function editIn({ host, current, placeholder, onCommit, commitUnchanged = false 
 // which is about how long it takes to notice something has appeared.
 const MESSAGE_MS = 4000
 
+// How long resume stays locked after a tab opened, covering the gap until the
+// new session's first hook marks the row running and locks it for that reason.
+const OPEN_LOCK_MS = 15_000
+
+/**
+ * Each resume pressed: `{ at, isPending }`, `isPending` until the server
+ * answers. Kept off the row so a repaint cannot unlock it.
+ */
+const opens = new Map()
+
+function isOpening(sessionId) {
+  return Date.now() - (opens.get(sessionId)?.at || 0) < OPEN_LOCK_MS
+}
+
+/** Redraw with the lock gone, since no frame follows an expired open. */
+function releaseOpen(sessionId) {
+  opens.delete(sessionId)
+  hasUndrawnSnapshot = true
+  catchUp()
+}
+
 /**
  * The mark in a row's gutter saying what the row points at.
  *
@@ -564,24 +585,45 @@ function buildRow(row) {
 
   const openButton = el('button', null, 'resume ↗')
   const blocked = whyResumeIsBlocked(row, isAlive)
-  openButton.disabled = Boolean(blocked)
+  // A second press while the tab opens starts a second session on the same
+  // work, in its own tab.
+  const isOpeningNow = isOpening(row.sessionId)
+  openButton.disabled = Boolean(blocked) || isOpeningNow
   openButton.title = blocked || resumeTitle(row)
+  if (opens.get(row.sessionId)?.isPending) {
+    const line = el('div', 'edit-line')
+    line.append(el('span', 'pending', 'opening a tab…'))
+    node.append(line)
+  }
   openButton.addEventListener('click', event => {
     event.stopPropagation()
+    if (isOpening(row.sessionId)) return
 
-    // Opening a tab takes about a second, during which the row looks exactly as
-    // it did before the press. A second press in that time starts a second
-    // session on the same work, in its own tab. The next repaint builds a fresh
-    // button, and one arrives within 30 seconds even if nothing else happens.
+    const open = { at: Date.now(), isPending: true }
+    opens.set(row.sessionId, open)
     openButton.disabled = true
     const message = showMessage(node, 'opening a tab…')
 
     void api(`/api/sessions/${encodeURIComponent(row.sessionId)}/open`, {
       method: 'POST',
     }).then(result => {
-      if (result.ok) return
+      open.isPending = false
+      if (result.ok) {
+        setTimeout(() => releaseOpen(row.sessionId), OPEN_LOCK_MS)
 
-      message.replaceChildren(el('span', 'pending', result.error ?? 'could not open a tab'))
+        return
+      }
+
+      const error = result.error ?? 'could not open a tab'
+      opens.delete(row.sessionId)
+      if (isBusy()) {
+        hasUndrawnSnapshot = true
+        message.replaceChildren(el('span', 'pending', error))
+
+        return
+      }
+      render(latest)
+      showMessage(node, error)
     })
   })
   actions.append(openButton)
