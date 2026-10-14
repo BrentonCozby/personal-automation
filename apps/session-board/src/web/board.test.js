@@ -124,6 +124,7 @@ beforeEach(() => {
 afterEach(() => {
   vi.useRealTimers()
   vi.unstubAllGlobals()
+  vi.restoreAllMocks()
 })
 
 it.each([
@@ -1610,6 +1611,24 @@ it('deletes a group when its name is cleared', async () => {
   expect(fetchMock.mock.calls).toEqual([
     ['/api/groups/Doomed', expect.objectContaining({ method: 'DELETE' })],
   ])
+})
+
+it('keeps a cleared group name open, unsaved, when the window loses focus', async () => {
+  const fetchMock = vi.fn(async () => ({ ok: true, json: async () => ({}) }))
+  vi.stubGlobal('fetch', fetchMock)
+  render(boardWithGroups([{ name: 'Kept', rows: [aRow({ sessionId: 'a' })] }]))
+
+  const title = document.querySelector('.group-name')
+  title.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }))
+  const input = title.querySelector('input.edit')
+  input.value = ''
+  // What switching to another window looks like from inside the page.
+  vi.spyOn(document, 'hasFocus').mockReturnValue(false)
+  input.dispatchEvent(new Event('blur'))
+  await settle()
+
+  expect(fetchMock).not.toHaveBeenCalled()
+  expect(title.querySelector('input.edit')).toBe(input)
 })
 
 it('deletes an empty group on one press of its ×', async () => {

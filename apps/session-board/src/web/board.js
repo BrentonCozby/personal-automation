@@ -364,7 +364,14 @@ function editIn({ host, current, placeholder, onCommit, commitUnchanged = false 
     if (event.key === 'Enter') input.blur()
     if (event.key === 'Escape') finish(false)
   })
-  input.addEventListener('blur', () => finish(true))
+  input.addEventListener('blur', () => {
+    // Switching windows blurs the field too. Saving then would act on a half
+    // edit (a cleared group name deletes the group); the field stays open and
+    // takes focus back when the window does.
+    if (!document.hasFocus()) return
+
+    finish(true)
+  })
   input.addEventListener('click', event => event.stopPropagation())
 }
 
