@@ -5,7 +5,8 @@ export interface GroupStore {
   read(): Promise<string[]>
   /** False when the name is already a group, which the caller answers with 409. */
   add(name: string): Promise<boolean>
-  rename(input: { from: string; to: string }): Promise<void>
+  /** False when `from` is not a group. */
+  rename(input: { from: string; to: string }): Promise<boolean>
   remove(name: string): Promise<void>
   /** Take in names seen on rows, and answer with the ones that were new. */
   register(names: string[]): Promise<string[]>
@@ -41,15 +42,17 @@ export function createGroupStore({ path }: { path: string }): GroupStore {
     })
   }
 
-  function rename({ from, to }: { from: string; to: string }): Promise<void> {
+  function rename({ from, to }: { from: string; to: string }): Promise<boolean> {
     return serialize(async () => {
       const groups = await read()
-      if (!groups.includes(from)) return
+      if (!groups.includes(from)) return false
 
       // Mapped in place rather than removed and appended, so a rename does not
       // reorder the file under someone reading it by hand. Renaming onto a name
       // that is already a group merges the two, so the result is deduplicated.
       await write([...new Set(groups.map(name => (name === from ? to : name)))])
+
+      return true
     })
   }
 

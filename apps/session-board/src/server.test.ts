@@ -863,15 +863,13 @@ it('moves a group above another one', async () => {
   expect(await readMetadata(board.groupsPath)).toEqual(['C', 'A', 'B'])
 })
 
-it('answers 404 for moving a group that no longer exists', async () => {
+it.each([
+  ['moving', { before: null }],
+  ['renaming', { name: 'B' }],
+])('answers 404 for %s a group that no longer exists', async (_action, body) => {
   const board = await startBoard({ groups: ['A'] })
 
-  const res = await groupRequest({
-    origin: board.origin,
-    path: '/gone',
-    method: 'PATCH',
-    body: { before: null },
-  })
+  const res = await groupRequest({ origin: board.origin, path: '/gone', method: 'PATCH', body })
 
   expect(res.status).toBe(404)
   expect(await readMetadata(board.groupsPath)).toEqual(['A'])

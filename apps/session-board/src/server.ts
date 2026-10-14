@@ -402,11 +402,19 @@ export function createBoardServer({ config }: { config: Config }): BoardServer {
       // two: the old name would come back on the next snapshot, which registers
       // every group it meets on a row.
       const to = body.data.name
-      await oneAtATime(async () => {
+      const didRename = await oneAtATime(async () => {
         const isMerge = (await groups.read()).includes(to)
-        await groups.rename({ from: name, to })
+        if (!(await groups.rename({ from: name, to }))) return false
+
         await moveRowsOutOf({ group: name, to, keepOrder: !isMerge })
+
+        return true
       })
+      if (!didRename) {
+        sendJson({ res, status: 404, body: { error: 'that group no longer exists' } })
+
+        return true
+      }
       sendJson({ res, status: 200, body: { name: body.data.name } })
       await pushToStreams()
 
