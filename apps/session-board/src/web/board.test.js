@@ -717,6 +717,101 @@ it('says it will reopen the old session when there is no progress file', () => {
   expect(buttonNamed('resume ↗').title).toBe('Reopen this session in a new Ghostty tab')
 })
 
+it.each([
+  {
+    case: 'holds a conversation',
+    contextTokens: 120_000,
+    title: 'Reopen this session in a new Ghostty tab',
+  },
+  {
+    case: 'holds no turn, as /clear then exit leaves it',
+    contextTokens: undefined,
+    title: 'Start a new session named perf and point it at marketplace-perf',
+  },
+])('with a progress file, says what resume does when the transcript $case', ({
+  contextTokens,
+  title,
+}) => {
+  render(
+    boardWith([
+      aRow({
+        name: 'perf',
+        cwd: '/repo',
+        contextTokens,
+        progressPath: '/repo/marketplace-perf.progress.local.md',
+        progressLabel: 'marketplace-perf',
+      }),
+    ]),
+  )
+
+  expect(buttonNamed('resume ↗').title).toBe(title)
+})
+
+it('asks before reopening a conversation past 450k tokens', async () => {
+  const fetchSpy = vi.fn(async () => ({ ok: true }))
+  vi.stubGlobal('fetch', fetchSpy)
+  // Its own id: a tab that opened keeps resume locked past the end of the test.
+  render(
+    boardWith([
+      aRow({ sessionId: 'large-reopened', name: 'perf', cwd: '/repo', contextTokens: 520_000 }),
+    ]),
+  )
+
+  buttonNamed('resume ↗').click()
+  await settle()
+  expect(fetchSpy).not.toHaveBeenCalled()
+
+  buttonNamed('reopen 520k of context?').click()
+  await settle()
+
+  expect(fetchSpy).toHaveBeenCalledOnce()
+  expect(fetchSpy.mock.calls[0]?.[0]).toBe('/api/sessions/large-reopened/open')
+})
+
+it('takes the question back unanswered when focus leaves it', async () => {
+  const fetchSpy = vi.fn(async () => ({ ok: true }))
+  vi.stubGlobal('fetch', fetchSpy)
+  render(boardWith([aRow({ name: 'perf', cwd: '/repo', contextTokens: 520_000 })]))
+
+  buttonNamed('resume ↗').click()
+  buttonNamed('reopen 520k of context?').blur()
+  await settle()
+
+  expect(fetchSpy).not.toHaveBeenCalled()
+  expect(buttonNamed('reopen 520k of context?')).toBeUndefined()
+  expect(buttonNamed('resume ↗').disabled).toBe(false)
+})
+
+it.each([
+  { case: 'a context under 450k', contextTokens: 450_000, isTranscriptMissing: false },
+  {
+    case: 'a fresh session from the progress file',
+    contextTokens: 520_000,
+    isTranscriptMissing: true,
+  },
+])('resumes on the first press for $case', async ({ contextTokens, isTranscriptMissing }) => {
+  const fetchSpy = vi.fn(async () => ({ ok: true }))
+  vi.stubGlobal('fetch', fetchSpy)
+  render(
+    boardWith([
+      aRow({
+        sessionId: `first-press-${contextTokens}-${isTranscriptMissing}`,
+        name: 'perf',
+        cwd: '/repo',
+        contextTokens,
+        isTranscriptMissing,
+        progressPath: '/repo/marketplace-perf.progress.local.md',
+        progressLabel: 'marketplace-perf',
+      }),
+    ]),
+  )
+
+  buttonNamed('resume ↗').click()
+  await settle()
+
+  expect(fetchSpy).toHaveBeenCalledOnce()
+})
+
 it('falls back to the old session when the progress file has gone missing', () => {
   render(
     boardWith([

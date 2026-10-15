@@ -616,6 +616,16 @@ function buildRow(row) {
     event.stopPropagation()
     if (isOpening(row.sessionId)) return
 
+    if (!startsFromProgress(row) && row.contextTokens > GROWING_CONTEXT_TOKENS) {
+      askBeforeReopening({ button: openButton, tokens: row.contextTokens, onYes: resume })
+
+      return
+    }
+    resume()
+  })
+  actions.append(openButton)
+
+  function resume() {
     const open = { at: Date.now(), isPending: true }
     opens.set(row.sessionId, open)
     openButton.disabled = true
@@ -642,8 +652,7 @@ function buildRow(row) {
       render(latest)
       showMessage(node, error)
     })
-  })
-  actions.append(openButton)
+  }
 
   if (row.isClaimed) {
     const parkButton = el('button', null, row.parkedReason ? 'unpark' : 'park')
@@ -703,14 +712,46 @@ function buildRow(row) {
 
 /**
  * Whether resuming starts a clean session on the progress file rather than
- * reopening the old conversation.
- *
- * The progress file is the durable state, so a fresh session that reads it
- * picks the work up without dragging a long stale context along. A file that
- * has gone missing is no use to a new session, so those fall back.
+ * reopening the old conversation, which happens only once there is none to
+ * reopen: no transcript, or one with no turn in it, as `/clear` then exit
+ * leaves. The server makes the same choice; this says which on the button.
  */
 function startsFromProgress(row) {
-  return Boolean(row.progressPath) && Boolean(row.name) && !row.isProgressFileMissing
+  return (
+    (row.isTranscriptMissing || row.contextTokens === undefined) &&
+    Boolean(row.progressPath) &&
+    Boolean(row.name) &&
+    !row.isProgressFileMissing
+  )
+}
+
+/**
+ * Swaps resume for a second button naming the context a reopen brings back,
+ * since past an hour the first turn re-reads all of it uncached. Built like
+ * the group delete's question: the `edit` class and focus hold a repaint off,
+ * and leaving it unanswered puts resume back.
+ */
+function askBeforeReopening({ button, tokens, onYes }) {
+  let isAnswered = false
+  const confirm = el('button', 'edit', `reopen ${formatTokens(tokens)} of context?`)
+  confirm.title = 'Reopens the whole conversation. /clear in it afterward to start lean.'
+
+  confirm.addEventListener('click', event => {
+    event.stopPropagation()
+    isAnswered = true
+    confirm.replaceWith(button)
+    onYes()
+    catchUp()
+  })
+
+  confirm.addEventListener('blur', () => {
+    if (isAnswered) return
+    confirm.replaceWith(button)
+    catchUp()
+  })
+
+  button.replaceWith(confirm)
+  confirm.focus()
 }
 
 /**

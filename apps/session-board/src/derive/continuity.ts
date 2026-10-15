@@ -98,8 +98,8 @@ export const PLACEHOLDER_ID_PREFIX = 'pending-'
 /**
  * Map a relaunched row to the session the board started for it.
  *
- * Resuming a row that has a progress file opens a brand new session rather than
- * the old conversation, so the two ids share no process and `resolveSuccessors`
+ * Resuming a row whose conversation is empty or gone opens a brand new session
+ * on its progress file, so the two ids share no process and `resolveSuccessors`
  * cannot see the link. Without this the new session claims itself from the name
  * it was given and lands in Ungrouped, while the row you clicked stays behind in
  * its group: the same name twice, once live and once dead.

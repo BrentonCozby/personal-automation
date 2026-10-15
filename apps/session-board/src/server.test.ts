@@ -674,6 +674,54 @@ it('marks a row relaunched so the fresh session takes the row over', async () =>
   expect(stored.abc.relaunchedAt).toBeGreaterThan(0)
 })
 
+it.each([
+  {
+    transcript: 'a conversation',
+    lines: [{ type: 'assistant', message: { usage: { input_tokens: 5 } } }],
+    isReopened: true,
+  },
+  // What `/clear` and then exiting leaves behind.
+  {
+    transcript: 'nothing said since a /clear',
+    lines: [{ type: 'user', message: { content: '<command-name>/clear</command-name>' } }],
+    isReopened: false,
+  },
+])('resumes a row with a progress file and a transcript holding $transcript', async ({
+  lines,
+  isReopened,
+}) => {
+  const dir = await mkdtemp(join(tmpdir(), 'session-board-progress-'))
+  const progressPath = join(dir, 'soc2.progress.local.md')
+  await writeFile(progressPath, '# soc2\n')
+  const root = await mkdtemp(join(tmpdir(), 'session-board-transcripts-'))
+  await mkdir(join(root, '-Users-me-Code-repo'))
+  await writeFile(
+    join(root, '-Users-me-Code-repo', 'abc.jsonl'),
+    lines.map(line => `${JSON.stringify(line)}\n`).join(''),
+  )
+
+  const board = await startBoard({
+    metadata: { abc: { name: 'soc2', progressPath, cwd: dir } },
+    transcriptRoots: [root],
+  })
+  vi.mocked(openSessionFromProgress).mockClear()
+  vi.mocked(openSessionTab).mockClear()
+
+  const res = await fetch(`${board.origin}/api/sessions/abc/open`, {
+    method: 'POST',
+    headers: { origin: board.origin, 'content-type': 'application/json' },
+    body: '{}',
+  })
+
+  expect(res.status).toBe(200)
+  expect(vi.mocked(openSessionTab).mock.calls).toHaveLength(isReopened ? 1 : 0)
+  expect(vi.mocked(openSessionFromProgress).mock.calls).toHaveLength(isReopened ? 0 : 1)
+  // On a reopen, a mark would hand the row to the next session that starts
+  // under its name.
+  const stored = expect(await readMetadata(board.metadataPath))
+  ;(isReopened ? stored.not : stored).toHaveProperty('abc.relaunchedAt')
+})
+
 it('grants subagents to a row with no progress file, which reopens its conversation', async () => {
   const dir = await mkdtemp(join(tmpdir(), 'session-board-plain-'))
   const board = await startBoard({ metadata: { abc: { name: 'soc2', cwd: dir } } })

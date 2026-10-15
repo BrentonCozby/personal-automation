@@ -19,6 +19,7 @@ import {
   createRepoRoots,
 } from './derive/repos.js'
 import { createSessionNamer } from './derive/session-names.js'
+import { findTranscripts } from './derive/transcripts.js'
 import { createEventLogReader } from './events/read.js'
 import type { HookEvent } from './events/types.js'
 import {
@@ -249,6 +250,23 @@ export function createBoardServer({ config }: { config: Config }): BoardServer {
 
   function snapshot(): Promise<Board> {
     return oneAtATime(() => buildSnapshot({ events, store, groups, config, namer, contextReader }))
+  }
+
+  /**
+   * Whether the session's transcript holds a turn of conversation. One that was
+   * `/clear`ed and then exited still has a transcript, with nothing in it.
+   */
+  async function hasConversation(sessionId: string): Promise<boolean> {
+    const transcript = (await findTranscripts({ roots: config.transcriptRoots })).get(sessionId)
+    if (!transcript) return false
+
+    // A reader of its own: the shared one keeps only the transcripts it was
+    // last asked about, and would drop every other row's cache.
+    const turns = await createContextReader().read({
+      transcripts: new Map([[sessionId, transcript]]),
+    })
+
+    return turns.has(sessionId)
   }
 
   /**
@@ -621,10 +639,10 @@ export function createBoardServer({ config }: { config: Config }): BoardServer {
         return true
       }
 
-      // A progress file is the durable state, so a row that has one gets a
-      // clean session pointed at it rather than its old conversation reopened.
-      // A file that has gone missing falls through to the old session, which is
-      // then the only record of the work left.
+      // The old conversation holds everything said since the progress file was
+      // last written, so it is reopened whenever it has one. The progress file
+      // starts a fresh session only once there is none to reopen.
+      const isReopenable = await hasConversation(sessionId)
       const entry = metadata[sessionId]
       const progressPath = entry?.progressPath
       const name = entry?.name
@@ -636,7 +654,7 @@ export function createBoardServer({ config }: { config: Config }): BoardServer {
       // cannot tell "declined" from "not linked yet".
       const systemPrompt = buildSystemPrompt([await readFile(config.subagentGrantPath, 'utf8')])
 
-      if (progressPath && name && (await fileExists(progressPath))) {
+      if (!isReopenable && progressPath && name && (await fileExists(progressPath))) {
         // Written before the launch, not after. The session about to start is a
         // new id that shares nothing with this one, and this mark is the only
         // record that the two are the same work: the snapshot pairs them by

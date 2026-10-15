@@ -54,7 +54,8 @@ export interface Config {
   openFileCommand: string
   /**
    * Starts a fresh named session, for both of the ways the board makes one:
-   * resuming a row that has a progress file, and the `+` on a group header.
+   * resuming a row on its progress file when its conversation is empty or gone,
+   * and the `+` on a group header.
    *
    * `{{name}}`, `{{prompt}}` and `{{system}}` are substituted, all shell-quoted.
    * `{{prompt}}` drops out of the command when there is nothing to say, which is

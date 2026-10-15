@@ -22,8 +22,8 @@ export const sessionMetadataSchema = z.object({
   /**
    * Unix seconds of the resume click that opened a fresh session for this row.
    *
-   * Resuming a row with a progress file starts a new session in a new terminal
-   * rather than reopening the old conversation, so the two ids share no process
+   * A fresh session started on a row's progress file, when its conversation is
+   * empty or gone, shares no process with the row's id, so the two ids share no process
    * and the handover pairing cannot see the link. This is the only record that
    * they are the same work, until the two are paired and `supersededBy` takes
    * over.
