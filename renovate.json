@@ -1,26 +1,17 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
   "extends": ["config:recommended", ":dependencyDashboard", ":semanticCommits"],
-  "schedule": ["before 6am on monday"],
+  "schedule": ["* 0-5 * * 1"],
   "timezone": "America/New_York",
   "rangeStrategy": "bump",
+  "minimumReleaseAge": "3 days",
+  "platformAutomerge": false,
   "packageRules": [
     {
-      "description": "Auto-merge non-major dev deps after CI passes",
-      "matchDepTypes": ["devDependencies"],
+      "description": "Group all minor + patch updates into one weekly PR, merged once CI passes",
       "matchUpdateTypes": ["minor", "patch"],
+      "groupName": "all minor and patch",
       "automerge": true
-    },
-    {
-      "description": "Auto-merge non-major GitHub Actions updates",
-      "matchManagers": ["github-actions"],
-      "matchUpdateTypes": ["minor", "patch"],
-      "automerge": true
-    },
-    {
-      "description": "Group all minor + patch updates into one weekly PR",
-      "matchUpdateTypes": ["minor", "patch"],
-      "groupName": "all minor and patch"
     },
     {
       "description": "Separate Node.js major updates (require manual review)",
@@ -35,6 +26,7 @@
   },
   "lockFileMaintenance": {
     "enabled": true,
-    "schedule": ["before 6am on monday"]
+    "automerge": true,
+    "schedule": ["* 0-5 * * 1"]
   }
 }
