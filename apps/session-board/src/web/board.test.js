@@ -728,24 +728,24 @@ it.each([
     contextTokens: undefined,
     title: 'Start a new session named perf and point it at marketplace-perf',
   },
-])('with a progress file, says what resume does when the transcript $case', ({
-  contextTokens,
-  title,
-}) => {
-  render(
-    boardWith([
-      aRow({
-        name: 'perf',
-        cwd: '/repo',
-        contextTokens,
-        progressPath: '/repo/marketplace-perf.progress.local.md',
-        progressLabel: 'marketplace-perf',
-      }),
-    ]),
-  )
+])(
+  'with a progress file, says what resume does when the transcript $case',
+  ({ contextTokens, title }) => {
+    render(
+      boardWith([
+        aRow({
+          name: 'perf',
+          cwd: '/repo',
+          contextTokens,
+          progressPath: '/repo/marketplace-perf.progress.local.md',
+          progressLabel: 'marketplace-perf',
+        }),
+      ]),
+    )
 
-  expect(buttonNamed('resume ↗').title).toBe(title)
-})
+    expect(buttonNamed('resume ↗').title).toBe(title)
+  },
+)
 
 it('asks before reopening a conversation past 450k tokens', async () => {
   const fetchSpy = vi.fn(async () => ({ ok: true }))
