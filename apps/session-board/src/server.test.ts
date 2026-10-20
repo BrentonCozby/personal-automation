@@ -23,6 +23,8 @@ vi.mock('./launch.js', async () => ({
 
 const execFileAsync = promisify(execFile)
 
+const GIT_IDENTITY = ['-c', 'user.name=Test', '-c', 'user.email=test@example.com']
+
 const closers: Array<() => Promise<void>> = []
 
 afterEach(async () => {
@@ -1172,7 +1174,16 @@ it('appends neither note when the first prompt already names the file', async ()
 
 it('launches at the repo root when a worktree was typed, and says which root', async () => {
   const root = await gitRepo()
-  await execFileAsync('git', ['-C', root, 'commit', '-q', '--allow-empty', '-m', 'first'])
+  await execFileAsync('git', [
+    '-C',
+    root,
+    ...GIT_IDENTITY,
+    'commit',
+    '-q',
+    '--allow-empty',
+    '-m',
+    'first',
+  ])
   const worktree = join(await realpath(await mkdtemp(join(tmpdir(), 'session-board-wt-'))), 'side')
   await execFileAsync('git', ['-C', root, 'worktree', 'add', '-q', worktree, '-b', 'side'])
   const board = await startBoard()

@@ -11,7 +11,9 @@ concurrency:
 
 jobs:
   check:
-    runs-on: ubuntu-latest
+    # macOS, like the machine every app runs on: session-board tests run /bin/zsh, and
+    # Linux's tmpdir() is /tmp, which the board drops as a throwaway repository.
+    runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
 
