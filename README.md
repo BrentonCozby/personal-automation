@@ -6,7 +6,7 @@ A catch-all monorepo for my personal automation: a pnpm workspace of small sched
 - **`apps/ynab-enrich-memos`**: reads Amazon receipt emails, parses the product list, and PATCHes it into the `memo` of matching YNAB transactions so the categorizer has real item names to work from. Runs before `ynab-categorize` in the daily run.
 - **`apps/ynab-spending-export`**: on demand, writes spending per YNAB category for each of the last 12 finished months to a CSV. Totals only, no payees or transactions. Run with `pnpm --filter @personal-automation/ynab-spending-export ynab-spending-export --out <file.csv>`. The `future-home` repo reads the file.
 - **`apps/notify`**: emails an error digest after the daily run when any app's audit log shows errors.
-- **`apps/tasks`**: a state model over Obsidian todos, with a scheduled review that emails the committed tasks that have gone quiet (one next action each) plus a record of what was finished and dropped, and a daily job that pushes what is due to the phone.
+- **`apps/tasks`** (retired from the schedule; tasks now live in Todoist): a state model over Obsidian todos, with a scheduled review that emails the committed tasks that have gone quiet (one next action each) plus a record of what was finished and dropped, and a daily job that pushes what is due to the phone.
 - **`packages/anthropic`**: shared Claude API client (`messages.parse` + `zodOutputFormat`).
 - **`packages/ynab`**: shared YNAB API client (zod-validated) + schemas + types + milliunits helpers.
 - **`packages/gmail`**: Gmail API client (OAuth + send, optional multipart HTML), zod-validated.
@@ -102,28 +102,32 @@ A state model over the todos in an [Obsidian](https://publish.obsidian.md/tasks/
 
 ## Production
 
-Four launchd agents:
+Scheduled launchd agents:
 
 - `com.personal-automation.daily` runs `launchd/run.sh` daily at 12:00: each app in the `APPS` array in sequence (`ynab-enrich-memos` then `ynab-categorize`), then `notify`.
-- `com.personal-automation.tasks` runs the digest on its `TASKS_SCHEDULE` days/times.
-- `com.personal-automation.tasks-alert` runs `launchd/run-tasks-alert.sh` at each time in `TASKS_ALERT_TIMES`, every day: the due-date push, and the decay pass that goes with it.
 - `com.personal-automation.vault-backup` runs `launchd/run-vault-backup.sh` daily (09:00): a one-way `git push` of the Obsidian vault to its remote for offsite backup. Obsidian Sync is the live cross-device sync; this only snapshots to git, so it never conflicts. The vault path comes from `OBSIDIAN_VAULT_PATH` in `apps/tasks/.env`.
 
 Each is its own agent because launchd binds one agent to one program on one schedule: a plist's `StartCalendarInterval` can list many times, but they all run the same script. So an app gets its own agent only when it needs its own schedule, and is otherwise another entry in `run.sh`. Keeping them apart also gives each its own logs and its own failure notification. `com.personal-automation` is the shared namespace, not a job.
 
 All post a macOS notification on a non-zero exit.
 
+The `tasks` digest (`com.personal-automation.tasks`) and due-date alert (`com.personal-automation.tasks-alert`) are retired: tasks and reminders moved to Todoist, so `setup.sh` no longer generates them. The app and its wrappers stay in the repo; `pnpm --filter @personal-automation/tasks generate-launchd-plist` still writes both plists if you want them back. To unload them from a Mac that still has them:
+
 ```bash
-./launchd/setup.sh   # generates the plists (daily, tasks, tasks-alert, vault-backup)
-for agent in daily tasks tasks-alert vault-backup; do
+launchctl bootout "gui/$(id -u)/com.personal-automation.tasks"
+launchctl bootout "gui/$(id -u)/com.personal-automation.tasks-alert"
+rm -f ~/Library/LaunchAgents/com.personal-automation.tasks.plist ~/Library/LaunchAgents/com.personal-automation.tasks-alert.plist
+```
+
+```bash
+./launchd/setup.sh   # generates the plists (daily, vault-backup, session-board)
+for agent in daily vault-backup session-board; do
   cp "launchd/com.personal-automation.$agent.plist" ~/Library/LaunchAgents/
   launchctl bootstrap "gui/$(id -u)" ~/Library/LaunchAgents/"com.personal-automation.$agent.plist"
 done
 ```
 
 Run `./launchd/run-vault-backup.sh` once by hand before relying on the schedule: it confirms the `git push` credential (the https token in your keychain) is reachable from a launchd context.
-
-Re-run `setup.sh` whenever you change `TASKS_SCHEDULE` or `TASKS_ALERT_TIMES`, then reload the agent it names; it prints those commands.
 
 Optional log rotation (weekly, keeps 4 gzipped archives):
 
@@ -142,8 +146,7 @@ The quick check gives three columns: PID, last exit code, label. A label showing
 ```bash
 launchctl list | grep personal-automation
 # -  0  com.personal-automation.daily
-# -  0  com.personal-automation.tasks
-# -  0  com.personal-automation.tasks-alert
+# -  0  com.personal-automation.vault-backup
 
 # Same thing as an explicit OK / CHECK line per agent
 launchctl list | awk '/personal-automation/ {print ($2==0 ? "OK   " : "CHECK") "  " $3 "  (last exit " $2 ")"}'
@@ -153,7 +156,6 @@ Only reach for the verbose `launchctl print` when you need details the line abov
 
 ```bash
 launchctl print "gui/$(id -u)/com.personal-automation.daily"
-launchctl print "gui/$(id -u)/com.personal-automation.tasks"
 ```
 
 ### Run logs (launchd stdout/stderr)
@@ -201,9 +203,6 @@ ls -t apps/ynab-categorize/audit apps/ynab-enrich-memos/audit apps/tasks/runs
 ```bash
 # Force the daily run immediately (-k kills any in-flight copy first)
 launchctl kickstart -k "gui/$(id -u)/com.personal-automation.daily"
-
-# Force the tasks digest
-launchctl kickstart -k "gui/$(id -u)/com.personal-automation.tasks"
 ```
 
 To run an app by hand without launchd (and without the failure notification), use the `pnpm --filter` commands in [Run](#run). Start with the `test:` dry-run script.
