@@ -14,8 +14,10 @@ import {
 
 const execFileAsync = promisify(execFile)
 
+const GIT_IDENTITY = ['-c', 'user.name=Test', '-c', 'user.email=test@example.com']
+
 async function git(cwd: string, ...args: string[]): Promise<void> {
-  await execFileAsync('git', ['-C', cwd, ...args])
+  await execFileAsync('git', ['-C', cwd, ...GIT_IDENTITY, ...args])
 }
 
 // macOS hands back /var/folders/..., a symlink to /private/var/folders/...,
