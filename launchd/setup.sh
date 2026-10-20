@@ -5,8 +5,6 @@
 #
 # Generated files:
 #   com.personal-automation.daily.plist         : daily scheduled job (runs run.sh at 12:00)
-#   com.personal-automation.tasks.plist         : tasks digest, on TASKS_SCHEDULE's days/times
-#   com.personal-automation.tasks-alert.plist   : due-date alert, every day at TASKS_ALERT_TIMES
 #   com.personal-automation.vault-backup.plist  : daily Obsidian vault git backup (09:00)
 #   com.personal-automation.session-board.plist : the session board server, up at login
 #   newsyslog.personal-automation.conf          : optional log rotation config
@@ -44,23 +42,17 @@ substitute \
   "$PROJECT_DIR/launchd/newsyslog.personal-automation.conf.template" \
   "$PROJECT_DIR/launchd/newsyslog.personal-automation.conf"
 
-# Generate the digest's and the alert's dedicated launchd agents from TASKS_SCHEDULE (the
-# digest's days/times) and TASKS_ALERT_TIMES (the alert's times, every day).
-echo "Generating the tasks digest and alert schedules…"
-(cd "$PROJECT_DIR" && pnpm --filter @personal-automation/tasks generate-launchd-plist)
+# The tasks digest and due-date alert are retired: tasks and reminders moved to Todoist.
+# Their agents are no longer generated. To bring them back, run
+# `pnpm --filter @personal-automation/tasks generate-launchd-plist` and load the two plists it writes.
 
 cat <<EOF
 
-Next (load all five agents: the daily run, the digest, the due-date alert, the vault
-backup, and the session board):
+Next (load all three agents: the daily run, the vault backup, and the session board):
   cp $PROJECT_DIR/launchd/com.personal-automation.daily.plist ~/Library/LaunchAgents/
-  cp $PROJECT_DIR/launchd/com.personal-automation.tasks.plist ~/Library/LaunchAgents/
-  cp $PROJECT_DIR/launchd/com.personal-automation.tasks-alert.plist ~/Library/LaunchAgents/
   cp $PROJECT_DIR/launchd/com.personal-automation.vault-backup.plist ~/Library/LaunchAgents/
   cp $PROJECT_DIR/launchd/com.personal-automation.session-board.plist ~/Library/LaunchAgents/
   launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.personal-automation.daily.plist
-  launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.personal-automation.tasks.plist
-  launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.personal-automation.tasks-alert.plist
   launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.personal-automation.vault-backup.plist
   launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.personal-automation.session-board.plist
 
@@ -70,13 +62,10 @@ started by hand first, or it holds port 4747 and the agent respawns every 10 sec
 Check it: launchctl print gui/$(id -u)/com.personal-automation.session-board | head -20
 Stop it:  launchctl bootout gui/$(id -u)/com.personal-automation.session-board
 
-Changed TASKS_SCHEDULE or TASKS_ALERT_TIMES later? Re-run this script, then:
+Still have the retired tasks agents loaded from before? Unload and remove them:
   launchctl bootout gui/$(id -u)/com.personal-automation.tasks
-  cp $PROJECT_DIR/launchd/com.personal-automation.tasks.plist ~/Library/LaunchAgents/
-  launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.personal-automation.tasks.plist
   launchctl bootout gui/$(id -u)/com.personal-automation.tasks-alert
-  cp $PROJECT_DIR/launchd/com.personal-automation.tasks-alert.plist ~/Library/LaunchAgents/
-  launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.personal-automation.tasks-alert.plist
+  rm -f ~/Library/LaunchAgents/com.personal-automation.tasks.plist ~/Library/LaunchAgents/com.personal-automation.tasks-alert.plist
 
 Optional log rotation (rotates the logs in launchd/logs/ weekly, keeps 4):
   sudo cp $PROJECT_DIR/launchd/newsyslog.personal-automation.conf /etc/newsyslog.d/
