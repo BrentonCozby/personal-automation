@@ -120,6 +120,9 @@ beforeEach(() => {
 })
 
 afterEach(() => {
+  // Timers left pending outlive the test: a row message would follow its
+  // session id onto the next test's row, and a resume lock would stay held.
+  if (vi.isFakeTimers()) vi.runOnlyPendingTimers()
   vi.useRealTimers()
   vi.unstubAllGlobals()
   vi.restoreAllMocks()
@@ -524,6 +527,38 @@ it('says why when the server refuses a name', async () => {
   expect(rowNode().querySelector('input.edit')).toBeNull()
 })
 
+it('keeps a refusal on its row through the next repaint, until it times out', async () => {
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async () => ({
+      ok: false,
+      status: 400,
+      text: async () => JSON.stringify({ error: 'a session name is kebab-case' }),
+    })),
+  )
+  vi.spyOn(console, 'error').mockImplementation(() => {
+    // The client logs every refusal. This test is about the row.
+  })
+  const board = boardWith([aRow({ name: 'perf' })])
+  render(board)
+  const name = rowNode().querySelector('.name')
+  name.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }))
+  const input = name.querySelector('input.edit')
+  input.value = 'other'
+  input.dispatchEvent(new Event('blur'))
+  await settle()
+
+  render(board)
+
+  expect(rowNode().querySelector('.edit-line .pending')?.textContent).toBe(
+    'a session name is kebab-case',
+  )
+
+  vi.advanceTimersByTime(60_000)
+
+  expect(rowNode().querySelector('.edit-line')).toBeNull()
+})
+
 it('closes the field on commit, since a save that changes nothing repaints nothing', () => {
   const fetchMock = vi.fn(async () => ({ ok: true, json: async () => ({}) }))
   vi.stubGlobal('fetch', fetchMock)
@@ -560,7 +595,6 @@ it('takes the parked field away on commit rather than leaving an empty line', ()
 it('locks resume while the tab opens, so a second press cannot start a second session', async () => {
   const fetchSpy = vi.fn(async () => ({ ok: true }))
   vi.stubGlobal('fetch', fetchSpy)
-  // Its own id: a tab that opened keeps resume locked past the end of the test.
   render(boardWith([aRow({ sessionId: 'opened', name: 'perf', cwd: '/repo' })]))
 
   const resume = buttonNamed('resume ↗')
@@ -654,7 +688,37 @@ it('keeps resume locked through a repaint while the tab opens', async () => {
 
   expect(fetchSpy).toHaveBeenCalledTimes(1)
   expect(buttonNamed('resume ↗').disabled).toBe(true)
+  expect(rowNode().querySelectorAll('.edit-line')).toHaveLength(1)
   expect(rowNode().querySelector('.edit-line .pending').textContent).toBe('opening a tab…')
+})
+
+it('says why a tab could not be opened even when the answer is slow', async () => {
+  let answer
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(
+      () =>
+        new Promise(resolve => {
+          answer = resolve
+        }),
+    ),
+  )
+  vi.spyOn(console, 'error').mockImplementation(() => {
+    // The client logs every refusal. This test is about the row.
+  })
+  render(boardWith([aRow({ name: 'perf', cwd: '/repo' })]))
+
+  buttonNamed('resume ↗').click()
+  vi.advanceTimersByTime(10_000)
+  answer({
+    ok: false,
+    status: 500,
+    text: async () => JSON.stringify({ error: 'osascript failed' }),
+  })
+  await settle()
+
+  expect(rowNode().querySelectorAll('.edit-line')).toHaveLength(1)
+  expect(rowNode().querySelector('.edit-line .pending').textContent).toBe('osascript failed')
 })
 
 it('gives resume back once a tab that opened has had time to report in', async () => {
@@ -789,7 +853,6 @@ it.each([
 it('asks before reopening a conversation past 450k tokens', async () => {
   const fetchSpy = vi.fn(async () => ({ ok: true }))
   vi.stubGlobal('fetch', fetchSpy)
-  // Its own id: a tab that opened keeps resume locked past the end of the test.
   render(
     boardWith([
       aRow({ sessionId: 'large-reopened', name: 'perf', cwd: '/repo', contextTokens: 520_000 }),

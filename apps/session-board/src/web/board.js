@@ -244,6 +244,13 @@ async function api(path, options) {
   }
 }
 
+function editLine(text) {
+  const line = el('div', 'edit-line')
+  line.append(el('span', 'pending', text))
+
+  return line
+}
+
 /** The node a repaint drew in place of `node`, a `.row` or `.group` it threw away. */
 function findRedrawn(node) {
   const { sessionId, group } = node.dataset
@@ -255,22 +262,35 @@ function findRedrawn(node) {
   return undefined
 }
 
-/**
- * A short-lived line under a row, for something the row itself cannot show.
- *
- * Returns the line so a caller waiting on an answer can replace what it says
- * rather than stacking a second line under the first.
- */
+/** A short-lived line under a row, for something the row itself cannot show. */
 function showMessage(node, text) {
-  const line = el('div', 'edit-line')
-  line.append(el('span', 'pending', text))
+  const line = editLine(text)
   // A repaint between the request and its answer replaces the row, and a line
   // under the old one is never seen.
   const redrawn = node.isConnected ? undefined : findRedrawn(node)
-  ;(redrawn || node).append(line)
-  setTimeout(() => line.remove(), MESSAGE_MS)
+  const host = redrawn || node
+  host.append(line)
+  messageHosts.set(line, host)
+  setTimeout(() => {
+    line.remove()
+    messageHosts.delete(line)
+  }, MESSAGE_MS)
+}
 
-  return line
+/** Each line `showMessage` is still showing, and the row or group it sits under. */
+const messageHosts = new Map()
+
+/** Move each line still showing onto the row or group a repaint drew in place of its own. */
+function carryMessages() {
+  for (const [line, host] of messageHosts) {
+    if (host.isConnected) continue
+
+    const redrawn = findRedrawn(host)
+    if (!redrawn) continue
+
+    redrawn.append(line)
+    messageHosts.set(line, redrawn)
+  }
 }
 
 /**
@@ -597,7 +617,7 @@ function buildRow(row) {
         // same rule, so this only ever reports a rule the two disagree on.
         const kebab = toKebabCase(value)
         void patchSession(row.sessionId, { name: kebab || null }).then(result => {
-          if (!result.ok) showMessage(node, result.error ?? 'could not save that name')
+          if (!result.ok) showMessage(node, result.error || 'could not save that name')
         })
       },
     }),
@@ -612,11 +632,7 @@ function buildRow(row) {
   const isOpeningNow = isOpening(row.sessionId)
   openButton.disabled = Boolean(blocked) || isOpeningNow
   openButton.title = blocked || resumeTitle(row)
-  if (opens.get(row.sessionId)?.isPending) {
-    const line = el('div', 'edit-line')
-    line.append(el('span', 'pending', 'opening a tab…'))
-    node.append(line)
-  }
+  if (opens.get(row.sessionId)?.isPending) node.append(editLine('opening a tab…'))
   openButton.addEventListener('click', event => {
     event.stopPropagation()
     if (isOpening(row.sessionId)) return
@@ -634,7 +650,10 @@ function buildRow(row) {
     const open = { at: Date.now(), isPending: true }
     opens.set(row.sessionId, open)
     openButton.disabled = true
-    const message = showMessage(node, 'opening a tab…')
+    // Not `showMessage`: this line stays for as long as the request does, and
+    // each repaint in the meantime draws it again on the new row.
+    const message = editLine('opening a tab…')
+    node.append(message)
 
     void api(`/api/sessions/${encodeURIComponent(row.sessionId)}/open`, {
       method: 'POST',
@@ -646,16 +665,11 @@ function buildRow(row) {
         return
       }
 
-      const error = result.error ?? 'could not open a tab'
       opens.delete(row.sessionId)
-      if (isBusy()) {
-        hasUndrawnSnapshot = true
-        message.replaceChildren(el('span', 'pending', error))
-
-        return
-      }
-      render(latest)
-      showMessage(node, error)
+      message.remove()
+      if (isBusy()) hasUndrawnSnapshot = true
+      else render(latest)
+      showMessage(node, result.error || 'could not open a tab')
     })
   }
 
@@ -821,8 +835,7 @@ function nameTitle(row, label) {
 async function openProgressPicker(node, row) {
   // The answer needs a `git` call to find the repository root, so say something
   // straight away rather than leaving the button looking dead.
-  const line = el('div', 'edit-line')
-  line.append(el('span', 'pending', 'looking for progress files…'))
+  const line = editLine('looking for progress files…')
   node.append(line)
 
   const answer = await apiJson(
@@ -839,8 +852,8 @@ async function openProgressPicker(node, row) {
   // already looking after pressing the button. The corner of the row was the
   // one place on it nobody was watching.
   const answerWith = message => {
-    line.replaceChildren(el('span', 'pending', message))
-    setTimeout(() => line.remove(), MESSAGE_MS)
+    line.remove()
+    showMessage(host, message)
   }
 
   if (!answer) {
@@ -1534,6 +1547,7 @@ export function render(board) {
   // The rebuild replaces every node, the focused control included.
   const focused = findFocusedControl()
   drawBoard(board)
+  carryMessages()
   if (!focused) return
 
   const redrawn = findRedrawn(focused.node)
