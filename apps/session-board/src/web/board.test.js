@@ -72,10 +72,8 @@ function rowNode() {
   return document.querySelector('.row')
 }
 
-function buttonNamed(name) {
-  return [...document.querySelectorAll('.actions button')].find(
-    button => button.textContent === name,
-  )
+function buttonNamed(name, within = document) {
+  return [...within.querySelectorAll('.actions button')].find(button => button.textContent === name)
 }
 
 /**
@@ -594,6 +592,47 @@ it('says so on the row when a tab could not be opened', async () => {
   // Replaced rather than stacked under the line that said it was opening.
   expect(rowNode().querySelectorAll('.edit-line')).toHaveLength(1)
   expect(rowNode().querySelector('.edit-line .pending').textContent).toBe('osascript failed')
+})
+
+it('keeps keyboard focus on the same button of the same row across a repaint', () => {
+  const board = boardWith([
+    aRow({ sessionId: 'a', name: 'perf' }),
+    aRow({ sessionId: 'b', name: 'flake' }),
+  ])
+  render(board)
+  const flake = [...document.querySelectorAll('.row')].find(row =>
+    row.textContent.includes('flake'),
+  )
+  buttonNamed('park', flake).focus()
+
+  render(board)
+
+  expect(document.activeElement.textContent).toBe('park')
+  expect(document.activeElement.closest('.row').textContent).toContain('flake')
+})
+
+// The drawer's header has only the collapse toggle; a group's name comes second.
+it.each([
+  ['Infra', '.group-name'],
+  ['Off the board', '[title="Collapse"]'],
+])('keeps keyboard focus on the %s header across a repaint', (label, control) => {
+  const board = boardWithGroups(
+    [
+      { name: 'Bug week', rows: [aRow({ sessionId: 'a', name: 'perf' })] },
+      { name: 'Infra', rows: [aRow({ sessionId: 'b', name: 'flake' })] },
+    ],
+    [aRow({ sessionId: 'c' })],
+  )
+  render(board)
+  const header = [...document.querySelectorAll('.group-header')].find(
+    node => node.querySelector('.group-label').textContent === label,
+  )
+  header.querySelector(control).focus()
+
+  render(board)
+
+  expect(document.activeElement.matches(control)).toBe(true)
+  expect(document.activeElement.closest('.group-header').textContent).toContain(label)
 })
 
 it('keeps resume locked through a repaint while the tab opens', async () => {

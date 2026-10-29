@@ -244,6 +244,17 @@ async function api(path, options) {
   }
 }
 
+/** The node a repaint drew in place of `node`, a `.row` or `.group` it threw away. */
+function findRedrawn(node) {
+  const { sessionId, group } = node.dataset
+  if (sessionId) return document.querySelector(`.row[data-session-id="${CSS.escape(sessionId)}"]`)
+  if (group) return document.querySelector(`.group[data-group="${CSS.escape(group)}"]`)
+  // The drawer's group is the only one with no name, since it takes no drops.
+  if (node.classList.contains('group')) return document.querySelector('#drawer .group')
+
+  return undefined
+}
+
 /**
  * A short-lived line under a row, for something the row itself cannot show.
  *
@@ -255,13 +266,7 @@ function showMessage(node, text) {
   line.append(el('span', 'pending', text))
   // A repaint between the request and its answer replaces the row, and a line
   // under the old one is never seen.
-  const { sessionId, group } = node.dataset
-  let redrawn
-  if (!node.isConnected && sessionId) {
-    redrawn = document.querySelector(`.row[data-session-id="${CSS.escape(sessionId)}"]`)
-  } else if (!node.isConnected && group) {
-    redrawn = document.querySelector(`.group[data-group="${CSS.escape(group)}"]`)
-  }
+  const redrawn = node.isConnected ? undefined : findRedrawn(node)
   ;(redrawn || node).append(line)
   setTimeout(() => line.remove(), MESSAGE_MS)
 
@@ -826,9 +831,7 @@ async function openProgressPicker(node, row) {
 
   // A snapshot can land while the answer is in flight and rebuild the board,
   // so the answer goes on the row as it is drawn now.
-  const host = line.isConnected
-    ? node
-    : document.querySelector(`.row[data-session-id="${CSS.escape(row.sessionId)}"]`)
+  const host = line.isConnected ? node : findRedrawn(node)
   if (!host) return
   host.append(line)
 
@@ -1507,10 +1510,44 @@ function buildGroup({
   return wrapper
 }
 
-// Looked up on each repaint rather than held in module state, so the module
-// can be imported and driven against a document a test builds.
+// Text fields and selects are left out: one with focus holds the repaint off.
+const FOCUSABLE_SELECTOR = 'button, [tabindex="0"]'
+
+/** The focused row or group header, and the focused control's position in it. */
+function findFocusedControl() {
+  const focused = document.activeElement
+  const host = focused?.closest('.row, .group-header')
+  if (!host) return undefined
+
+  const isHeader = host.classList.contains('group-header')
+
+  return {
+    node: isHeader ? host.parentElement : host,
+    isHeader,
+    index: [...host.querySelectorAll(FOCUSABLE_SELECTOR)].indexOf(focused),
+  }
+}
+
 export function render(board) {
   if (!board) return
+
+  // The rebuild replaces every node, the focused control included.
+  const focused = findFocusedControl()
+  drawBoard(board)
+  if (!focused) return
+
+  const redrawn = findRedrawn(focused.node)
+  const host = focused.isHeader ? redrawn?.querySelector('.group-header') : redrawn
+  const controls = host?.querySelectorAll(FOCUSABLE_SELECTOR)
+  // Row actions and header buttons stay `display: none` until focus is inside,
+  // and a hidden button ignores `focus()`.
+  controls?.[0]?.focus()
+  controls?.[focused.index]?.focus()
+}
+
+// Looked up on each repaint rather than held in module state, so the module
+// can be imported and driven against a document a test builds.
+function drawBoard(board) {
   latest = board
   hasUndrawnSnapshot = false
   // A rebuild throws the open "start a session" panel away with everything
