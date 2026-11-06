@@ -4,10 +4,10 @@
   "description": "Personal automation monorepo: small scheduled jobs and the shared libraries they build on.",
   "type": "module",
   "private": true,
-  "packageManager": "pnpm@11.28.6",
+  "packageManager": "pnpm@12.17.0",
   "engines": {
     "node": ">=26.12.0",
-    "pnpm": ">=11.28.6"
+    "pnpm": ">=12.17.0"
   },
   "scripts": {
     "build": "pnpm -r build",
