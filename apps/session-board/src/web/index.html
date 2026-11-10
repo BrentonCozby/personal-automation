@@ -94,7 +94,9 @@
         white-space: nowrap;
       }
 
-      #toolbar > :not(#offline) { flex: none; white-space: nowrap; }
+      /* Not "+ new group", whose refusal message is written inside it and has
+         to wrap rather than widen the toolbar. */
+      #toolbar > :first-child, #count { flex: none; white-space: nowrap; }
 
       #offline:not(:empty)::before {
         content: '';
