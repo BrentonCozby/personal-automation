@@ -3,6 +3,7 @@ import type { MetadataBySession, SessionMetadata } from '../metadata/types.js'
 import { deriveActivity } from './activity.js'
 import type { LastTurn } from './context-size.js'
 import { progressSlug } from './progress-files.js'
+import { pickSessionCwd } from './repos.js'
 import { findEventTitles } from './session-names.js'
 
 /**
@@ -260,7 +261,10 @@ export function buildBoard({
       lastTurns,
       status,
       lastActive,
-      cwd: entry?.cwd || lastDefined({ events: sessionEvents, pick: event => event.cwd }),
+      cwd: pickSessionCwd({
+        entry,
+        eventCwd: lastDefined({ events: sessionEvents, pick: event => event.cwd }),
+      }),
     })
 
     // A dismissed row exists only to stop the session claiming itself again, so

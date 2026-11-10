@@ -13,7 +13,7 @@ import {
 import { resolveLiveSessions } from './derive/liveness.js'
 import { listProcesses } from './derive/processes.js'
 import { findProgressFiles, matchProgressFile, resolveRepoRoot } from './derive/progress-files.js'
-import { cwdBySession } from './derive/repos.js'
+import { cwdBySession, pickSessionCwd } from './derive/repos.js'
 import {
   createSessionNamer,
   findEventTitles,
@@ -49,7 +49,10 @@ export function resolveSessionCwd({
   metadata: MetadataBySession
   sessionId: string
 }): string | undefined {
-  return metadata[sessionId]?.cwd || cwdBySession(events).get(sessionId)
+  return pickSessionCwd({
+    entry: metadata[sessionId],
+    eventCwd: cwdBySession(events).get(sessionId),
+  })
 }
 
 export async function fileExists(path: string): Promise<boolean> {

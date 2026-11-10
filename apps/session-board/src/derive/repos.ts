@@ -1,6 +1,20 @@
 import type { HookEvent } from '../events/types.js'
-import type { MetadataBySession } from '../metadata/types.js'
+import type { MetadataBySession, SessionMetadata } from '../metadata/types.js'
 import { resolveRepoRoot } from './progress-files.js'
+
+/**
+ * A session's directory: a `cwd` set by hand on its row wins over the one its
+ * events report, which is how a row is pointed somewhere it never ran.
+ */
+export function pickSessionCwd({
+  entry,
+  eventCwd,
+}: {
+  entry: SessionMetadata | undefined
+  eventCwd: string | undefined
+}): string | undefined {
+  return entry?.cwd || eventCwd
+}
 
 /** Where each session was last working, by session id. */
 export function cwdBySession(events: HookEvent[]): Map<string, string> {
@@ -57,8 +71,7 @@ export function collectGroupDirectories({
   for (const [sessionId, entry] of Object.entries(metadata)) {
     if (entry.group !== group) continue
 
-    // A `cwd` set by hand is how a row is pointed somewhere it never ran.
-    const cwd = entry.cwd || cwds.get(sessionId)
+    const cwd = pickSessionCwd({ entry, eventCwd: cwds.get(sessionId) })
     if (cwd) directories.add(cwd)
   }
 

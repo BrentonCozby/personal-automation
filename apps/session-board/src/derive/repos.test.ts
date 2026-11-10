@@ -10,7 +10,16 @@ import {
   collectSessionDirectories,
   createRepoRoots,
   isThrowawayRoot,
+  pickSessionCwd,
 } from './repos.js'
+
+it.each([
+  ['a directory set by hand over the events', { cwd: '/by/hand' }, '/from/events', '/by/hand'],
+  ['the events when nothing is set by hand', { name: 'perf' }, '/from/events', '/from/events'],
+  ['the events for a session with no row', undefined, '/from/events', '/from/events'],
+])('picks %s', (_what, entry, eventCwd, expected) => {
+  expect(pickSessionCwd({ entry, eventCwd })).toBe(expected)
+})
 
 const execFileAsync = promisify(execFile)
 
