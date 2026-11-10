@@ -20,7 +20,7 @@ export function parseProcessList(stdout: string): Map<number, ProcessInfo> {
     const [, rawPid, rawStart, rawCommand] = match
     if (!rawPid || !rawStart || !rawCommand) continue
 
-    const startedAtMs = Date.parse(rawStart)
+    const startedAtMs = Date.parse(`${rawStart} GMT`)
     if (Number.isNaN(startedAtMs)) continue
 
     processes.set(Number(rawPid), {
@@ -37,6 +37,9 @@ export function parseProcessList(stdout: string): Map<number, ProcessInfo> {
 
 export async function listProcesses(): Promise<Map<number, ProcessInfo>> {
   const { stdout } = await execFileAsync('ps', ['-axo', 'pid=,lstart=,comm='], {
+    // Node fixes its zone at startup, so a board left running across a move to
+    // another zone would read every start time hours off and call each session gone.
+    env: { ...process.env, TZ: 'UTC0' },
     maxBuffer: 8 * 1024 * 1024,
   })
 
