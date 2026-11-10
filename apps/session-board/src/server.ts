@@ -30,6 +30,7 @@ import {
   openSessionTab,
 } from './launch.js'
 import { createGroupStore } from './metadata/group-store.js'
+import { isOnBoard } from './metadata/on-board.js'
 import { createMetadataStore } from './metadata/store.js'
 import type { MetadataBySession, MetadataPatch } from './metadata/types.js'
 import { findRequestRejection, isSessionId } from './request-guard.js'
@@ -137,10 +138,7 @@ function isNameOnBoard({
 }): boolean {
   return Object.entries(metadata).some(
     ([sessionId, entry]) =>
-      sessionId !== exceptSessionId &&
-      entry.name === name &&
-      !entry.supersededBy &&
-      !entry.isDismissed,
+      sessionId !== exceptSessionId && entry.name === name && isOnBoard(entry),
   )
 }
 

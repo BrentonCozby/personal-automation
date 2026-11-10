@@ -23,6 +23,7 @@ import {
 import { findTranscripts } from './derive/transcripts.js'
 import type { HookEvent } from './events/types.js'
 import type { GroupStore } from './metadata/group-store.js'
+import { isOnBoard } from './metadata/on-board.js'
 import type { MetadataStore } from './metadata/store.js'
 import type { MetadataBySession } from './metadata/types.js'
 
@@ -97,7 +98,7 @@ async function linkProgressFiles({
     // left in here costs a `git rev-parse` on every snapshot to work out a
     // repository nothing will read. On the real board that was all 19 of the
     // rows without a path, and half a second of every snapshot.
-    ([, entry]) => !entry.progressPath && !entry.isDismissed && !entry.supersededBy,
+    ([, entry]) => !entry.progressPath && isOnBoard(entry),
   )
 
   const cwdBySessionId = new Map<string, string>()
@@ -381,7 +382,7 @@ async function dismissDeadTwins({
 }): Promise<boolean> {
   const byName = new Map<string, string[]>()
   for (const [sessionId, entry] of Object.entries(metadata)) {
-    if (!entry.name || entry.isDismissed || entry.supersededBy) continue
+    if (!entry.name || !isOnBoard(entry)) continue
 
     byName.set(entry.name, [...(byName.get(entry.name) ?? []), sessionId])
   }

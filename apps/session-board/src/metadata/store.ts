@@ -1,4 +1,5 @@
 import { createJsonFile } from './json-file.js'
+import { isOnBoard } from './on-board.js'
 import { metadataFileSchema } from './schemas.js'
 import type { MetadataBySession, MetadataPatch, SessionMetadata } from './types.js'
 
@@ -105,7 +106,7 @@ export function createMetadataStore({ path }: { path: string }): MetadataStore {
     return serialize(async () => {
       const all = await read()
       const entry = all[from]
-      if (!entry || entry.isDismissed || entry.supersededBy) return false
+      if (!entry || !isOnBoard(entry)) return false
 
       // The mark that paired the two belongs to the row that was clicked, not
       // to the session it started.
@@ -146,11 +147,7 @@ export function createMetadataStore({ path }: { path: string }): MetadataStore {
 
       const others = Object.entries(all)
         .filter(
-          ([id, entry]) =>
-            id !== sessionId &&
-            entry.group === moved.group &&
-            !entry.isDismissed &&
-            !entry.supersededBy,
+          ([id, entry]) => id !== sessionId && entry.group === moved.group && isOnBoard(entry),
         )
         .sort(([, a], [, b]) => byOrder(a, b))
         .map(([id]) => id)
