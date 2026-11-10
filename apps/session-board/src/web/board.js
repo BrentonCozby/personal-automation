@@ -398,7 +398,12 @@ function editIn({ host, current, placeholder, onCommit, commitUnchanged = false 
     // repainting is held off while a field has focus, so committing
     // without blurring leaves the field sitting there looking unsaved.
     if (event.key === 'Enter' || event.key === 'Escape') isKeyboardExit = true
-    if (event.key === 'Enter') input.blur()
+    if (event.key === 'Enter') {
+      // Focus moves to the opener before this key's keypress, which would
+      // otherwise press the opener and open the field again.
+      event.preventDefault()
+      input.blur()
+    }
     if (event.key === 'Escape') finish(false)
   })
   input.addEventListener('blur', () => {

@@ -271,6 +271,20 @@ describe('when a field closes from the keyboard', () => {
     expect(document.activeElement).toBe(name)
   })
 
+  it('keeps the Enter that saves a field from pressing the control it hands focus to', () => {
+    render(boardWith([aRow({ name: 'perf' })]))
+    const park = buttonNamed('park', rowNode())
+    park.focus()
+    park.click()
+    const input = rowNode().querySelector('input.edit')
+    input.value = 'waiting on CI'
+
+    const enter = new KeyboardEvent('keydown', { key: 'Enter', cancelable: true })
+    input.dispatchEvent(enter)
+
+    expect(enter.defaultPrevented).toBe(true)
+  })
+
   it('hands focus back to park after the reason is escaped', () => {
     render(boardWith([aRow({ name: 'perf' })]))
     const park = buttonNamed('park', rowNode())
