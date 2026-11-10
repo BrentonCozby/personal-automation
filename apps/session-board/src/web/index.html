@@ -84,7 +84,17 @@
       #offline {
         color: var(--danger);
         font-weight: 600;
+        /* One line however long the error is, or a file path in it wraps the
+           toolbar and squeezes its other items into narrow columns. */
+        flex: 1 1 auto;
+        min-width: 0;
+        margin: 0 12px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
       }
+
+      #toolbar > :not(#offline) { flex: none; white-space: nowrap; }
 
       #offline:not(:empty)::before {
         content: '';

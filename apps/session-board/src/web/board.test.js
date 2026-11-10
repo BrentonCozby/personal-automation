@@ -2486,10 +2486,13 @@ it('says why the board stopped updating when the server cannot rebuild it', () =
   expect(document.getElementById('offline').textContent).toBe(
     'not live: /x/sessions.json cannot be read',
   )
+  // The toolbar cuts a long error short, so hovering is the way to read the rest.
+  expect(document.getElementById('offline').title).toBe('not live: /x/sessions.json cannot be read')
 
   handlers.message({ data: JSON.stringify(boardWith([aRow({ name: 'perf' })])) })
 
   expect(document.getElementById('offline').textContent).toBe('')
+  expect(document.getElementById('offline').title).toBe('')
 })
 
 it('leaves a stream the browser is still retrying alone', async () => {

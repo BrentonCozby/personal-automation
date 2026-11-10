@@ -1715,8 +1715,15 @@ let stream
 let reconnectTimer
 
 function sayOffline(isOffline) {
+  sayNotLive(isOffline ? 'not live, reconnecting' : '')
+}
+
+function sayNotLive(text) {
   const label = document.getElementById('offline')
-  if (label) label.textContent = isOffline ? 'not live, reconnecting' : ''
+  if (!label) return
+
+  label.textContent = text
+  label.title = text
 }
 
 /**
@@ -1739,8 +1746,7 @@ export function connect() {
   // The server is up but cannot build a board, so the rows on screen stop
   // changing. The next good frame clears this.
   stream.addEventListener('stale', event => {
-    const label = document.getElementById('offline')
-    if (label) label.textContent = `not live: ${JSON.parse(event.data).error}`
+    sayNotLive(`not live: ${JSON.parse(event.data).error}`)
   })
 
   stream.addEventListener('message', event => {
