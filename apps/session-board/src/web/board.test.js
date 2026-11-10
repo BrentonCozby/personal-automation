@@ -1,7 +1,7 @@
 /**
  * @vitest-environment happy-dom
  */
-import { afterEach, beforeEach, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { render, start } from './board.js'
 
 function boardWith(rows) {
@@ -250,6 +250,50 @@ it('claims nothing when the field opened on a suggestion is escaped', () => {
     .dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
 
   expect(fetchMock.mock.calls.find(([, options]) => options?.method === 'PATCH')).toBe(undefined)
+})
+
+describe('when a field closes from the keyboard', () => {
+  beforeEach(() => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => ({ ok: true, json: async () => ({}) })),
+    )
+  })
+
+  it.each(['Enter', 'Escape'])('hands focus back to the name after %s', key => {
+    render(boardWith([aRow({ name: 'perf' })]))
+    const name = rowNode().querySelector('.name')
+    name.focus()
+    name.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }))
+
+    name.querySelector('input.edit').dispatchEvent(new KeyboardEvent('keydown', { key }))
+
+    expect(document.activeElement).toBe(name)
+  })
+
+  it('hands focus back to park after the reason is escaped', () => {
+    render(boardWith([aRow({ name: 'perf' })]))
+    const park = buttonNamed('park', rowNode())
+    park.focus()
+    park.click()
+
+    rowNode()
+      .querySelector('input.edit')
+      .dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }))
+
+    expect(document.activeElement).toBe(park)
+  })
+})
+
+it('leaves focus on whatever took it from an open field', () => {
+  render(boardWith([aRow({ name: 'perf' })]))
+  const name = rowNode().querySelector('.name')
+  name.focus()
+  name.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }))
+
+  buttonNamed('park', rowNode()).focus()
+
+  expect(document.activeElement.textContent).toBe('park')
 })
 
 it('keeps the directory as text on an unnamed row, which has nothing else to go by', () => {

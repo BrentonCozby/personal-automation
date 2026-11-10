@@ -332,6 +332,7 @@ function patchSession(id, changes) {
 }
 
 function editIn({ host, current, placeholder, onCommit, commitUnchanged = false }) {
+  const opener = document.activeElement
   const previous = [...host.childNodes]
   // A span that says it is a button must not say so while it holds a text
   // field. It goes back to being a button when the edit ends.
@@ -354,6 +355,9 @@ function editIn({ host, current, placeholder, onCommit, commitUnchanged = false 
   input.select()
 
   let settled = false
+  // Only Enter and Escape hand focus back. A field closed by a press elsewhere
+  // leaves focus where that press put it.
+  let isKeyboardExit = false
   const finish = commit => {
     if (settled) return
     settled = true
@@ -376,6 +380,13 @@ function editIn({ host, current, placeholder, onCommit, commitUnchanged = false 
     // every edit that gets cancelled.
     if (previous.length === 0) host.remove()
 
+    if (isKeyboardExit && opener !== document.body && opener?.isConnected) {
+      // Row actions stay `display: none` until focus is inside the row, and a
+      // hidden button ignores `focus()`.
+      closest?.querySelector(FOCUSABLE_SELECTOR)?.focus()
+      opener.focus()
+    }
+
     if (isSaving) onCommit(value)
     catchUp()
   }
@@ -386,6 +397,7 @@ function editIn({ host, current, placeholder, onCommit, commitUnchanged = false 
     // dropping focus is what lets the next snapshot repaint the row:
     // repainting is held off while a field has focus, so committing
     // without blurring leaves the field sitting there looking unsaved.
+    if (event.key === 'Enter' || event.key === 'Escape') isKeyboardExit = true
     if (event.key === 'Enter') input.blur()
     if (event.key === 'Escape') finish(false)
   })
