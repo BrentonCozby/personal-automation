@@ -2284,6 +2284,41 @@ it('closes on Escape', async () => {
   expect(startPanel()).toBe(null)
 })
 
+describe('Escape in the directory field', () => {
+  async function typeDirectory(text) {
+    render(boardWith([aRow({ name: 'perf' })]))
+    await openStartPanel('Bug week', ['/Users/me/Code/marketplace', '/Users/me/Code/other'])
+    const where = startPanel().querySelectorAll('input.edit')[1]
+    where.value = text
+    where.dispatchEvent(new Event('input'))
+
+    return where
+  }
+
+  function pressEscape(where) {
+    where.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
+  }
+
+  it('closes only the suggestions after typing that matches some', async () => {
+    const where = await typeDirectory('/Users/me/Code')
+
+    pressEscape(where)
+    expect(startPanel()).not.toBe(null)
+
+    pressEscape(where)
+    expect(startPanel()).toBe(null)
+  })
+
+  it.each([
+    ['a whole suggestion', '/Users/me/Code/other'],
+    ['text no suggestion matches', '/tmp/elsewhere'],
+  ])('closes the panel after typing %s', async (_what, text) => {
+    pressEscape(await typeDirectory(text))
+
+    expect(startPanel()).toBe(null)
+  })
+})
+
 it.each([
   ['Escape', panel => panel.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }))],
   [

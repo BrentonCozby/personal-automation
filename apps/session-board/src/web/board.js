@@ -1326,9 +1326,27 @@ function openStartPanel({ label, button }) {
     close()
   })
 
+  // Chrome sends the page the Escape that closes its suggestion popup, and the
+  // page cannot see the popup. Typing that matches a suggestion is what opens
+  // it, so the first Escape after such typing is left to the popup alone.
+  let isSuggesting = false
+  where.addEventListener('input', () => {
+    const typed = where.value.toLowerCase()
+    const options = [...document.querySelectorAll(`#${REPO_LIST_ID} option`)].map(option =>
+      option.value.toLowerCase(),
+    )
+    isSuggesting =
+      Boolean(typed) && !options.includes(typed) && options.some(option => option.includes(typed))
+  })
+
   panel.addEventListener('keydown', event => {
     // The board's own keys must not fire from inside a field.
     event.stopPropagation()
+    if (event.key === 'Escape' && event.target === where && isSuggesting) {
+      isSuggesting = false
+
+      return
+    }
     if (event.key === 'Escape') {
       close()
 
