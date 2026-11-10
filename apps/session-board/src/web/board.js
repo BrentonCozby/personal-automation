@@ -456,6 +456,7 @@ function buildPin(row) {
   if (!isProgress && !row.cwd) return undefined
 
   const pin = el('span', row.isProgressFileMissing ? 'pin missing' : 'pin')
+  pin.dataset.control = 'pin'
   // `≡` rather than a document character: U+2398 and the ones like it are
   // missing from most fonts and come out as an empty box.
   pin.append(el('span', 'icon', isProgress ? '≡' : '⌂'))
@@ -555,6 +556,7 @@ function buildRow(row) {
   if (isNameDerived) nameClasses.push('derived')
   if (row.isTranscriptMissing) nameClasses.push('missing')
   const name = el('span', nameClasses.join(' '), label)
+  name.dataset.control = 'name'
   name.title = nameTitle(row, label)
   top.append(name)
 
@@ -638,6 +640,7 @@ function buildRow(row) {
   const actions = el('div', 'actions')
 
   const openButton = el('button', null, 'resume ↗')
+  openButton.dataset.control = 'resume'
   const blocked = whyResumeIsBlocked(row, isAlive)
   // A second press while the tab opens starts a second session on the same
   // work, in its own tab.
@@ -687,6 +690,7 @@ function buildRow(row) {
 
   if (row.isClaimed) {
     const parkButton = el('button', null, row.parkedReason ? 'unpark' : 'park')
+    parkButton.dataset.control = 'park'
     parkButton.addEventListener('click', event => {
       event.stopPropagation()
       if (row.parkedReason) {
@@ -716,6 +720,7 @@ function buildRow(row) {
     // two would read the same. The label is then the only thing that says
     // whether a file is linked at all.
     const linkButton = el('button', null, row.progressPath ? 'relink' : 'link')
+    linkButton.dataset.control = 'link'
     linkButton.title = row.progressPath
       ? 'Point this session at a different progress file'
       : 'Link a progress file to this session'
@@ -1546,7 +1551,7 @@ function buildGroup({
 // Text fields and selects are left out: one with focus holds the repaint off.
 const FOCUSABLE_SELECTOR = 'button, [tabindex="0"]'
 
-/** The focused row or group header, and the focused control's position in it. */
+/** The focused row or group header, and which of its controls has focus. */
 function findFocusedControl() {
   const focused = document.activeElement
   const host = focused?.closest('.row, .group-header')
@@ -1557,8 +1562,18 @@ function findFocusedControl() {
   return {
     node: isHeader ? host.parentElement : host,
     isHeader,
+    // A row's controls come and go (a pin, a parked line) and its labels change
+    // (park becomes unpark), so neither position nor text survives a repaint.
+    key: focused.dataset.control || focused.className,
     index: [...host.querySelectorAll(FOCUSABLE_SELECTOR)].indexOf(focused),
   }
+}
+
+/** The control in `controls` that `focused` names, by key when one matches. */
+function findSameControl({ controls, focused }) {
+  const byKey = [...controls].find(node => (node.dataset.control || node.className) === focused.key)
+
+  return byKey || controls[focused.index]
 }
 
 export function render(board) {
@@ -1573,10 +1588,12 @@ export function render(board) {
   const redrawn = findRedrawn(focused.node)
   const host = focused.isHeader ? redrawn?.querySelector('.group-header') : redrawn
   const controls = host?.querySelectorAll(FOCUSABLE_SELECTOR)
+  if (!controls) return
+
   // Row actions and header buttons stay `display: none` until focus is inside,
   // and a hidden button ignores `focus()`.
-  controls?.[0]?.focus()
-  controls?.[focused.index]?.focus()
+  controls[0]?.focus()
+  findSameControl({ controls, focused })?.focus()
 }
 
 // Looked up on each repaint rather than held in module state, so the module

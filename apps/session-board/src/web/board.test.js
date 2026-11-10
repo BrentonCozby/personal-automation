@@ -689,6 +689,18 @@ it('keeps keyboard focus on the same button of the same row across a repaint', (
   expect(document.activeElement.closest('.row').textContent).toContain('flake')
 })
 
+it.each([
+  ['parking it adds a line', { parkedReason: 'waiting on CI' }, 'park', 'unpark'],
+  ['naming it adds a pin', { name: 'perf', progressLabel: 'perf' }, 'link', 'link'],
+])('keeps keyboard focus on the same button when %s above it', (_what, changes, from, to) => {
+  render(boardWith([aRow({ sessionId: 'a' })]))
+  buttonNamed(from, rowNode()).focus()
+
+  render(boardWith([aRow({ sessionId: 'a', ...changes })]))
+
+  expect(document.activeElement.textContent).toBe(to)
+})
+
 // The drawer's header has only the collapse toggle; a group's name comes second.
 it.each([
   ['Infra', '.group-name'],
