@@ -1208,11 +1208,19 @@ function openStartPanel({ label, button }) {
 
   const close = () => {
     if (settled) return
+    const hadFocus = panel.contains(document.activeElement)
+    const group = header.parentElement
     drop()
     // `render` clears the flag itself, since it is what destroys the panel.
     // Repaint now: the snapshots that arrived while this was open were set
     // aside rather than drawn.
     render(latest)
+    if (!hadFocus) return
+
+    const redrawnHeader = findRedrawn(group)?.querySelector('.group-header')
+    // The `+` stays `display: none` until focus is inside the header.
+    redrawnHeader?.querySelector(FOCUSABLE_SELECTOR)?.focus()
+    redrawnHeader?.querySelector('.group-start')?.focus()
   }
 
   void loadRepos(label).then(repos => {

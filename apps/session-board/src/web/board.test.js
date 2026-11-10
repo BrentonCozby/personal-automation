@@ -2214,6 +2214,27 @@ it('closes on Escape', async () => {
   expect(startPanel()).toBe(null)
 })
 
+it.each([
+  ['Escape', panel => panel.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }))],
+  [
+    'cancel',
+    panel => {
+      const cancel = [...panel.querySelectorAll('button')].find(
+        button => button.textContent === 'cancel',
+      )
+      cancel.focus()
+      cancel.click()
+    },
+  ],
+])('hands focus back to the + after %s closes the panel', async (_how, closePanel) => {
+  render(boardWith([aRow({ name: 'perf' })]))
+  await openStartPanel('Bug week')
+
+  closePanel(startPanel())
+
+  expect(document.activeElement).toBe(startButton('Bug week'))
+})
+
 it('walks Enter from the directory field to start, once the browser has let go', async () => {
   render(boardWith([aRow({ name: 'perf' })]))
   await openStartPanel('Bug week')
