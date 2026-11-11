@@ -19,10 +19,9 @@ const MAX_PROMPT_WORDS = 4
 /**
  * The names Claude Code reported for itself, keyed by session.
  *
- * Both the name you passed to `claude -n` and the title Claude Code writes for
- * you arrive in `session_title`, so this is every session that has ever called
- * itself anything. The last one wins: renaming a session emits the new title
- * and leaves the old one in the log forever.
+ * Only a name you chose (`claude -n` or `/rename`) arrives in `session_title`;
+ * the title Claude Code writes itself stays in the transcript. The last one
+ * wins: renaming a session emits the new title and leaves the old one in the log.
  */
 export function findEventTitles({ events }: { events: HookEvent[] }): Map<string, string> {
   const titles = new Map<string, string>()
