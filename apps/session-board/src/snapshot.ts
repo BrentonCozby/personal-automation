@@ -102,9 +102,10 @@ async function linkProgressFiles({
     ([, entry]) => !entry.progressPath && isOnBoard(entry),
   )
 
+  const eventCwds = cwdBySession(events)
   const cwdBySessionId = new Map<string, string>()
-  for (const [sessionId] of unlinked) {
-    const cwd = resolveSessionCwd({ events, metadata, sessionId })
+  for (const [sessionId, entry] of unlinked) {
+    const cwd = pickSessionCwd({ entry, eventCwd: eventCwds.get(sessionId) })
     if (cwd) cwdBySessionId.set(sessionId, cwd)
   }
 

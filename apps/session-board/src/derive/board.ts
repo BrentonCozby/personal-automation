@@ -3,7 +3,7 @@ import type { MetadataBySession, SessionMetadata } from '../metadata/types.js'
 import { deriveActivity } from './activity.js'
 import type { LastTurn } from './context-size.js'
 import { progressSlug } from './progress-files.js'
-import { pickSessionCwd } from './repos.js'
+import { cwdBySession, pickSessionCwd } from './repos.js'
 import { findEventTitles } from './session-names.js'
 
 /**
@@ -138,24 +138,6 @@ function toBoardRow({
   }
 }
 
-function lastDefined<T>({
-  events,
-  pick,
-}: {
-  events: HookEvent[]
-  pick: (event: HookEvent) => T | undefined
-}): T | undefined {
-  for (let index = events.length - 1; index >= 0; index -= 1) {
-    const event = events[index]
-    if (!event) continue
-
-    const value = pick(event)
-    if (value !== undefined) return value
-  }
-
-  return undefined
-}
-
 /**
  * Sessions that named themselves and have no row yet.
  *
@@ -221,6 +203,7 @@ export function buildBoard({
   const claimedRows: { row: BoardRow; group: string; order: number | undefined }[] = []
   const unclaimed: BoardRow[] = []
   const sessionIdsWithEvents = new Set<string>()
+  const eventCwds = cwdBySession(events)
 
   for (const { sessionId, events: sessionEvents } of groupEventsBySession(events)) {
     if (supersededSessionIds.has(sessionId)) continue
@@ -263,7 +246,7 @@ export function buildBoard({
       lastActive,
       cwd: pickSessionCwd({
         entry,
-        eventCwd: lastDefined({ events: sessionEvents, pick: event => event.cwd }),
+        eventCwd: eventCwds.get(sessionId),
       }),
     })
 
