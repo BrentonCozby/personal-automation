@@ -52,11 +52,13 @@ async function startBoard({
   metadata,
   groups,
   transcriptRoots = [],
+  isDataDirMissing = false,
 }: {
   events?: Record<string, unknown>[]
   metadata?: Record<string, unknown>
   groups?: string[]
   transcriptRoots?: string[]
+  isDataDirMissing?: boolean
 } = {}): Promise<{
   origin: string
   metadataPath: string
@@ -64,15 +66,19 @@ async function startBoard({
   port: number
   close: () => Promise<void>
 }> {
-  const dir = await mkdtemp(join(tmpdir(), 'session-board-'))
+  const root = await mkdtemp(join(tmpdir(), 'session-board-'))
+  // The way a first run finds `~/.claude-board`: not there yet.
+  const dir = isDataDirMissing ? join(root, 'not-yet') : root
   const eventLogPath = join(dir, 'events.jsonl')
-  await writeFile(eventLogPath, events.map(event => `${JSON.stringify(event)}\n`).join(''))
+  if (!isDataDirMissing) {
+    await writeFile(eventLogPath, events.map(event => `${JSON.stringify(event)}\n`).join(''))
+  }
 
   if (metadata) await writeFile(join(dir, 'sessions.json'), JSON.stringify(metadata))
   if (groups) await writeFile(join(dir, 'groups.json'), JSON.stringify(groups))
 
   // Read for real on every launch, so it has to exist on disk.
-  const subagentGrantPath = join(dir, 'subagent-grant.md')
+  const subagentGrantPath = join(root, 'subagent-grant.md')
   await writeFile(subagentGrantPath, 'Subagents are allowed.\n')
 
   const port = await findFreePort()
@@ -225,6 +231,14 @@ async function readMetadata(path: string): Promise<unknown> {
     return undefined
   }
 }
+
+it('serves the board on a first run, before its data directory exists', async () => {
+  const board = await startBoard({ isDataDirMissing: true })
+
+  const res = await fetch(`${board.origin}/`)
+
+  expect(res.status).toBe(200)
+})
 
 it('writes nothing at all when a field of the body is the wrong type', async () => {
   const board = await startBoard()

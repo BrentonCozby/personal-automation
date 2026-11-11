@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto'
 import { type FSWatcher, watch } from 'node:fs'
-import { readFile, rm, stat } from 'node:fs/promises'
+import { mkdir, readFile, rm, stat } from 'node:fs/promises'
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -204,7 +204,7 @@ export function createBoardServer({ config }: { config: Config }): BoardServer {
   // otherwise be answered from zero events: an empty board, and no migration of
   // the sessions that were cleared. Every handler waits on the same load.
   function ensureLoaded(): Promise<void> {
-    loaded ??= reader.readAll().then(({ events: initial }) => {
+    loaded ??= reader.readAll().then(async ({ events: initial }) => {
       events = initial
 
       // `close` can land while the log is still being read, and a watcher
@@ -220,6 +220,10 @@ export function createBoardServer({ config }: { config: Config }): BoardServer {
         dirname(config.metadataPath),
         dirname(config.groupsPath),
       ])
+      // `watch` throws on a missing directory, which on a first run would end
+      // the process and send launchd into a restart loop.
+      await Promise.all([...directories].map(directory => mkdir(directory, { recursive: true })))
+      if (isClosed) return
       watchers = [...directories].map(directory => watch(directory, scheduleRebuild))
 
       // `unref` so the timer alone never holds the process open: the listening
