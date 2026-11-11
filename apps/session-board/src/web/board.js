@@ -1,6 +1,8 @@
 const collapsed = new Set(readCollapsed())
 /** New group names whose rename is still in flight, so no frame has them yet. */
 const renamesInFlight = new Set()
+/** Old group name to new, so a repaint can find a renamed group's header. */
+const renamedGroups = new Map()
 let latest = null
 
 // Whether `latest` arrived while a repaint was held off and so has never been
@@ -257,7 +259,12 @@ function editLine(text) {
 function findRedrawn(node) {
   const { sessionId, group } = node.dataset
   if (sessionId) return document.querySelector(`.row[data-session-id="${CSS.escape(sessionId)}"]`)
-  if (group) return document.querySelector(`.group[data-group="${CSS.escape(group)}"]`)
+  if (group) {
+    const byName = name => document.querySelector(`.group[data-group="${CSS.escape(name)}"]`)
+    const renamed = renamedGroups.get(group)
+
+    return byName(group) || (renamed && byName(renamed))
+  }
   // The drawer's group is the only one with no name, since it takes no drops.
   if (node.classList.contains('group')) return document.querySelector('#drawer .group')
 
@@ -1010,6 +1017,7 @@ async function renameGroup({ from, to, host }) {
   }
 
   renamesInFlight.add(to)
+  renamedGroups.set(from, to)
   const result = await api(`/api/groups/${encodeURIComponent(from)}`, {
     method: 'PATCH',
     body: JSON.stringify({ name: to }),
@@ -1017,6 +1025,7 @@ async function renameGroup({ from, to, host }) {
   renamesInFlight.delete(to)
   if (result.ok) return result
 
+  renamedGroups.delete(from)
   // Put back, or the mark sits under a name no group has and the group springs
   // open. Worse for the refusal you can actually type: `Ungrouped` is a real
   // heading, so the mark would land on it and collapse that instead.

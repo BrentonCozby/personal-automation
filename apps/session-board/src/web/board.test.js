@@ -1835,6 +1835,25 @@ it('keeps a renamed group collapsed when a frame from before the rename is drawn
   expect(isOnlyGroupCollapsed()).toBe(true)
 })
 
+it('keeps focus on a group header renamed from the keyboard', async () => {
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async () => ({ ok: true, json: async () => ({}) })),
+  )
+  render(boardWithGroups([{ name: 'Rename Me', rows: [aRow({ name: 'perf' })] }]))
+
+  const title = document.querySelector('.group-name')
+  title.focus()
+  title.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }))
+  const input = title.querySelector('input.edit')
+  input.value = 'Renamed'
+  input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter' }))
+  await settle()
+  render(boardWithGroups([{ name: 'Renamed', rows: [aRow({ name: 'perf' })] }]))
+
+  expect(document.activeElement?.matches('.group[data-group="Renamed"] .group-name')).toBe(true)
+})
+
 it('says why when the server refuses a group rename', async () => {
   vi.stubGlobal(
     'fetch',
