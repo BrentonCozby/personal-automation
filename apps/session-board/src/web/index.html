@@ -523,6 +523,8 @@
          land on buttons that are invisible. */
       .row:hover .actions,
       .row:focus-within .actions { display: flex; }
+      /* The bar sits over the name line and would hide what is being typed. */
+      .row:has(input.edit:focus) .actions { display: none; }
 
       .actions button {
         background: var(--bg);
