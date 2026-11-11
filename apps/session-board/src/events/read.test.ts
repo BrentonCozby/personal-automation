@@ -1,7 +1,7 @@
 import { appendFile, mkdtemp, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { expect, it } from 'vitest'
+import { expect, it, vi } from 'vitest'
 import { createEventLogReader } from './read.js'
 
 async function logPath(): Promise<string> {
@@ -36,6 +36,28 @@ it('returns only what was appended since the last read', async () => {
   await appendFile(path, line('b', 2), 'utf8')
 
   expect((await reader.readAppended()).events.map(event => event.session_id)).toEqual(['b'])
+})
+
+it('says on stderr how many lines it skipped, so a log that fails every line is not just an empty board', async () => {
+  const path = await logPath()
+  await writeFile(path, `${line('a', 1)}not json\n{"session_id":"b"}\n`, 'utf8')
+  const stderr = vi.spyOn(process.stderr, 'write').mockReturnValue(true)
+
+  await createEventLogReader({ path }).readAll()
+
+  expect(stderr).toHaveBeenCalledWith(`${path}: skipped 2 lines that did not parse\n`)
+  stderr.mockRestore()
+})
+
+it('stays quiet on stderr when every line parses', async () => {
+  const path = await logPath()
+  await writeFile(path, line('a', 1), 'utf8')
+  const stderr = vi.spyOn(process.stderr, 'write').mockReturnValue(true)
+
+  await createEventLogReader({ path }).readAll()
+
+  expect(stderr).not.toHaveBeenCalled()
+  stderr.mockRestore()
 })
 
 it('hands each appended line to only one of two reads that overlap', async () => {

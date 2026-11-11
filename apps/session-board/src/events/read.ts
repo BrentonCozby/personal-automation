@@ -80,7 +80,14 @@ export function createEventLogReader({ path }: { path: string }): EventLogReader
 
     offset += lastNewline + 1
 
-    return parseEventLog(chunk.subarray(0, lastNewline).toString('utf8'))
+    const parsed = parseEventLog(chunk.subarray(0, lastNewline).toString('utf8'))
+    // A hook payload change that fails every line would otherwise just empty
+    // the board, with nothing saying why.
+    if (parsed.skippedLineCount > 0) {
+      process.stderr.write(`${path}: skipped ${parsed.skippedLineCount} lines that did not parse\n`)
+    }
+
+    return parsed
   }
 
   return { readAll, readAppended }
