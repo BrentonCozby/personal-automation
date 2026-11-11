@@ -20,7 +20,7 @@ import {
   findTranscriptPaths,
   type SessionNamer,
 } from './derive/session-names.js'
-import { findTranscripts } from './derive/transcripts.js'
+import { findTranscripts, type Transcript } from './derive/transcripts.js'
 import type { HookEvent } from './events/types.js'
 import type { GroupStore } from './metadata/group-store.js'
 import { isOnBoard } from './metadata/on-board.js'
@@ -31,6 +31,7 @@ import type { MetadataBySession } from './metadata/types.js'
 const UNCLAIMED_WINDOW_DAYS = 7
 
 const MILLISECONDS_PER_SECOND = 1000
+const SECONDS_PER_DAY = 86_400
 
 /**
  * Where a session was last working.
@@ -408,6 +409,35 @@ async function dismissDeadTwins({
   return didDismiss
 }
 
+/**
+ * Sessions with a metadata entry, plus those last active within the drawer's
+ * window, by the newer of their last event and their transcript's write time.
+ */
+function findDrawableSessionIds({
+  events,
+  metadata,
+  transcripts,
+  now,
+}: {
+  events: HookEvent[]
+  metadata: MetadataBySession
+  transcripts: Map<string, Transcript>
+  now: number
+}): Set<string> {
+  const lastEventAt = new Map<string, number>()
+  for (const event of events) lastEventAt.set(event.session_id, event.t)
+
+  const since = now - UNCLAIMED_WINDOW_DAYS * SECONDS_PER_DAY
+  const drawable = new Set<string>()
+  for (const [sessionId, t] of lastEventAt) {
+    const lastActive = Math.max(t, transcripts.get(sessionId)?.writtenAt ?? 0)
+    if (metadata[sessionId] || lastActive >= since) drawable.add(sessionId)
+  }
+  for (const sessionId of Object.keys(metadata)) drawable.add(sessionId)
+
+  return drawable
+}
+
 export async function buildSnapshot({
   events,
   store,
@@ -494,28 +524,27 @@ export async function buildSnapshot({
 
   // Only for the rows you never named: a name you typed always wins, so
   // reading a transcript to second-guess it would be work thrown away.
+  const [processes, missingProgressPaths, transcripts, knownGroups] = await Promise.all([
+    listProcesses(),
+    findMissingProgressPaths(metadata),
+    findTranscripts({ roots: config.transcriptRoots }),
+    groups.read(),
+  ])
+
+  // Only the sessions the board or the drawer can draw. The log holds every
+  // session for months, and each other one costs a transcript read for nothing.
+  const drawable = findDrawableSessionIds({ events, metadata, transcripts, now })
   const transcriptPaths = findTranscriptPaths({ events })
   const titles = findEventTitles({ events })
-  const unnamed = [...new Set(events.map(event => event.session_id))]
+  const unnamed = [...drawable]
     .filter(sessionId => !metadata[sessionId]?.name)
     .map(sessionId => ({
       sessionId,
       transcriptPaths: transcriptPaths.get(sessionId) ?? [],
       title: titles.get(sessionId),
     }))
+  const derivedNames = await namer.derive({ sessions: unnamed })
 
-  const [processes, missingProgressPaths, transcripts, knownGroups, derivedNames] =
-    await Promise.all([
-      listProcesses(),
-      findMissingProgressPaths(metadata),
-      findTranscripts({ roots: config.transcriptRoots }),
-      groups.read(),
-      namer.derive({ sessions: unnamed }),
-    ])
-
-  // Only the sessions the board can draw. Every other transcript would cost a
-  // read on the first snapshot for a number nobody sees.
-  const drawable = new Set([...events.map(event => event.session_id), ...Object.keys(metadata)])
   const lastTurns = await contextReader.read({
     transcripts: new Map([...transcripts].filter(([sessionId]) => drawable.has(sessionId))),
   })

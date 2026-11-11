@@ -6,6 +6,7 @@ import { promisify } from 'node:util'
 import { expect, it, vi } from 'vitest'
 import type { Config } from './config.js'
 import { listProcesses } from './derive/processes.js'
+import type { SessionNamer } from './derive/session-names.js'
 import type { HookEvent } from './events/types.js'
 import { createGroupStore } from './metadata/group-store.js'
 import { createMetadataStore, type MetadataStore } from './metadata/store.js'
@@ -651,4 +652,26 @@ it('writes nothing when every row is already placed', async () => {
 
   // Every write wakes the watcher that asks for the next snapshot.
   expect(patchMany).not.toHaveBeenCalled()
+})
+
+it('names only the sessions on the board or recent enough for the drawer', async () => {
+  const { store, groups } = await storeWith({ claimed: { lastActive: NOW - 30 * 86_400 } })
+  const derive = vi.fn<SessionNamer['derive']>(async () => new Map())
+  const event = (sessionId: string, agoDays: number): HookEvent => ({
+    session_id: sessionId,
+    hook_event_name: 'Stop',
+    t: NOW - agoDays * 86_400,
+  })
+
+  await buildSnapshot({
+    events: [event('recent', 1), event('old', 30), event('claimed', 30)],
+    store,
+    groups,
+    config: config(),
+    namer: { derive },
+    now: NOW,
+  })
+
+  const asked = derive.mock.calls[0]?.[0].sessions.map(({ sessionId }) => sessionId)
+  expect(asked).toEqual(['recent', 'claimed'])
 })
