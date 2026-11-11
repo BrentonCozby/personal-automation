@@ -1,4 +1,5 @@
 import { type FileHandle, open } from 'node:fs/promises'
+import { hasErrorCode } from '@personal-automation/common/errors'
 import { z } from 'zod'
 import type { HookEvent } from '../events/types.js'
 import { toKebabCase, withoutWindowNumber } from '../session-name.js'
@@ -144,10 +145,9 @@ async function openTranscript(path: string): Promise<FileHandle | undefined> {
   try {
     return await open(path, 'r')
   } catch (error) {
-    const { code } = error as NodeJS.ErrnoException
     // A transcript for an account that is gone, or one deleted since the event
     // that named it.
-    if (code === 'ENOENT' || code === 'EACCES' || code === 'EISDIR') return undefined
+    if (hasErrorCode({ error, codes: ['ENOENT', 'EACCES', 'EISDIR'] })) return undefined
 
     throw error
   }

@@ -1,5 +1,6 @@
 import { readdir, stat } from 'node:fs/promises'
 import { join } from 'node:path'
+import { hasErrorCode, isFileNotFound } from '@personal-automation/common/errors'
 
 const TRANSCRIPT_SUFFIX = '.jsonl'
 
@@ -7,9 +8,8 @@ async function listDir(path: string): Promise<string[]> {
   try {
     return await readdir(path)
   } catch (error) {
-    const { code } = error as NodeJS.ErrnoException
     // A root that is not there, or a stray file among the project directories.
-    if (code === 'ENOENT' || code === 'ENOTDIR') return []
+    if (hasErrorCode({ error, codes: ['ENOENT', 'ENOTDIR'] })) return []
 
     throw error
   }
@@ -34,9 +34,8 @@ async function describe(path: string): Promise<Transcript | undefined> {
       modifiedMs: info.mtimeMs,
     }
   } catch (error) {
-    const { code } = error as NodeJS.ErrnoException
     // Deleted between the listing and the stat.
-    if (code === 'ENOENT') return undefined
+    if (isFileNotFound(error)) return undefined
 
     throw error
   }

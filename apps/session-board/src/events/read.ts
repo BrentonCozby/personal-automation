@@ -1,4 +1,5 @@
 import { open, stat } from 'node:fs/promises'
+import { isFileNotFound } from '@personal-automation/common/errors'
 import { parseEventLog } from './parse.js'
 import type { ParsedEventLog } from './types.js'
 
@@ -56,9 +57,7 @@ export function createEventLogReader({ path }: { path: string }): EventLogReader
     try {
       ;({ size } = await stat(path))
     } catch (error) {
-      if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
-        return { events: [], skippedLineCount: 0 }
-      }
+      if (isFileNotFound(error)) return { events: [], skippedLineCount: 0 }
 
       throw error
     }

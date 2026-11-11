@@ -4,7 +4,7 @@ import { mkdir, readFile, rm, stat } from 'node:fs/promises'
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { AppError } from '@personal-automation/common/errors'
+import { AppError, hasErrorCode } from '@personal-automation/common/errors'
 import type { z } from 'zod'
 import type { Config } from './config.js'
 import { type Board, UNGROUPED_LABEL } from './derive/board.js'
@@ -89,13 +89,7 @@ async function isDirectory(path: string): Promise<boolean> {
   try {
     return (await stat(path)).isDirectory()
   } catch (error) {
-    if (
-      error instanceof Error &&
-      'code' in error &&
-      ['ENOENT', 'ENOTDIR'].includes(String(error.code))
-    ) {
-      return false
-    }
+    if (hasErrorCode({ error, codes: ['ENOENT', 'ENOTDIR'] })) return false
 
     throw error
   }

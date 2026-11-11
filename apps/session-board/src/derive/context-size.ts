@@ -1,4 +1,5 @@
 import { type FileHandle, open } from 'node:fs/promises'
+import { isFileNotFound } from '@personal-automation/common/errors'
 import { z } from 'zod'
 import type { Transcript } from './transcripts.js'
 
@@ -77,7 +78,7 @@ async function openTranscript(path: string): Promise<FileHandle | undefined> {
     return await open(path, 'r')
   } catch (error) {
     // Deleted between the listing and the read.
-    if (error instanceof Error && 'code' in error && error.code === 'ENOENT') return undefined
+    if (isFileNotFound(error)) return undefined
 
     throw error
   }

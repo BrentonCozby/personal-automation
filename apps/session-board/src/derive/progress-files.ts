@@ -2,6 +2,7 @@ import { execFile } from 'node:child_process'
 import { readdir, writeFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import { promisify } from 'node:util'
+import { hasErrorCode, isFileNotFound } from '@personal-automation/common/errors'
 import type { MetadataBySession } from '../metadata/types.js'
 
 const execFileAsync = promisify(execFile)
@@ -45,7 +46,7 @@ export async function findProgressFiles(repoRoot: string): Promise<string[]> {
   try {
     entries = await readdir(repoRoot)
   } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return []
+    if (isFileNotFound(error)) return []
 
     throw error
   }
@@ -108,7 +109,7 @@ export async function createProgressFile({
 
     return { path, isNew: true }
   } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === 'EEXIST') return { path, isNew: false }
+    if (hasErrorCode({ error, codes: ['EEXIST'] })) return { path, isNew: false }
 
     throw error
   }

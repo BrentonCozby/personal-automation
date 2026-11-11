@@ -1,5 +1,6 @@
 import { mkdir, readFile, rename, writeFile } from 'node:fs/promises'
 import { dirname } from 'node:path'
+import { isFileNotFound } from '@personal-automation/common/errors'
 import { ZodError, type ZodType } from 'zod'
 
 export interface JsonFile<T> {
@@ -45,7 +46,7 @@ export function createJsonFile<T>({
     try {
       text = await readFile(path, 'utf8')
     } catch (error) {
-      if ((error as NodeJS.ErrnoException).code === 'ENOENT') return empty
+      if (isFileNotFound(error)) return empty
 
       throw error
     }

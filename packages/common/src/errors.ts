@@ -60,7 +60,17 @@ export class YnabApiError extends AppError {
  * still rethrow every other failure (a permission error, a directory where a file was expected).
  */
 export function isFileNotFound(err: unknown): boolean {
-  return err instanceof Error && 'code' in err && err.code === 'ENOENT'
+  return hasErrorCode({ error: err, codes: ['ENOENT'] })
+}
+
+/** True when a Node call failed with one of `codes`, such as `ENOTDIR` or `EEXIST`. */
+export function hasErrorCode({ error, codes }: { error: unknown; codes: string[] }): boolean {
+  return (
+    error instanceof Error &&
+    'code' in error &&
+    typeof error.code === 'string' &&
+    codes.includes(error.code)
+  )
 }
 
 export function isRetryableHttpStatus(status: number): boolean {
