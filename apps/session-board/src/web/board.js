@@ -1,4 +1,6 @@
 const collapsed = new Set(readCollapsed())
+/** New group names whose rename is still in flight, so no frame has them yet. */
+const renamesInFlight = new Set()
 let latest = null
 
 // Whether `latest` arrived while a repaint was held off and so has never been
@@ -1007,10 +1009,12 @@ async function renameGroup({ from, to, host }) {
     saveCollapsed()
   }
 
+  renamesInFlight.add(to)
   const result = await api(`/api/groups/${encodeURIComponent(from)}`, {
     method: 'PATCH',
     body: JSON.stringify({ name: to }),
   })
+  renamesInFlight.delete(to)
   if (result.ok) return result
 
   // Put back, or the mark sits under a name no group has and the group springs
@@ -1041,7 +1045,7 @@ function pruneCollapsed(board) {
   const live = new Set(board.groups.map(group => group.name))
   let didDrop = false
   for (const key of collapsed) {
-    if (live.has(key) || key === DRAWER_KEY) continue
+    if (live.has(key) || key === DRAWER_KEY || renamesInFlight.has(key)) continue
     collapsed.delete(key)
     didDrop = true
   }

@@ -1807,6 +1807,34 @@ it('carries a collapsed group to its new name instead of springing it open', asy
   expect(isOnlyGroupCollapsed()).toBe(true)
 })
 
+it('keeps a renamed group collapsed when a frame from before the rename is drawn first', async () => {
+  let answer
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(
+      () =>
+        new Promise(resolve => {
+          answer = () => resolve({ ok: true, json: async () => ({}) })
+        }),
+    ),
+  )
+  const before = boardWithGroups([{ name: 'Rename Me', rows: [aRow({ name: 'perf' })] }])
+  render(before)
+  collapseOnlyGroup()
+
+  const title = document.querySelector('.group-name')
+  title.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }))
+  const input = title.querySelector('input.edit')
+  input.value = 'Renamed'
+  input.dispatchEvent(new Event('blur'))
+  render(before)
+  answer()
+  await settle()
+  render(boardWithGroups([{ name: 'Renamed', rows: [aRow({ name: 'perf' })] }]))
+
+  expect(isOnlyGroupCollapsed()).toBe(true)
+})
+
 it('says why when the server refuses a group rename', async () => {
   vi.stubGlobal(
     'fetch',
