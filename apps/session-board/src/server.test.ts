@@ -315,7 +315,7 @@ it('refuses a session name that is not kebab-case, and says which rule', async (
   expect(await readMetadata(board.metadataPath)).toBeUndefined()
 })
 
-it('still lets a name be cleared, which is how a row is unclaimed', async () => {
+it('still lets a name be cleared, leaving the row on the board', async () => {
   const board = await startBoard({ metadata: { abc: { name: 'impact-scoring' } } })
 
   const res = await fetch(`${board.origin}/api/sessions/abc`, {
