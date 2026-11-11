@@ -782,26 +782,55 @@ function startsFromProgress(row) {
  * and leaving it unanswered puts resume back.
  */
 function askBeforeReopening({ button, tokens, onYes }) {
-  let isAnswered = false
   const confirm = el('button', 'edit', `reopen ${formatTokens(tokens)} of context?`)
   confirm.title = 'Reopens the whole conversation. /clear in it afterward to start lean.'
+  const question = askInPlace({ button, confirm })
 
   confirm.addEventListener('click', event => {
     event.stopPropagation()
-    isAnswered = true
+    question.markAnswered()
+    const row = confirm.closest('.row')
     confirm.replaceWith(button)
     onYes()
+    // `onYes` disables resume, and focus left on a removed button drops to the page.
+    row?.querySelector(FOCUSABLE_SELECTOR)?.focus()
+    if (!button.disabled) button.focus()
     catchUp()
   })
+}
 
-  confirm.addEventListener('blur', () => {
-    if (isAnswered) return
+/**
+ * Swaps `button` for the question `confirm` and takes focus. Escape or focus
+ * moving elsewhere on the page puts `button` back; switching windows does not.
+ * The caller marks the question answered before acting on a yes.
+ */
+function askInPlace({ button, confirm }) {
+  let isAnswered = false
+  const putBack = () => {
+    isAnswered = true
     confirm.replaceWith(button)
     catchUp()
+  }
+
+  confirm.addEventListener('keydown', event => {
+    if (event.key !== 'Escape' || isAnswered) return
+    event.stopPropagation()
+    putBack()
+    button.focus()
+  })
+  confirm.addEventListener('blur', () => {
+    if (isAnswered || !document.hasFocus()) return
+    putBack()
   })
 
   button.replaceWith(confirm)
   confirm.focus()
+
+  return {
+    markAnswered() {
+      isAnswered = true
+    },
+  }
 }
 
 /**
@@ -941,7 +970,13 @@ async function openProgressPicker(node, row) {
   const finish = value => {
     if (settled) return
     settled = true
+    const hadFocus = document.activeElement === select
     line.remove()
+    if (hadFocus) {
+      // Row actions stay `display: none` until focus is inside the row.
+      host.querySelector(FOCUSABLE_SELECTOR)?.focus()
+      host.querySelector('[data-control="link"]')?.focus()
+    }
 
     if (value !== undefined && value !== current) {
       void patchSession(row.sessionId, { progressPath: value || null }).then(result =>
@@ -1087,11 +1122,11 @@ function buildGroupDelete({ label, count, host }) {
       return
     }
 
-    let isAnswered = false
     const confirm = el('button', 'group-delete edit', `delete? ${moved} to Ungrouped`)
+    const question = askInPlace({ button, confirm })
 
     confirm.addEventListener('click', () => {
-      isAnswered = true
+      question.markAnswered()
 
       // The question held the repaint off, and the repaint is what takes the
       // group away, so a button that keeps hold of focus here leaves the board
@@ -1107,15 +1142,6 @@ function buildGroupDelete({ label, count, host }) {
         if (!result.ok) confirm.replaceWith(button)
       })
     })
-
-    confirm.addEventListener('blur', () => {
-      if (isAnswered) return
-      confirm.replaceWith(button)
-      catchUp()
-    })
-
-    button.replaceWith(confirm)
-    confirm.focus()
   })
 
   return button

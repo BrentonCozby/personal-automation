@@ -954,6 +954,70 @@ it('takes the question back unanswered when focus leaves it', async () => {
   expect(buttonNamed('resume ↗').disabled).toBe(false)
 })
 
+describe('a one-press question', () => {
+  const questions = [
+    {
+      case: 'reopen',
+      board: () => boardWith([aRow({ name: 'perf', cwd: '/repo', contextTokens: 520_000 })]),
+      ask: () => buttonNamed('resume ↗').click(),
+      question: () => document.querySelector('button.edit'),
+      asker: () => buttonNamed('resume ↗'),
+    },
+    {
+      case: 'group delete',
+      board: () => boardWithGroups([{ name: 'Busy', rows: [aRow({ sessionId: 'a' })] }]),
+      ask: () => document.querySelector('.group-delete').click(),
+      question: () => document.querySelector('button.edit'),
+      asker: () => document.querySelector('.group-delete'),
+    },
+  ]
+
+  it.each(questions)(
+    '$case: Escape takes it back and focuses its button',
+    ({ board, ask, question, asker }) => {
+      vi.stubGlobal(
+        'fetch',
+        vi.fn(async () => ({ ok: true })),
+      )
+      render(board())
+
+      ask()
+      question().dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
+
+      expect(question()).toBe(null)
+      expect(document.activeElement).toBe(asker())
+    },
+  )
+
+  it.each(questions)('$case: stays up when the window loses focus', ({ board, ask, question }) => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => ({ ok: true })),
+    )
+    render(board())
+
+    ask()
+    vi.spyOn(document, 'hasFocus').mockReturnValue(false)
+    question().blur()
+
+    expect(question()).not.toBe(null)
+  })
+})
+
+it('keeps focus in the row after the reopen question is answered', async () => {
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async () => ({ ok: true })),
+  )
+  render(boardWith([aRow({ name: 'perf', cwd: '/repo', contextTokens: 520_000 })]))
+
+  buttonNamed('resume ↗').click()
+  buttonNamed('reopen 520k of context?').click()
+  await settle()
+
+  expect(rowNode().contains(document.activeElement)).toBe(true)
+})
+
 it.each([
   { case: 'a context under 450k', contextTokens: 450_000, isTranscriptMissing: false },
   {
@@ -1231,6 +1295,7 @@ it('writes nothing when the picker is dismissed', async () => {
 
   expect(fetchMock.mock.calls.some(([, options]) => options?.method === 'PATCH')).toBe(false)
   expect(rowNode().querySelector('select.edit')).toBe(null)
+  expect(document.activeElement).toBe(buttonNamed('link'))
 })
 
 it('draws the snapshot the picker held back once it is dismissed', async () => {
