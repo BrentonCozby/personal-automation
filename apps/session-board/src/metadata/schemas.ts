@@ -1,6 +1,8 @@
 import { z } from 'zod'
 
-export const sessionMetadataSchema = z.object({
+// Strict because the file is edited by hand: a stripped typo would be deleted
+// on the next write, where a refused one stops the board and names the key.
+export const sessionMetadataSchema = z.strictObject({
   name: z.string().min(1).optional(),
   group: z.string().min(1).optional(),
   parkedReason: z.string().min(1).optional(),

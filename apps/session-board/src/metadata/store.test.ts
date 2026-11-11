@@ -104,6 +104,14 @@ it('refuses a file whose shape does not match', async () => {
   await expect(store.read()).rejects.toThrow(`${path} cannot be read`)
 })
 
+it('refuses a misspelled key rather than deleting it on the next write', async () => {
+  const { path, store } = await storeInTempDir()
+  await store.patch({ sessionId: 'abc', changes: { name: 'impact' } })
+  await writeFile(path, JSON.stringify({ abc: { name: 'impact', gruop: 'Bug week' } }), 'utf8')
+
+  await expect(store.read()).rejects.toThrow(/gruop/)
+})
+
 it('keeps the name when a row is taken off the board, and drops the rest', async () => {
   const { store } = await storeInTempDir()
   await store.patch({
