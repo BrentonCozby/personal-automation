@@ -2,7 +2,28 @@
  * @vitest-environment happy-dom
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { render, start } from './board.js'
+import { UNGROUPED_LABEL as SERVER_UNGROUPED_LABEL } from '../derive/board.js'
+import { toKebabCase as serverToKebabCase } from '../session-name.js'
+import { render, start, toKebabCase, UNGROUPED_LABEL } from './board.js'
+
+// The client carries its own copies because the browser loads board.js with no
+// build step. These keep the copies from drifting apart.
+describe('rules copied from the server', () => {
+  it('names Ungrouped the same', () => {
+    expect(UNGROUPED_LABEL).toBe(SERVER_UNGROUPED_LABEL)
+  })
+
+  it.each([
+    'Review Perf',
+    'review  perf!',
+    '--trim-me--',
+    'technical-interview-round (2)',
+    'café 2026',
+    '!!!',
+  ])('kebab-cases %j the same', value => {
+    expect(toKebabCase(value)).toBe(serverToKebabCase(value))
+  })
+})
 
 function boardWith(rows) {
   return {

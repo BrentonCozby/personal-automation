@@ -37,7 +37,7 @@ function isAboveMiddle(node, event) {
 }
 
 /** The group that means "no group", which clears the field rather than setting it. */
-const UNGROUPED_LABEL = 'Ungrouped'
+export const UNGROUPED_LABEL = 'Ungrouped'
 
 /** Not a group name: the drawer is drawn from `unclaimed`, not from a group. */
 const DRAWER_KEY = '__drawer__'
@@ -51,7 +51,7 @@ const DRAWER_KEY = '__drawer__'
  * refused afterwards; `src/session-name.ts` enforces the same rule server-side
  * and the two have to stay in step.
  */
-function toKebabCase(value) {
+export function toKebabCase(value) {
   return value
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, '-')
