@@ -205,13 +205,10 @@ async function migrateSupersededSessions({
 
     // A dismissed row holds no annotations to carry forward, and moving it
     // would stamp its marker onto the session that took over, taking a live row
-    // off the board for no reason. It belongs where it is.
-    if (entry.isDismissed) continue
-
-    // Already migrated, and all that is left is the pointer saying so. Running
-    // it through again would rewrite the file on every snapshot, and each write
-    // wakes the watcher that asks for the next one.
-    if (entry.supersededBy) continue
+    // off the board for no reason. A superseded one is already migrated, and
+    // running it through again would rewrite the file on every snapshot, each
+    // write waking the watcher that asks for the next one.
+    if (!isOnBoard(entry)) continue
 
     const current = resolveCurrentSessionId({ sessionId, successors })
     if (current === sessionId) continue
