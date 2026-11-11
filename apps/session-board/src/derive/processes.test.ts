@@ -30,12 +30,15 @@ it('reads the start time as UTC whatever zone the board thinks it is in', () => 
   expect(processes.get(29_194)?.startedAt).toBe(Date.UTC(2026, 7, 24, 12, 56, 14) / 1000)
 })
 
-it('asks ps for start times in UTC', async () => {
+it('asks ps for start times in UTC and English', async () => {
   vi.stubEnv('TZ', 'America/Chicago')
+  vi.stubEnv('LC_ALL', 'fr_FR.UTF-8')
 
   const processes = await listProcesses()
 
-  expect(vi.mocked(execFile).mock.calls[0]?.[2]).toMatchObject({ env: { TZ: 'UTC0' } })
+  expect(vi.mocked(execFile).mock.calls[0]?.[2]).toMatchObject({
+    env: { TZ: 'UTC0', LC_ALL: 'C' },
+  })
   expect(processes.get(29_194)?.startedAt).toBe(Date.UTC(2026, 7, 24, 12, 56, 14) / 1000)
 })
 

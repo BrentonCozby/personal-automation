@@ -39,7 +39,8 @@ export async function listProcesses(): Promise<Map<number, ProcessInfo>> {
   const { stdout } = await execFileAsync('ps', ['-axo', 'pid=,lstart=,comm='], {
     // Node fixes its zone at startup, so a board left running across a move to
     // another zone would read every start time hours off and call each session gone.
-    env: { ...process.env, TZ: 'UTC0' },
+    // The locale names the weekday and month, which the parser reads in English.
+    env: { ...process.env, TZ: 'UTC0', LC_ALL: 'C' },
     maxBuffer: 8 * 1024 * 1024,
   })
 
