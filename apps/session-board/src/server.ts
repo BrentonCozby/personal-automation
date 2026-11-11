@@ -14,6 +14,7 @@ import {
   listProgressCandidates,
   resolveRepoRoot,
 } from './derive/progress-files.js'
+import { pruneEvents } from './derive/prune-events.js'
 import {
   collectGroupDirectories,
   collectSessionDirectories,
@@ -60,6 +61,10 @@ const REBUILD_DEBOUNCE_MS = 150
 const REBUILD_INTERVAL_MS = 10_000
 
 const MAX_BODY_BYTES = 64 * 1024
+
+// Twice the drawer's 7-day window, so a session is never dropped while it can
+// still be drawn by the newer of its last event and its transcript's write.
+const EVENT_KEEP_DAYS = 14
 
 const MILLISECONDS_PER_SECOND = 1000
 
@@ -279,7 +284,16 @@ export function createBoardServer({ config }: { config: Config }): BoardServer {
   }
 
   function snapshot(): Promise<Board> {
-    return oneAtATime(() => buildSnapshot({ events, store, groups, config, namer, contextReader }))
+    return oneAtATime(async () => {
+      events = pruneEvents({
+        events,
+        metadata: await store.read(),
+        now: Math.floor(Date.now() / MILLISECONDS_PER_SECOND),
+        keepDays: EVENT_KEEP_DAYS,
+      })
+
+      return buildSnapshot({ events, store, groups, config, namer, contextReader })
+    })
   }
 
   /**
