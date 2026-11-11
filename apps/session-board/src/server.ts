@@ -423,7 +423,7 @@ export function createBoardServer({ config }: { config: Config }): BoardServer {
       // every group it meets on a row.
       const to = body.data.name
       const didRename = await oneAtATime(async () => {
-        const isMerge = (await groups.read()).includes(to)
+        const isMerge = to !== name && (await groups.read()).includes(to)
         if (!(await groups.rename({ from: name, to }))) return false
 
         await moveRowsOutOf({ group: name, to, keepOrder: !isMerge })

@@ -970,6 +970,20 @@ it("puts the rows of a group renamed onto another one below that group's own", a
   })
 })
 
+it('keeps the order of rows in a group renamed to its own name', async () => {
+  const board = await startBoard({
+    groups: ['A'],
+    metadata: { a: { group: 'A', order: 1 }, b: { group: 'A', order: 0 } },
+  })
+
+  await groupRequest({ origin: board.origin, path: '/A', method: 'PATCH', body: { name: 'A' } })
+
+  expect(await readMetadata(board.metadataPath)).toEqual({
+    a: { group: 'A', order: 1 },
+    b: { group: 'A', order: 0 },
+  })
+})
+
 it('places a dragged row above the one it was dropped on, moving its group too', async () => {
   const board = await startBoard({
     metadata: {
