@@ -143,7 +143,8 @@ function decodePathSegment(segment: string): string {
   }
 }
 
-const PATCH_FIELDS = ['name', 'group', 'parkedReason', 'progressPath'] as const
+// `before` is where the row goes, not a field stored on it.
+const PATCH_FIELDS = patchBodySchema.omit({ before: true }).keyof().options
 
 /**
  * The group to write on a row, which is nothing at all for Ungrouped.
