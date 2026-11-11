@@ -55,8 +55,9 @@ async function describe(path: string): Promise<Transcript | undefined> {
  *
  * The write time is what tells a session working through a long turn from one
  * stopped at a permission prompt, which fire the same hook events. Listing and
- * statting 317 transcripts across 51 project directories costs 1.3ms warm and
- * 5.4ms cold, which is why it runs per snapshot rather than being cached.
+ * statting 2,664 transcripts across 615 project directories cost about 20ms
+ * (measured 2026-11-11), which is why it runs per snapshot rather than being
+ * cached.
  */
 export async function findTranscripts({
   roots,

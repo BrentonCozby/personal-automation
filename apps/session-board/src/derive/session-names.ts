@@ -218,7 +218,7 @@ export interface SessionNamer {
  * A factory rather than a plain function because of the cache: the first prompt
  * of a session never changes, so a transcript is worth reading once and never
  * again. Without it every snapshot would re-read one file per unnamed row,
- * every thirty seconds, forever.
+ * every ten seconds, forever.
  */
 export function createSessionNamer(): SessionNamer {
   const named = new Map<string, string>()

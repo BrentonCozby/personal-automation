@@ -452,7 +452,7 @@ export async function buildSnapshot({
   /**
    * Holds the transcript it read for each session, so pass the same one every
    * time. A fresh namer per snapshot re-reads one file per unnamed row, every
-   * thirty seconds, for an answer that cannot change.
+   * ten seconds, for an answer that cannot change.
    */
   namer?: SessionNamer
   /** Holds what it read from each transcript, so pass the same one every time. */
