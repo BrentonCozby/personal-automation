@@ -2617,6 +2617,36 @@ it('keeps the panel open with the reason when the server refuses', async () => {
   )
 })
 
+it('says why on the group when the server refuses after a repaint took the panel away', async () => {
+  const board = boardWith([aRow({ name: 'perf' })])
+  render(board)
+  vi.stubGlobal(
+    'fetch',
+    vi.fn((_path, options) => {
+      if (options?.method === 'POST') {
+        return {
+          ok: false,
+          status: 409,
+          json: async () => ({ error: 'review-perf is already on the board' }),
+        }
+      }
+
+      return { ok: true, json: async () => ({ repos: ['/Users/me/Code/marketplace'] }) }
+    }),
+  )
+  startButton('Bug week').click()
+  await settle()
+
+  startPanel().querySelectorAll('input.edit')[0].value = 'review-perf'
+  startPanel().querySelector('.start-go').click()
+  render(board)
+  await settle()
+
+  expect(document.querySelector('.group[data-group="Bug week"]').textContent).toContain(
+    'review-perf is already on the board',
+  )
+})
+
 it('reopens a stream the browser gave up on, and says the board is not live meanwhile', async () => {
   const handlers = {}
   const FakeStream = fakeStreamInto(handlers)

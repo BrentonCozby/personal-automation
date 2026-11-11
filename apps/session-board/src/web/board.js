@@ -1246,8 +1246,12 @@ function openStartPanel({ label, button }) {
   const panel = el('div', 'start-panel')
   panel.append(name, where, actions, answer)
 
+  const group = header.parentElement
   const say = text => {
-    answer.textContent = text
+    // A repaint or a press elsewhere can take the panel down while a start is
+    // in flight, and its answer would land on a node nobody sees.
+    if (panel.isConnected) answer.textContent = text
+    else showMessage(group, text)
   }
 
   // A press anywhere but the panel is what dismisses it. Read from the press
@@ -1271,7 +1275,6 @@ function openStartPanel({ label, button }) {
   const close = () => {
     if (settled) return
     const hadFocus = panel.contains(document.activeElement)
-    const group = header.parentElement
     drop()
     // `render` clears the flag itself, since it is what destroys the panel.
     // Repaint now: the snapshots that arrived while this was open were set
