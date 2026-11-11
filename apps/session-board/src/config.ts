@@ -7,9 +7,8 @@ loadAppEnv(import.meta.url)
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 
-// Both defaults live here rather than in .env, which git does not track: they
-// are the same text on every machine, and a board restored from an older .env
-// has to keep working rather than exit on a missing variable.
+// Both notes are code rather than env vars: they are the same text on every
+// machine, and an older .env without them has to keep working.
 // Names the CLAUDE.md rule it overrides and whose instruction it is. Measured:
 // a note that only said the option was off lost to that rule, and the session
 // said it would write the file anyway for a task spanning several sittings.
@@ -29,8 +28,6 @@ const schema = z.object({
   BOARD_TRANSCRIPT_ROOTS: z.string().min(1),
   BOARD_PROGRESS_COMMAND: z.string().min(1),
   BOARD_PROGRESS_PROMPT: z.string().min(1),
-  BOARD_NO_PROGRESS_NOTE: z.string().min(1).default(NO_PROGRESS_NOTE),
-  BOARD_NEW_PROGRESS_NOTE: z.string().min(1).default(NEW_PROGRESS_NOTE),
 })
 
 export interface Config {
@@ -104,8 +101,8 @@ export function loadConfig(): Config {
     // `src` when tsx runs the source and `dist` when tsc has built it, and the
     // file sits one level above either.
     subagentGrantPath: join(HERE, '..', 'subagent-grant.md'),
-    noProgressNote: parsed.BOARD_NO_PROGRESS_NOTE,
-    newProgressNote: parsed.BOARD_NEW_PROGRESS_NOTE,
+    noProgressNote: NO_PROGRESS_NOTE,
+    newProgressNote: NEW_PROGRESS_NOTE,
     transcriptRoots: parsed.BOARD_TRANSCRIPT_ROOTS.split(',')
       .map(root => root.trim())
       .filter(Boolean),
