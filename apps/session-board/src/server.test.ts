@@ -240,6 +240,22 @@ it('serves the board on a first run, before its data directory exists', async ()
   expect(res.status).toBe(200)
 })
 
+it.each([
+  { case: 'a body that is not JSON', path: '/api/sessions/abc', body: '{"name":' },
+  { case: 'a session id that does not decode', path: '/api/sessions/%E0', body: '{}' },
+  { case: 'a group name that does not decode', path: '/api/groups/%E0', body: '{}' },
+])('answers 400 for $case', async ({ path, body }) => {
+  const board = await startBoard()
+
+  const res = await fetch(`${board.origin}${path}`, {
+    method: 'PATCH',
+    headers: { origin: board.origin, 'content-type': 'application/json' },
+    body,
+  })
+
+  expect(res.status).toBe(400)
+})
+
 it('writes nothing at all when a field of the body is the wrong type', async () => {
   const board = await startBoard()
 

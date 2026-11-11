@@ -4,6 +4,7 @@ import { mkdir, readFile, rm, stat } from 'node:fs/promises'
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { AppError } from '@personal-automation/common/errors'
 import type { z } from 'zod'
 import type { Config } from './config.js'
 import { type Board, UNGROUPED_LABEL } from './derive/board.js'
@@ -95,19 +96,46 @@ async function isDirectory(path: string): Promise<boolean> {
   }
 }
 
+/** A request the server cannot act on as sent, answered with `status` rather than 500. */
+class BadRequestError extends AppError {
+  override readonly name = 'BadRequestError'
+  readonly status: number
+
+  constructor({ message, status = 400 }: { message: string; status?: number }) {
+    super({ message })
+    this.status = status
+  }
+}
+
 async function readBody(req: IncomingMessage): Promise<unknown> {
   const chunks: Buffer[] = []
   let size = 0
 
   for await (const chunk of req) {
     size += chunk.length
-    if (size > MAX_BODY_BYTES) throw new Error('Request body too large')
+    if (size > MAX_BODY_BYTES) {
+      throw new BadRequestError({ message: 'Request body too large', status: 413 })
+    }
     chunks.push(chunk)
   }
 
   if (chunks.length === 0) return undefined
 
-  return JSON.parse(Buffer.concat(chunks).toString('utf8'))
+  try {
+    return JSON.parse(Buffer.concat(chunks).toString('utf8'))
+  } catch (error) {
+    if (!(error instanceof SyntaxError)) throw error
+    throw new BadRequestError({ message: 'the request body is not valid JSON' })
+  }
+}
+
+function decodePathSegment(segment: string): string {
+  try {
+    return decodeURIComponent(segment)
+  } catch (error) {
+    if (!(error instanceof URIError)) throw error
+    throw new BadRequestError({ message: 'the address has a malformed escape in it' })
+  }
 }
 
 const PATCH_FIELDS = ['name', 'group', 'parkedReason', 'progressPath'] as const
@@ -365,7 +393,7 @@ export function createBoardServer({ config }: { config: Config }): BoardServer {
     const groupMatch = /^\/api\/groups(?:\/(.+))?$/.exec(url.pathname)
     if (!groupMatch) return false
 
-    const name = groupMatch[1] === undefined ? undefined : decodeURIComponent(groupMatch[1])
+    const name = groupMatch[1] === undefined ? undefined : decodePathSegment(groupMatch[1])
 
     if (!name && req.method === 'POST') {
       const body = groupBodySchema.safeParse(await readBody(req))
@@ -619,7 +647,7 @@ export function createBoardServer({ config }: { config: Config }): BoardServer {
     const sessionMatch = /^\/api\/sessions\/([^/]+)(\/[a-z-]+)?$/.exec(url.pathname)
     if (!sessionMatch) return false
 
-    const sessionId = decodeURIComponent(sessionMatch[1] ?? '')
+    const sessionId = decodePathSegment(sessionMatch[1] ?? '')
     const action = sessionMatch[2]
 
     // `%2F` gets past the path pattern and decodes back into a slash, so the id
@@ -852,7 +880,13 @@ export function createBoardServer({ config }: { config: Config }): BoardServer {
 
         sendJson({ res, status: 404, body: { error: 'not found' } })
       } catch (error) {
-        sendJson({ res, status: 500, body: { error: (error as Error).message } })
+        if (error instanceof BadRequestError) {
+          sendJson({ res, status: error.status, body: { error: error.message } })
+
+          return
+        }
+        const message = error instanceof Error ? error.message : String(error)
+        sendJson({ res, status: 500, body: { error: message } })
       }
     })()
   })
