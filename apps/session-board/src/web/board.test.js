@@ -1283,6 +1283,31 @@ it('keeps the field focus moved to when the picker closes by losing focus', asyn
   expect(document.activeElement?.matches('.row[data-session-id="xyz"] input.edit')).toBe(true)
 })
 
+it('leaves a name field opened while the picker loads alone when the picker opens', async () => {
+  const fetchMock = vi.fn(async () => ({
+    ok: true,
+    json: async () => ({ files: [{ path: '/repo/a-task.progress.local.md', slug: 'a-task' }] }),
+  }))
+  vi.stubGlobal('fetch', fetchMock)
+  render(
+    boardWith([
+      aRow({ sessionId: 'abc', name: 'perf' }),
+      aRow({ sessionId: 'xyz', name: 'other' }),
+    ]),
+  )
+
+  buttonNamed('link').click()
+  document
+    .querySelector('.row[data-session-id="xyz"] .name')
+    .dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter' }))
+  const field = document.querySelector('.row[data-session-id="xyz"] input.edit')
+  field.value = 'half-ty'
+  await settle()
+
+  expect(document.activeElement).toBe(field)
+  expect(fetchMock.mock.calls.some(([, options]) => options?.method === 'PATCH')).toBe(false)
+})
+
 it('says so rather than opening an empty picker when the repo has no progress files', async () => {
   vi.stubGlobal(
     'fetch',

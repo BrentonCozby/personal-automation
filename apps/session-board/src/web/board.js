@@ -925,7 +925,8 @@ async function openProgressPicker(node, row) {
   select.value = current
   select.setAttribute('aria-label', 'Progress file for this session')
   line.replaceChildren(select)
-  select.focus()
+  // A field opened while the files loaded would lose focus and save half-typed.
+  if (!isEditing()) select.focus()
 
   let settled = false
   const finish = value => {
