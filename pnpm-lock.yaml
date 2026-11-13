@@ -144,8 +144,8 @@ importers:
   packages/anthropic:
     dependencies:
       '@anthropic-ai/sdk':
-        specifier: ^0.135.0
-        version: 0.135.0(zod@4.6.7)
+        specifier: ^1.8.0
+        version: 1.8.0(zod@4.6.7)
       zod:
         specifier: ^4.6.7
         version: 4.6.7
@@ -195,8 +195,8 @@ importers:
 
 packages:
 
-  '@anthropic-ai/sdk@0.135.0':
-    resolution: {integrity: sha512-WWrdL57JhU5KoynpTjt9GXK6k7ud9nPw2uw/Trn+oBXh6s0KpjhAccWZm2Qxw08ARYG1UDQj5iC+JO42j1rt/g==}
+  '@anthropic-ai/sdk@1.8.0':
+    resolution: {integrity: sha512-yDOArk2+Qpd/djEKmZjrv7JZ+pn5iBHARJ9PAdvfhGf4H5wNqTgY/2K0/yDKdQdm8G8hrNQchMlBAHpPK7yBfg==}
     hasBin: true
     peerDependencies:
       zod: ^3.25.0 || ^4.0.0
@@ -740,9 +740,6 @@ packages:
 
   '@types/estree@1.0.9':
     resolution: {integrity: sha512-GhdPgy1el4/ImP05X05Uw4cw2/M93BCUmnEvWZNStlCzEKME4Fkk+YpoA5OiHNQmoS7Cafb8Xa3Pya8m1Qrzeg==}
-
-  '@types/node@25.9.1':
-    resolution: {integrity: sha512-xfrlY7UD5rMJk3ZVJP8BNzS28J36YJg+xp+LPXV1TdWxr8uMH5A860QNxYDGQe/ylDSgjxE52Q9VnO7p75tJxg==}
 
   '@types/node@25.9.9':
     resolution: {integrity: sha512-b4e2xxj/yMeT2hNlD6x7zNFiQK2Dlmkb9CQ6v3/1G2RezKN4YS2lcEv8lzGm1mhs4f2lM4yNAMI/zUDBZBBt7w==}
@@ -1772,7 +1769,7 @@ packages:
 
 snapshots:
 
-  '@anthropic-ai/sdk@0.135.0(zod@4.6.7)':
+  '@anthropic-ai/sdk@1.8.0(zod@4.6.7)':
     dependencies:
       '@opentelemetry/api': 1.9.1
       json-schema-to-ts: 3.1.1
@@ -2195,17 +2192,13 @@ snapshots:
 
   '@types/estree@1.0.9': {}
 
-  '@types/node@25.9.1':
-    dependencies:
-      undici-types: 7.24.6
-
   '@types/node@25.9.9':
     dependencies:
       undici-types: 7.24.6
 
   '@types/set-cookie-parser@2.4.10':
     dependencies:
-      '@types/node': 25.9.1
+      '@types/node': 25.9.9
 
   '@types/statuses@2.0.6': {}
 
@@ -2213,7 +2206,7 @@ snapshots:
 
   '@types/ws@8.18.1':
     dependencies:
-      '@types/node': 25.9.1
+      '@types/node': 25.9.9
 
   '@typescript/typescript-aix-ppc64@7.0.2':
     optional: true
@@ -2368,7 +2361,7 @@ snapshots:
 
   buffer-image-size@0.6.4:
     dependencies:
-      '@types/node': 25.9.1
+      '@types/node': 25.9.9
 
   callsites@3.1.0: {}
 
@@ -2539,7 +2532,7 @@ snapshots:
 
   happy-dom@20.14.6:
     dependencies:
-      '@types/node': 25.9.1
+      '@types/node': 25.9.9
       '@types/whatwg-mimetype': 3.0.2
       '@types/ws': 8.18.1
       buffer-image-size: 0.6.4
