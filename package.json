@@ -4,10 +4,10 @@
   "description": "Personal automation monorepo: small scheduled jobs and the shared libraries they build on.",
   "type": "module",
   "private": true,
-  "packageManager": "pnpm@11.28.6",
+  "packageManager": "pnpm@11.29.0",
   "engines": {
-    "node": ">=26.12.0",
-    "pnpm": ">=11.28.6"
+    "node": ">=26.13.1",
+    "pnpm": ">=11.29.0"
   },
   "scripts": {
     "build": "pnpm -r build",
@@ -21,14 +21,14 @@
     "prepare": "husky"
   },
   "devDependencies": {
-    "@biomejs/biome": "2.5.15",
-    "@commitlint/cli": "^21.2.3",
-    "@commitlint/config-conventional": "^21.2.3",
-    "@types/node": "^25.9.9",
+    "@biomejs/biome": "2.6.9",
+    "@commitlint/cli": "^21.2.4",
+    "@commitlint/config-conventional": "^21.2.4",
+    "@types/node": "^25.9.12",
     "@vitest/coverage-v8": "^4.1.12",
     "happy-dom": "^20.14.6",
     "husky": "^9.1.7",
-    "lint-staged": "^17.6.0",
+    "lint-staged": "^17.6.2",
     "msw": "^2.15.0",
     "tsx": "^4.23.15",
     "typescript": "^7.0.2",
